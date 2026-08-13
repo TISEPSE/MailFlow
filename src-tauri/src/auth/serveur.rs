@@ -1,10 +1,10 @@
-//! Le serveur ephemere qui recueille la redirection du navigateur.
+//! Le serveur éphémère qui recueille la redirection du navigateur.
 //!
-//! Duree de vie : le temps que l'utilisateur donne son accord chez Google, et pas
+//! Durée de vie : le temps que l'utilisateur donne son accord chez Google, et pas
 //! une seconde de plus. Le port reste ouvert sur `127.0.0.1` pendant ce laps de
-//! temps, donc joignable par tout programme tournant sous la meme session — c'est
-//! une propriete du flux loopback, pas un defaut de celui-ci. Ce qui protege, ce
-//! sont le `state` imprevisible et la fenetre courte.
+//! temps, donc joignable par tout programme tournant sous la même session — c'est
+//! une propriété du flux loopback, pas un défaut de celui-ci. Ce qui protège, ce
+//! sont le `state` imprévisible et la fenêtre courte.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
@@ -15,17 +15,17 @@ use tokio::net::TcpListener;
 use super::loopback::{RetourAutorisation, analyser_redirection, reponse_http, secrets_egaux};
 use crate::error::{AppError, Resultat};
 
-/// Taille maximale de la ligne de requete acceptee.
+/// Taille maximale de la ligne de requête acceptée.
 ///
 /// Un code d'autorisation Google fait quelques centaines d'octets. Au-dela, ce
 /// n'est pas la redirection attendue, et on n'a aucune raison de bufferiser sans
 /// limite ce que nous envoie un client inconnu.
 const TAILLE_MAX_LIGNE: u64 = 8 * 1024;
 
-/// Delai laisse a un client pour envoyer sa ligne de requete apres connexion.
+/// Délai laissé à un client pour envoyer sa ligne de requête après connexion.
 ///
 /// Sans cela, une connexion ouverte et muette bloquerait la boucle d'acceptation
-/// jusqu'au delai global.
+/// jusqu'au délai global.
 const DELAI_LECTURE: Duration = Duration::from_secs(5);
 
 fn page(titre: &str, message: &str) -> String {
@@ -43,7 +43,7 @@ pub struct ServeurRedirection {
 }
 
 impl ServeurRedirection {
-    /// Ouvre un port sur la boucle locale, attribue par le systeme.
+    /// Ouvre un port sur la boucle locale, attribué par le système.
     pub async fn ouvrir() -> Resultat<Self> {
         let adresse = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
         let ecouteur = TcpListener::bind(adresse)
@@ -61,20 +61,20 @@ impl ServeurRedirection {
         self.port
     }
 
-    /// URI de redirection a declarer a Google, exactement sous cette forme.
+    /// URI de redirection à déclarer à Google, exactement sous cette forme.
     pub fn uri_redirection(&self) -> String {
         format!("http://{}:{}", super::HOTE_REDIRECTION, self.port)
     }
 
     /// Attend la redirection et rend le code d'autorisation.
     ///
-    /// Les requetes qui ne sont pas la redirection attendue (le navigateur reclame
-    /// volontiers `/favicon.ico`) recoivent un 404 et ne comptent pas : on continue
-    /// d'ecouter jusqu'a `delai`.
+    /// Les requêtes qui ne sont pas la redirection attendue (le navigateur réclame
+    /// volontiers `/favicon.ico`) reçoivent un 404 et ne comptent pas : on continue
+    /// d'écouter jusqu'à `delai`.
     pub async fn attendre_le_code(self, state_attendu: &str, delai: Duration) -> Resultat<String> {
         tokio::time::timeout(delai, self.boucle(state_attendu))
             .await
-            .map_err(|_| AppError::Auth("aucune redirection recue avant le delai".into()))?
+            .map_err(|_| AppError::Auth("aucune redirection reçue avant le délai".into()))?
     }
 
     async fn boucle(&self, state_attendu: &str) -> Resultat<String> {
@@ -89,7 +89,7 @@ impl ServeurRedirection {
             let mut ligne = String::new();
 
             // Deux garde-fous sur ce que peut faire un client inconnu : un plafond
-            // d'octets, et un delai pour les envoyer.
+            // d'octets, et un délai pour les envoyer.
             let mut lecteur = BufReader::new(lecture.take(TAILLE_MAX_LIGNE));
             let lue = matches!(
                 tokio::time::timeout(DELAI_LECTURE, lecteur.read_line(&mut ligne)).await,
@@ -138,13 +138,13 @@ impl ServeurRedirection {
                         ),
                     )
                     .await;
-                    return Err(AppError::Auth(format!("refus cote Google : {motif}")));
+                    return Err(AppError::Auth(format!("refus côté Google : {motif}")));
                 }
 
-                // Ni la redirection, ni un refus : du bruit. On repond et on
+                // Ni la redirection, ni un refus : du bruit. On répond et on
                 // continue d'attendre la vraie redirection.
                 Err(e) => {
-                    log::debug!("requete ignoree sur le port de redirection : {e}");
+                    log::debug!("requête ignorée sur le port de redirection : {e}");
                     repondre(
                         &mut ecriture,
                         "404 Not Found",
@@ -157,10 +157,10 @@ impl ServeurRedirection {
     }
 }
 
-/// Ecrit la reponse et ferme proprement.
+/// Écrit la réponse et ferme proprement.
 ///
-/// Les erreurs d'ecriture sont ignorees a dessein : le navigateur peut avoir
-/// referme l'onglet. Ce qui compte est le resultat rendu a l'appelant, pas la
+/// Les erreurs d'écriture sont ignorées à dessein : le navigateur peut avoir
+/// refermé l'onglet. Ce qui compte est le résultat rendu à l'appelant, pas la
 /// page de courtoisie.
 async fn repondre<E: AsyncWriteExt + Unpin>(ecriture: &mut E, statut: &str, corps: &str) {
     let _ = ecriture
@@ -192,15 +192,15 @@ mod tests {
 
         let adresse = serveur.ecouteur.local_addr().unwrap();
         assert_eq!(adresse.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert_ne!(adresse.port(), 0, "le port doit etre attribue");
+        assert_ne!(adresse.port(), 0, "le port doit être attribué");
     }
 
     #[tokio::test]
     async fn l_uri_de_redirection_utilise_l_adresse_numerique() {
         let serveur = ServeurRedirection::ouvrir().await.unwrap();
 
-        // `localhost` est proscrit : la resolution peut passer par IPv6 ou par un
-        // fichier hosts modifie.
+        // `localhost` est proscrit : la résolution peut passer par IPv6 ou par un
+        // fichier hosts modifié.
         assert_eq!(
             serveur.uri_redirection(),
             format!("http://127.0.0.1:{}", serveur.port())
@@ -312,7 +312,7 @@ mod tests {
         let _ = flux.write_all(bourrage.as_bytes()).await;
         drop(flux);
 
-        // La connexion abusive est ecartee, le serveur reste disponible.
+        // La connexion abusive est écartée, le serveur reste disponible.
         envoyer(port, "GET /?code=4a5b6c&state=etat-attendu HTTP/1.1").await;
 
         assert_eq!(attente.await.unwrap().unwrap(), "4a5b6c");

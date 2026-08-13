@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { estErreurBackend, messageDErreur } from './tauri'
 
 describe('estErreurBackend', () => {
-  it('reconnait la forme serialisee par le backend', () => {
+  it('reconnaît la forme sérialisée par le backend', () => {
     expect(estErreurBackend({ code: 'ERREUR_GMAIL', message: 'Gmail…' })).toBe(true)
   })
 
   it('rejette les valeurs qui ne sont pas des erreurs backend', () => {
     expect(estErreurBackend(new Error('boum'))).toBe(false)
-    expect(estErreurBackend('chaine')).toBe(false)
+    expect(estErreurBackend('chaîne')).toBe(false)
     expect(estErreurBackend(null)).toBe(false)
     expect(estErreurBackend({ code: 'ERREUR_GMAIL' })).toBe(false)
   })
@@ -16,11 +16,11 @@ describe('estErreurBackend', () => {
 
 describe('messageDErreur', () => {
   it('rend le message du backend tel quel', () => {
-    const erreur = { code: 'NON_AUTHENTIFIE', message: "Aucun compte Gmail n'est connecte." }
-    expect(messageDErreur(erreur)).toBe("Aucun compte Gmail n'est connecte.")
+    const erreur = { code: 'NON_AUTHENTIFIE', message: "Aucun compte Gmail n'est connecté." }
+    expect(messageDErreur(erreur)).toBe("Aucun compte Gmail n'est connecté.")
   })
 
-  it("remplace une panne inattendue par un message generique", () => {
+  it("remplace une panne inattendue par un message générique", () => {
     const console_error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     expect(messageDErreur(new TypeError('undefined is not a function'))).toBe(
@@ -30,7 +30,7 @@ describe('messageDErreur', () => {
     console_error.mockRestore()
   })
 
-  it("ne laisse pas fuiter le detail d'une panne inattendue", () => {
+  it("ne laisse pas fuiter le détail d'une panne inattendue", () => {
     const console_error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const message = messageDErreur(new Error('token=secret-abc123'))

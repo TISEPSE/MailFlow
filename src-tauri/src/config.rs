@@ -1,16 +1,16 @@
 //! Ou MailFlow trouve son identifiant client Google.
 //!
 //! Cet identifiant n'est pas un secret — Google le dit explicitement pour les
-//! clients de bureau, et il apparait de toute facon dans l'URL d'autorisation.
-//! Il n'a donc rien a faire dans le trousseau : c'est de la configuration, pas un
+//! clients de bureau, et il apparaît de toute façon dans l'URL d'autorisation.
+//! Il n'a donc rien à faire dans le trousseau : c'est de la configuration, pas un
 //! secret, et le confondre avec un secret rendrait la mise en place inutilement
-//! penible pour l'utilisateur.
+//! pénible pour l'utilisateur.
 //!
 //! Trois sources, dans cet ordre :
 //!
 //! 1. la variable d'environnement, qui permet de surcharger ponctuellement ;
-//! 2. la valeur figee a la compilation, utilisee pour les binaires distribues ;
-//! 3. le fichier `.env` du projet, qui est le chemin decrit dans
+//! 2. la valeur figée à la compilation, utilisée pour les binaires distribués ;
+//! 3. le fichier `.env` du projet, qui est le chemin décrit dans
 //!    `docs/connexion-google.md`.
 
 pub const VAR_CLIENT_ID: &str = "MAILFLOW_GOOGLE_CLIENT_ID";
@@ -18,7 +18,7 @@ pub const VAR_CLIENT_ID: &str = "MAILFLOW_GOOGLE_CLIENT_ID";
 /// Extrait une valeur d'un contenu de fichier `.env`.
 ///
 /// Deliberement minimal : pas d'interpolation de variables, pas d'echappement.
-/// Un `.env` qui aurait besoin de ces mecanismes contiendrait autre chose qu'un
+/// Un `.env` qui aurait besoin de ces mécanismes contiendrait autre chose qu'un
 /// identifiant client.
 pub fn valeur_dotenv(contenu: &str, cle: &str) -> Option<String> {
     contenu
@@ -34,7 +34,7 @@ pub fn valeur_dotenv(contenu: &str, cle: &str) -> Option<String> {
             let (nom, valeur) = ligne.split_once('=')?;
             (nom.trim() == cle).then_some(valeur)
         })
-        // La derniere affectation gagne, comme dans un shell.
+        // La dernière affectation gagne, comme dans un shell.
         .next_back()
         .map(|v| {
             v.trim()
@@ -66,7 +66,7 @@ fn non_vide(v: String) -> Option<String> {
     (!v.is_empty()).then_some(v)
 }
 
-/// Identifiant client Google, ou `None` s'il n'a pas ete configure.
+/// Identifiant client Google, ou `None` s'il n'a pas été configuré.
 pub fn client_id_google() -> Option<String> {
     std::env::var(VAR_CLIENT_ID)
         .ok()
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn rend_none_pour_une_cle_absente_ou_vide() {
-        // Cas le plus frequent : `.env` copie depuis `.env.example`, jamais rempli.
+        // Cas le plus fréquent : `.env` copié depuis `.env.example`, jamais rempli.
         assert_eq!(
             valeur_dotenv("MAILFLOW_GOOGLE_CLIENT_ID=\n", VAR_CLIENT_ID),
             None

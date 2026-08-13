@@ -1,10 +1,10 @@
-//! Jetons d'acces Google : duree de vie et confinement.
+//! Jetons d'accès Google : durée de vie et confinement.
 //!
-//! L'`access_token` vit environ une heure et reste **en memoire uniquement**. Le
-//! `refresh_token`, lui, est durable et part dans le trousseau systeme.
+//! L'`access_token` vit environ une heure et reste **en mémoire uniquement**. Le
+//! `refresh_token`, lui, est durable et part dans le trousseau système.
 //!
-//! Ces deux valeurs sont des identifiants porteurs : quiconque les detient parle a
-//! Gmail au nom de l'utilisateur. Elles ne doivent apparaitre ni dans les logs, ni
+//! Ces deux valeurs sont des identifiants porteurs : quiconque les détient parle à
+//! Gmail au nom de l'utilisateur. Elles ne doivent apparaître ni dans les logs, ni
 //! dans un message d'erreur, ni dans un `Debug`.
 
 use chrono::{DateTime, Duration, Utc};
@@ -14,36 +14,36 @@ use super::MARGE_RENOUVELLEMENT_SECS;
 
 /// Reponse de l'endpoint de jetons de Google.
 ///
-/// `refresh_token` est absent des reponses de renouvellement : Google ne le
-/// redonne qu'a la premiere autorisation.
+/// `refresh_token` est absent des réponses de renouvellement : Google ne le
+/// redonne qu'à la première autorisation.
 #[derive(Deserialize)]
 pub struct ReponseJeton {
     pub access_token: String,
     pub expires_in: i64,
-    /// `Option` sans plus : serde traite deja un champ optionnel comme absent
-    /// par defaut. Google ne le renvoie qu'a la premiere autorisation.
+    /// `Option` sans plus : serde traite déjà un champ optionnel comme absent
+    /// par défaut. Google ne le renvoie qu'à la première autorisation.
     pub refresh_token: Option<String>,
     pub scope: Option<String>,
 }
 
-/// Ecrit a la main : le `Debug` derive imprimerait les jetons en clair, et cette
-/// structure est precisement celle qu'on est tente de journaliser quand l'echange
-/// echoue.
+/// Écrit à la main : le `Debug` dérivé imprimerait les jetons en clair, et cette
+/// structure est précisément celle qu'on est tenté de journaliser quand l'échange
+/// échoue.
 impl std::fmt::Debug for ReponseJeton {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ReponseJeton")
-            .field("access_token", &"<masque>")
+            .field("access_token", &"<masqué>")
             .field("expires_in", &self.expires_in)
             .field(
                 "refresh_token",
-                &self.refresh_token.as_ref().map(|_| "<masque>"),
+                &self.refresh_token.as_ref().map(|_| "<masqué>"),
             )
             .field("scope", &self.scope)
             .finish()
     }
 }
 
-/// Jetons courants d'une session connectee.
+/// Jetons courants d'une session connectée.
 #[derive(Clone)]
 pub struct Jetons {
     access_token: String,
@@ -61,9 +61,9 @@ impl std::fmt::Debug for Jetons {
 }
 
 impl Jetons {
-    /// Convertit une reponse de Google en jetons dates.
+    /// Convertit une réponse de Google en jetons dates.
     ///
-    /// `maintenant` est injecte plutot que lu depuis l'horloge : l'expiration est
+    /// `maintenant` est injecté plutôt que lu depuis l'horloge : l'expiration est
     /// de la logique, et de la logique qui lit l'heure n'est pas testable.
     pub fn depuis(reponse: ReponseJeton, maintenant: DateTime<Utc>) -> Self {
         Self {
@@ -73,10 +73,10 @@ impl Jetons {
         }
     }
 
-    /// Vrai tant que le jeton peut servir a un appel Gmail.
+    /// Vrai tant que le jeton peut servir à un appel Gmail.
     ///
-    /// Faux des qu'on entre dans la marge de renouvellement : un jeton valable
-    /// encore dix secondes ne l'est plus quand la requete arrive chez Google.
+    /// Faux dès qu'on entre dans la marge de renouvellement : un jeton valable
+    /// encore dix secondes ne l'est plus quand la requête arrive chez Google.
     pub fn utilisable(&self, maintenant: DateTime<Utc>) -> bool {
         self.expire_le - maintenant > Duration::seconds(MARGE_RENOUVELLEMENT_SECS)
     }
@@ -89,7 +89,7 @@ impl Jetons {
         self.refresh_token.as_deref()
     }
 
-    /// Applique une reponse de renouvellement en conservant le `refresh_token`
+    /// Applique une réponse de renouvellement en conservant le `refresh_token`
     /// existant quand Google n'en redonne pas.
     pub fn renouveler(&mut self, reponse: ReponseJeton, maintenant: DateTime<Utc>) {
         self.access_token = reponse.access_token;
@@ -143,7 +143,7 @@ mod tests {
         let juste_avant = t0() + Duration::seconds(3600 - MARGE_RENOUVELLEMENT_SECS - 1);
         assert!(jetons.utilisable(juste_avant));
 
-        // Dans la marge : on renouvelle, meme si Google l'accepterait encore.
+        // Dans la marge : on renouvelle, même si Google l'accepterait encore.
         let dans_la_marge = t0() + Duration::seconds(3600 - MARGE_RENOUVELLEMENT_SECS + 1);
         assert!(!jetons.utilisable(dans_la_marge));
     }
@@ -160,8 +160,8 @@ mod tests {
 
     #[test]
     fn le_debug_de_la_reponse_de_google_ne_revele_aucun_jeton() {
-        // Cette reponse traverse la couche reseau : c'est le `Debug` le plus
-        // susceptible de finir dans un log au moment d'un echec.
+        // Cette réponse traverse la couche réseau : c'est le `Debug` le plus
+        // susceptible de finir dans un log au moment d'un échec.
         let trace = format!("{:?}", reponse(3600, Some(REFRESH)));
 
         assert!(!trace.contains(ACCESS));
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn une_reponse_de_renouvellement_sans_refresh_token_est_acceptee() {
-        // Google ne redonne le `refresh_token` qu'a la premiere autorisation.
+        // Google ne redonne le `refresh_token` qu'à la première autorisation.
         let brut = r#"{"access_token":"ya29.abc","expires_in":3599,"token_type":"Bearer"}"#;
 
         let r: ReponseJeton = serde_json::from_str(brut).unwrap();

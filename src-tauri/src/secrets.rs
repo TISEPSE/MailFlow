@@ -1,10 +1,10 @@
-//! Stockage des secrets dans le trousseau du systeme d'exploitation.
+//! Stockage des secrets dans le trousseau du système d'exploitation.
 //!
 //! Trousseau Keychain sur macOS, Secret Service (GNOME Keyring / KWallet) sur Linux.
-//! Rien n'est ecrit en clair sur le disque : ni le `refresh_token` Google, ni la
-//! cle d'API du fournisseur LLM.
+//! Rien n'est écrit en clair sur le disque : ni le `refresh_token` Google, ni la
+//! clé d'API du fournisseur LLM.
 //!
-//! L'acces passe par le trait [`SecretStore`] plutot que par `keyring::Entry` en
+//! L'accès passe par le trait [`SecretStore`] plutôt que par `keyring::Entry` en
 //! direct, pour deux raisons : les tests n'ont pas de trousseau disponible, et
 //! une machine de CI headless non plus.
 
@@ -13,28 +13,28 @@ use std::sync::Mutex;
 
 use crate::error::{AppError, Resultat};
 
-/// Nom de service sous lequel les entrees apparaissent dans le trousseau.
-/// Doit rester identique a l'identifiant applicatif de `tauri.conf.json`.
+/// Nom de service sous lequel les entrées apparaissent dans le trousseau.
+/// Doit rester identique à l'identifiant applicatif de `tauri.conf.json`.
 pub const SERVICE: &str = "fr.mailflow.desktop";
 
-/// Jeton de rafraichissement OAuth2 Google. Le seul secret reellement durable :
-/// il donne un acces permanent a la boite mail tant qu'il n'est pas revoque.
+/// Jeton de rafraîchissement OAuth2 Google. Le seul secret réellement durable :
+/// il donne un accès permanent à la boîte mail tant qu'il n'est pas révoqué.
 pub const CLE_REFRESH_TOKEN_GOOGLE: &str = "google_refresh_token";
 
-/// Cle d'API du fournisseur LLM, saisie par l'utilisateur dans les reglages.
+/// Cle d'API du fournisseur LLM, saisie par l'utilisateur dans les réglages.
 pub const CLE_API_LLM: &str = "llm_api_key";
 
 pub trait SecretStore: Send + Sync {
     fn set(&self, cle: &str, valeur: &str) -> Resultat<()>;
 
-    /// `Ok(None)` quand l'entree n'existe pas — ce n'est pas une erreur.
+    /// `Ok(None)` quand l'entrée n'existe pas — ce n'est pas une erreur.
     fn get(&self, cle: &str) -> Resultat<Option<String>>;
 
-    /// Idempotent : supprimer une entree absente reussit.
+    /// Idempotent : supprimer une entrée absente réussit.
     fn delete(&self, cle: &str) -> Resultat<()>;
 }
 
-/// Implementation reelle, adossee au trousseau du systeme.
+/// Implementation réelle, adossée au trousseau du système.
 pub struct KeyringStore {
     service: String,
 }
@@ -46,12 +46,12 @@ impl KeyringStore {
         }
     }
 
-    /// Verifie que le trousseau est joignable, sans creer d'entree.
+    /// Verifie que le trousseau est joignable, sans créer d'entrée.
     ///
-    /// Echoue notamment sur une session Linux sans agent Secret Service actif
+    /// Échoue notamment sur une session Linux sans agent Secret Service actif
     /// (machine headless, conteneur, certains environnements de bureau minimaux).
-    /// Le cas doit etre detecte au demarrage et explique a l'utilisateur, pas
-    /// decouvert au milieu du flux de connexion Google.
+    /// Le cas doit être détecté au démarrage et expliqué à l'utilisateur, pas
+    /// découvert au milieu du flux de connexion Google.
     pub fn disponible() -> Resultat<()> {
         match keyring::Entry::store_status() {
             Ok(()) => Ok(()),
@@ -93,16 +93,16 @@ impl SecretStore for KeyringStore {
     }
 }
 
-/// `keyring::Error` n'est pas `Clone` et `store_status` ne rend qu'une reference.
-/// On reconstruit une erreur equivalente a partir de son message.
+/// `keyring::Error` n'est pas `Clone` et `store_status` ne rend qu'une référence.
+/// On reconstruit une erreur équivalente à partir de son message.
 fn cloner_erreur(e: &keyring::Error) -> keyring::Error {
     keyring::Error::NotSupportedByStore(e.to_string())
 }
 
-/// Implementation en memoire, pour les tests et les environnements sans trousseau.
+/// Implementation en mémoire, pour les tests et les environnements sans trousseau.
 ///
 /// Ne persiste rien et ne doit jamais servir en production : elle est ici pour
-/// que la logique metier reste testable sans dependre du bureau de l'hote.
+/// que la logique métier reste testable sans dépendre du bureau de l'hôte.
 #[derive(Default)]
 pub struct MemoryStore {
     contenu: Mutex<HashMap<String, String>>,
@@ -118,7 +118,7 @@ impl SecretStore for MemoryStore {
     fn set(&self, cle: &str, valeur: &str) -> Resultat<()> {
         self.contenu
             .lock()
-            .expect("mutex du MemoryStore empoisonne")
+            .expect("mutex du MemoryStore empoisonné")
             .insert(cle.to_string(), valeur.to_string());
         Ok(())
     }
@@ -127,7 +127,7 @@ impl SecretStore for MemoryStore {
         Ok(self
             .contenu
             .lock()
-            .expect("mutex du MemoryStore empoisonne")
+            .expect("mutex du MemoryStore empoisonné")
             .get(cle)
             .cloned())
     }
@@ -135,7 +135,7 @@ impl SecretStore for MemoryStore {
     fn delete(&self, cle: &str) -> Resultat<()> {
         self.contenu
             .lock()
-            .expect("mutex du MemoryStore empoisonne")
+            .expect("mutex du MemoryStore empoisonné")
             .remove(cle);
         Ok(())
     }

@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Dependances systeme Tauri
+      - name: Dépendances système Tauri
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -62,7 +62,7 @@ jobs:
           workspaces: src-tauri
 
       # `tauri::generate_context!` exige que le dossier de sortie du frontend
-      # existe, meme quand seul le Rust est verifie.
+      # existe, même quand seul le Rust est vérifié.
       - name: Sortie frontend factice
         run: mkdir -p dist && touch dist/index.html
 
@@ -78,14 +78,14 @@ jobs:
         run: cargo test
         working-directory: src-tauri
 
-      # `cargo audit` signale les vulnerabilites connues des dependances.
-      # Une application qui detient un acces permanent a une boite mail ne peut
-      # pas se permettre de decouvrir ces avis a la lecture des notes de version.
-      # `working-directory` est ici un *input* de l'action, pas la cle de meme nom
-      # des etapes `run:` — celle-ci ne s'applique qu'aux commandes shell. Sans
-      # cet input, l'action cherche un Cargo.lock a la racine du depot, ou il n'y
+      # `cargo audit` signale les vulnérabilités connues des dépendances.
+      # Une application qui détient un accès permanent à une boîte mail ne peut
+      # pas se permettre de découvrir ces avis à la lecture des notes de version.
+      # `working-directory` est ici un *input* de l'action, pas la clé de même nom
+      # des étapes `run:` — celle-ci ne s'applique qu'aux commandes shell. Sans
+      # cet input, l'action cherche un Cargo.lock à la racine du dépôt, où il n'y
       # en a pas : le manifeste Rust vit dans src-tauri.
-      - name: Audit des dependances
+      - name: Audit des dépendances
         uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

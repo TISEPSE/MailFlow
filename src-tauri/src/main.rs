@@ -1,4 +1,4 @@
-// Evite l'ouverture d'une console supplementaire sous Windows en release.
+// Évite l'ouverture d'une console supplémentaire sous Windows en release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {

@@ -1,34 +1,34 @@
 /**
- * Miroir TypeScript des types serialises par le backend Rust.
+ * Miroir TypeScript des types sérialisés par le backend Rust.
  *
- * Ces definitions sont ecrites a la main et doivent rester alignees sur
+ * Ces définitions sont écrites à la main et doivent rester alignées sur
  * `src-tauri/src/commands/mod.rs` et `src-tauri/src/error.rs`. Toute
- * divergence se manifeste a l'execution, pas a la compilation.
+ * divergence se manifeste à l'exécution, pas à la compilation.
  */
 
 /** Miroir de `commands::EtatApplication`. */
 export interface EtatApplication {
   version: string
   plateforme: string
-  /** Faux quand aucun trousseau systeme n'est joignable. */
+  /** Faux quand aucun trousseau système n'est joignable. */
   trousseauDisponible: boolean
   cheminRegles: string
-  /** `null` quand le fichier de regles existe mais est illisible. */
+  /** `null` quand le fichier de règles existe mais est illisible. */
   nombreDeRegles: number | null
   compteConnecte: boolean
   /**
-   * Faux tant que l'identifiant client Google n'a pas ete renseigne. La vue de
-   * connexion doit alors renvoyer vers `docs/connexion-google.md` plutot que de
+   * Faux tant que l'identifiant client Google n'a pas été renseigné. La vue de
+   * connexion doit alors renvoyer vers `docs/connexion-google.md` plutôt que de
    * proposer un bouton qui ne peut pas aboutir.
    */
   clientGoogleConfigure: boolean
 }
 
 /**
- * Miroir de la serialisation de `error::AppError`.
+ * Miroir de la sérialisation de `error::AppError`.
  *
- * Le backend ne transmet jamais de detail technique : `code` sert au branchement
- * logique, `message` est directement affichable a l'utilisateur.
+ * Le backend ne transmet jamais de détail technique : `code` sert au branchement
+ * logique, `message` est directement affichable à l'utilisateur.
  */
 export interface ErreurBackend {
   code: CodeErreur

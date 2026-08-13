@@ -1,10 +1,10 @@
-//! Construction des requetes OAuth2 et interpretation des reponses de Google.
+//! Construction des requêtes OAuth2 et interprétation des réponses de Google.
 //!
-//! La generation PKCE est deleguee au crate `oauth2` : c'est le seul endroit du
-//! flux ou une erreur de cryptographie serait invisible et fatale (generateur
-//! previsible, encodage base64url errone). Le reste — URL d'autorisation, echange
-//! de jetons, revocation — est du formulaire HTTP, ecrit ici pour rester lisible
-//! et pour maitriser exactement ce qui est envoye.
+//! La génération PKCE est déléguée au crate `oauth2` : c'est le seul endroit du
+//! flux où une erreur de cryptographie serait invisible et fatale (générateur
+//! prévisible, encodage base64url erroné). Le reste — URL d'autorisation, échange
+//! de jetons, révocation — est du formulaire HTTP, écrit ici pour rester lisible
+//! et pour maîtriser exactement ce qui est envoyé.
 
 use oauth2::{CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
 use serde::Deserialize;
@@ -14,7 +14,7 @@ use super::jetons::ReponseJeton;
 use super::{SCOPE_EMAIL, SCOPE_GMAIL, URL_AUTORISATION, URL_JETON, URL_REVOCATION};
 use crate::error::{AppError, Resultat};
 
-/// Erreur renvoyee par les endpoints OAuth2 de Google.
+/// Erreur renvoyée par les endpoints OAuth2 de Google.
 #[derive(Deserialize)]
 struct ErreurOAuth {
     error: String,
@@ -22,8 +22,8 @@ struct ErreurOAuth {
 
 /// Une tentative de connexion en cours.
 ///
-/// Porte le `code_verifier` et le `state` de cette tentative precise. Deux
-/// tentatives simultanees ne doivent jamais partager ces valeurs.
+/// Porte le `code_verifier` et le `state` de cette tentative précise. Deux
+/// tentatives simultanées ne doivent jamais partager ces valeurs.
 pub struct DemandeAutorisation {
     url: Url,
     verifier: PkceCodeVerifier,
@@ -31,9 +31,9 @@ pub struct DemandeAutorisation {
     redirect_uri: String,
 }
 
-/// Le `Debug` derive de `PkceCodeVerifier` et `CsrfToken` imprime les valeurs en
+/// Le `Debug` dérivé de `PkceCodeVerifier` et `CsrfToken` imprime les valeurs en
 /// clair. L'URL, elle, porte le `code_challenge` et le `state` dans ses
-/// parametres : on n'en garde que l'origine.
+/// paramètres : on n'en garde que l'origine.
 impl std::fmt::Debug for DemandeAutorisation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DemandeAutorisation")
@@ -44,7 +44,7 @@ impl std::fmt::Debug for DemandeAutorisation {
 }
 
 impl DemandeAutorisation {
-    /// Prepare une tentative : PKCE, `state`, et l'URL a ouvrir dans le navigateur.
+    /// Prepare une tentative : PKCE, `state`, et l'URL à ouvrir dans le navigateur.
     pub fn nouvelle(client_id: &str, redirect_uri: String) -> Resultat<Self> {
         let client_id = client_id.trim();
         if client_id.is_empty() {
@@ -65,7 +65,7 @@ impl DemandeAutorisation {
         })
     }
 
-    /// URL a ouvrir dans le navigateur systeme.
+    /// URL à ouvrir dans le navigateur système.
     pub fn url(&self) -> &Url {
         &self.url
     }
@@ -97,40 +97,40 @@ fn url_autorisation(
         .append_pair("code_challenge", code_challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", state)
-        // Sans quoi Google ne delivre pas de `refresh_token` et l'utilisateur
-        // devrait se reconnecter a chaque lancement.
+        // Sans quoi Google ne délivre pas de `refresh_token` et l'utilisateur
+        // devrait se reconnecter à chaque lancement.
         .append_pair("access_type", "offline")
-        // Google ne redonne le `refresh_token` qu'a un consentement explicite.
-        // Sans cela, une reconnexion apres une revocation resterait sans jeton
+        // Google ne redonne le `refresh_token` qu'à un consentement explicite.
+        // Sans cela, une reconnexion après une révocation resterait sans jeton
         // durable, sans le moindre message d'erreur.
         .append_pair("prompt", "consent");
 
     Ok(url)
 }
 
-/// Traduit une reponse de l'endpoint de jetons.
+/// Traduit une réponse de l'endpoint de jetons.
 ///
 /// Le corps d'erreur de Google contient un `error_description` en anglais, souvent
-/// bavard. On n'en retient que le code court : le reste ne sert ni a l'utilisateur,
+/// bavard. On n'en retient que le code court : le reste ne sert ni à l'utilisateur,
 /// ni au diagnostic.
 fn interpreter_reponse(statut: u16, corps: &str) -> Resultat<ReponseJeton> {
     if !(200..300).contains(&statut) {
         let motif = serde_json::from_str::<ErreurOAuth>(corps)
             .map(|e| e.error)
-            .unwrap_or_else(|_| "reponse sans code d'erreur".into());
+            .unwrap_or_else(|_| "réponse sans code d'erreur".into());
         return Err(AppError::Auth(format!(
-            "Google a refuse la demande : {motif} (HTTP {statut})"
+            "Google a refusé la demande : {motif} (HTTP {statut})"
         )));
     }
 
     serde_json::from_str(corps).map_err(|e| {
         // Volontairement sans le corps : il contiendrait les jetons en cas de
-        // reponse partiellement valide.
-        AppError::Auth(format!("reponse de jetons illisible : {e}"))
+        // réponse partiellement valide.
+        AppError::Auth(format!("réponse de jetons illisible : {e}"))
     })
 }
 
-/// Parametres de formulaire pour l'echange du code contre des jetons.
+/// Parametres de formulaire pour l'échange du code contre des jetons.
 fn corps_echange(
     client_id: &str,
     code: &str,
@@ -155,7 +155,7 @@ fn corps_renouvellement(client_id: &str, refresh_token: &str) -> Vec<(&'static s
     ]
 }
 
-/// Client HTTP dedie aux endpoints OAuth2 de Google.
+/// Client HTTP dédié aux endpoints OAuth2 de Google.
 pub struct ClientOAuth {
     http: reqwest::Client,
     client_id: String,
@@ -181,7 +181,7 @@ impl ClientOAuth {
         Ok(Self { http, client_id })
     }
 
-    /// Ouvre une tentative de connexion pour l'URI de redirection donnee.
+    /// Ouvre une tentative de connexion pour l'URI de redirection donnée.
     pub fn demarrer(&self, redirect_uri: String) -> Resultat<DemandeAutorisation> {
         DemandeAutorisation::nouvelle(&self.client_id, redirect_uri)
     }
@@ -201,16 +201,16 @@ impl ClientOAuth {
         self.poster(URL_JETON, &corps).await
     }
 
-    /// Renouvelle l'`access_token` a partir du `refresh_token` durable.
+    /// Renouvelle l'`access_token` à partir du `refresh_token` durable.
     pub async fn renouveler(&self, refresh_token: &str) -> Resultat<ReponseJeton> {
         let corps = corps_renouvellement(&self.client_id, refresh_token);
         self.poster(URL_JETON, &corps).await
     }
 
-    /// Revoque l'autorisation cote Google.
+    /// Révoque l'autorisation côté Google.
     ///
-    /// Se deconnecter sans revoquer laisserait l'autorisation active dans le compte
-    /// de l'utilisateur : le bouton « deconnecter » doit couper reellement l'acces,
+    /// Se déconnecter sans révoquer laisserait l'autorisation active dans le compte
+    /// de l'utilisateur : le bouton « déconnecter » doit couper réellement l'accès,
     /// pas seulement oublier le jeton.
     pub async fn revoquer(&self, jeton: &str) -> Resultat<()> {
         let reponse = self
@@ -224,7 +224,7 @@ impl ClientOAuth {
             Ok(())
         } else {
             Err(AppError::Auth(format!(
-                "revocation refusee (HTTP {})",
+                "révocation refusée (HTTP {})",
                 reponse.status().as_u16()
             )))
         }
@@ -277,8 +277,8 @@ mod tests {
 
     #[test]
     fn l_url_d_autorisation_demande_un_acces_hors_ligne() {
-        // Sans `access_type=offline`, Google ne delivre pas de `refresh_token` et
-        // l'utilisateur devrait se reconnecter a chaque lancement.
+        // Sans `access_type=offline`, Google ne délivre pas de `refresh_token` et
+        // l'utilisateur devrait se reconnecter à chaque lancement.
         let p = params(demande().url());
 
         assert_eq!(p["access_type"], "offline");
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn un_client_id_vide_est_une_erreur_de_configuration() {
-        // Cas reel : `.env` copie mais jamais rempli.
+        // Cas réel : `.env` copié mais jamais rempli.
         let e = DemandeAutorisation::nouvelle("  ", REDIRECT.into()).unwrap_err();
 
         assert_eq!(e.code(), "CONFIG_INVALIDE");
@@ -364,7 +364,7 @@ mod tests {
         assert_eq!(p["code_verifier"], "le-verifier");
         assert_eq!(p["redirect_uri"], REDIRECT);
         // Une application de bureau n'a pas de secret : en envoyer un serait
-        // pretendre le contraire.
+        // prétendre le contraire.
         assert!(!p.contains_key("client_secret"));
     }
 

@@ -14,7 +14,7 @@ jobs:
     name: ${{ matrix.nom }}
     runs-on: ${{ matrix.plateforme }}
     strategy:
-      # Un echec sur une plateforme ne doit pas annuler les autres :
+      # Un échec sur une plateforme ne doit pas annuler les autres :
       # mieux vaut publier deux binaires sur trois que zero.
       fail-fast: false
       matrix:
@@ -29,10 +29,10 @@ jobs:
             args: '--target x86_64-apple-darwin'
             rust_target: x86_64-apple-darwin
 
-          # Ubuntu 22.04 et non une version plus recente : la glibc du runner
+          # Ubuntu 22.04 et non une version plus récente : la glibc du runner
           # fixe la version minimale requise chez l'utilisateur. Compiler sur
-          # une distribution recente produit des binaires qui refusent de
-          # demarrer sur les distributions encore supportees.
+          # une distribution récente produit des binaires qui refusent de
+          # démarrer sur les distributions encore supportées.
           - nom: Linux x86_64
             plateforme: ubuntu-22.04
             args: ''
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Dependances systeme Tauri (Linux)
+      - name: Dépendances système Tauri (Linux)
         if: startsWith(matrix.plateforme, 'ubuntu')
         run: |
           sudo apt-get update

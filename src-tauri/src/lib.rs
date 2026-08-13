@@ -1,12 +1,12 @@
 //! MailFlow — backend.
 //!
-//! Toute la logique sensible vit ici plutot que dans le webview : jetons OAuth,
-//! appels a l'API Gmail, moteur de regles, acces disque. Le frontend ne dispose
-//! que des commandes declarees dans [`commands`], et ne detient jamais de secret.
+//! Toute la logique sensible vit ici plutôt que dans le webview : jetons OAuth,
+//! appels à l'API Gmail, moteur de règles, accès disque. Le frontend ne dispose
+//! que des commandes déclarées dans [`commands`], et ne détient jamais de secret.
 //!
-//! C'est la raison d'etre du choix de Tauri sur ce projet : l'application affiche
-//! du HTML d'e-mail, c'est-a-dire du contenu fourni par des tiers inconnus. Une
-//! faille d'injection dans le rendu ne doit pas donner acces a la boite mail.
+//! C'est la raison d'être du choix de Tauri sur ce projet : l'application affiche
+//! du HTML d'e-mail, c'est-à-dire du contenu fourni par des tiers inconnus. Une
+//! faille d'injection dans le rendu ne doit pas donner accès à la boîte mail.
 
 use tauri::Manager;
 
@@ -32,7 +32,7 @@ pub fn run() {
                 )?;
             }
 
-            // Construit apres l'initialisation des logs, pour que l'absence
+            // Construit après l'initialisation des logs, pour que l'absence
             // d'identifiant client soit visible dans la console.
             app.manage(commands::EtatAuth::nouveau());
             Ok(())

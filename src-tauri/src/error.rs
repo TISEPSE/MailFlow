@@ -1,42 +1,42 @@
 //! Type d'erreur unique du backend et sa traduction vers le frontend.
 //!
-//! Regle de securite centrale : ce qui traverse l'IPC vers le webview ne contient
+//! Règle de sécurité centrale : ce qui traverse l'IPC vers le webview ne contient
 //! jamais de secret ni d'URL. Le webview affiche du HTML d'e-mail, donc du contenu
-//! potentiellement hostile ; tout ce qu'on lui donne doit etre considere comme public.
-//! Le detail technique complet reste cote Rust, dans les logs.
+//! potentiellement hostile ; tout ce qu'on lui donne doit être considéré comme public.
+//! Le détail technique complet reste côté Rust, dans les logs.
 
 use serde::{Serialize, Serializer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("acces au trousseau systeme impossible : {0}")]
+    #[error("accès au trousseau système impossible : {0}")]
     Keyring(#[from] keyring::Error),
 
-    #[error("erreur d'entree/sortie sur {chemin} : {source}")]
+    #[error("erreur d'entrée/sortie sur {chemin} : {source}")]
     Io {
         chemin: String,
         #[source]
         source: std::io::Error,
     },
 
-    #[error("le fichier de regles est illisible : {0}")]
+    #[error("le fichier de règles est illisible : {0}")]
     FormatRegles(String),
 
-    #[error("aucun compte Gmail connecte")]
+    #[error("aucun compte Gmail connecté")]
     NonAuthentifie,
 
     /// Le flux OAuth2 n'a pas abouti : refus de l'utilisateur, `state` invalide,
-    /// redirection malformee, ou refus de Google a l'echange du code.
+    /// redirection malformée, ou refus de Google à l'échange du code.
     ///
-    /// Le detail reste interne : il contient des fragments de protocole (`state`,
-    /// codes d'autorisation) qui n'ont rien a faire dans le webview.
-    #[error("echec de l'autorisation Google : {0}")]
+    /// Le détail reste interne : il contient des fragments de protocole (`state`,
+    /// codes d'autorisation) qui n'ont rien à faire dans le webview.
+    #[error("échec de l'autorisation Google : {0}")]
     Auth(String),
 
-    #[error("l'API Gmail a repondu {statut}")]
+    #[error("l'API Gmail a répondu {statut}")]
     ApiGmail { statut: u16 },
 
-    #[error("erreur reseau ({0})")]
+    #[error("erreur réseau ({0})")]
     Reseau(String),
 
     #[error("configuration invalide : {0}")]
@@ -44,7 +44,7 @@ pub enum AppError {
 }
 
 impl AppError {
-    /// Erreur d'E/S annotee du chemin concerne.
+    /// Erreur d'E/S annotée du chemin concerné.
     pub fn io(chemin: impl std::fmt::Display, source: std::io::Error) -> Self {
         Self::Io {
             chemin: chemin.to_string(),
@@ -52,7 +52,7 @@ impl AppError {
         }
     }
 
-    /// Code machine stable, destine au frontend pour brancher son affichage.
+    /// Code machine stable, destiné au frontend pour brancher son affichage.
     /// Ne change jamais : le frontend s'y accroche.
     pub fn code(&self) -> &'static str {
         match self {
@@ -67,51 +67,51 @@ impl AppError {
         }
     }
 
-    /// Message en francais clair, destine a un utilisateur non technique.
+    /// Message en français clair, destiné à un utilisateur non technique.
     ///
-    /// Volontairement sans detail technique : le public vise ne sait pas quoi
+    /// Volontairement sans détail technique : le public visé ne sait pas quoi
     /// faire d'un code HTTP, et un message vague ne fuite rien.
     pub fn message_utilisateur(&self) -> String {
         match self {
-            Self::Keyring(_) => "Impossible d'acceder au trousseau de mots de passe du systeme. \
-                 MailFlow ne peut pas conserver votre connexion Gmail en securite."
+            Self::Keyring(_) => "Impossible d'accéder au trousseau de mots de passe du système. \
+                 MailFlow ne peut pas conserver votre connexion Gmail en sécurité."
                 .into(),
             Self::Io { .. } => {
-                "MailFlow n'a pas pu lire ou ecrire ses fichiers de configuration.".into()
+                "MailFlow n'a pas pu lire ou écrire ses fichiers de configuration.".into()
             }
             Self::FormatRegles(_) => {
-                "Le fichier de regles est endommage. Vos automatisations n'ont pas pu \
-                 etre chargees."
+                "Le fichier de règles est endommagé. Vos automatisations n'ont pas pu \
+                 être chargées."
                     .into()
             }
-            Self::NonAuthentifie => "Aucun compte Gmail n'est connecte.".into(),
+            Self::NonAuthentifie => "Aucun compte Gmail n'est connecté.".into(),
             Self::Auth(_) => {
-                "La connexion a votre compte Gmail n'a pas abouti. Vous pouvez reessayer.".into()
+                "La connexion à votre compte Gmail n'a pas abouti. Vous pouvez réessayer.".into()
             }
             Self::ApiGmail { .. } => {
-                "Gmail n'a pas pu traiter la demande. Reessayez dans quelques instants.".into()
+                "Gmail n'a pas pu traiter la demande. Réessayez dans quelques instants.".into()
             }
-            Self::Reseau(_) => "Connexion impossible. Verifiez votre acces internet.".into(),
+            Self::Reseau(_) => "Connexion impossible. Vérifiez votre accès internet.".into(),
             Self::Config(_) => "La configuration de MailFlow est invalide.".into(),
         }
     }
 }
 
-/// `reqwest::Error` expose l'URL complete via son `Display`, ce qui peut faire
-/// fuiter des parametres de requete dans les logs et vers le frontend. On ne
+/// `reqwest::Error` expose l'URL complète via son `Display`, ce qui peut faire
+/// fuiter des paramètres de requête dans les logs et vers le frontend. On ne
 /// conserve que la nature de la panne.
 impl From<reqwest::Error> for AppError {
     fn from(e: reqwest::Error) -> Self {
         let nature = if e.is_timeout() {
-            "delai depasse"
+            "délai dépassé"
         } else if e.is_connect() {
-            "connexion refusee"
+            "connexion refusée"
         } else if e.is_decode() {
-            "reponse illisible"
+            "réponse illisible"
         } else if e.is_body() {
-            "corps de reponse invalide"
+            "corps de réponse invalide"
         } else {
-            "echec de la requete"
+            "échec de la requête"
         };
         Self::Reseau(nature.into())
     }
@@ -125,7 +125,7 @@ impl From<serde_json::Error> for AppError {
 
 /// Serialisation vers le frontend : `{ code, message }` et rien d'autre.
 ///
-/// Le `Display` complet, lui, reste cote Rust : c'est a la commande qui echoue de
+/// Le `Display` complet, lui, reste côté Rust : c'est à la commande qui échoue de
 /// le journaliser avant de propager l'erreur.
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

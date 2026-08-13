@@ -3,10 +3,10 @@ import { appHealth, messageDErreur } from './lib/tauri'
 import type { EtatApplication } from './types/backend'
 
 /**
- * Ecran de diagnostic provisoire.
+ * Écran de diagnostic provisoire.
  *
- * Il n'a pas vocation a rester : il verifie que la chaine React -> IPC -> Rust
- * fonctionne de bout en bout et que le trousseau systeme est joignable. Les cinq
+ * Il n'a pas vocation à rester : il vérifie que la chaîne React → IPC → Rust
+ * fonctionne de bout en bout et que le trousseau système est joignable. Les cinq
  * vues du cahier des charges prendront sa place dans `src/views/`.
  */
 export default function App() {
@@ -29,7 +29,7 @@ export default function App() {
       )}
 
       {!erreur && !etat && (
-        <p className="text-sm text-neutral-500">Verification en cours…</p>
+        <p className="text-sm text-neutral-500">Vérification en cours…</p>
       )}
 
       {etat && (
@@ -37,16 +37,21 @@ export default function App() {
           <Ligne intitule="Version" valeur={etat.version} />
           <Ligne intitule="Plateforme" valeur={etat.plateforme} />
           <Ligne
-            intitule="Trousseau systeme"
+            intitule="Trousseau système"
             valeur={etat.trousseauDisponible ? 'disponible' : 'indisponible'}
             alerte={!etat.trousseauDisponible}
           />
           <Ligne
-            intitule="Compte Gmail"
-            valeur={etat.compteConnecte ? 'connecte' : 'non connecte'}
+            intitule="Client Google"
+            valeur={etat.clientGoogleConfigure ? 'configuré' : 'non configuré'}
+            alerte={!etat.clientGoogleConfigure}
           />
           <Ligne
-            intitule="Regles chargees"
+            intitule="Compte Gmail"
+            valeur={etat.compteConnecte ? 'connecté' : 'non connecté'}
+          />
+          <Ligne
+            intitule="Règles chargées"
             valeur={
               etat.nombreDeRegles === null
                 ? 'fichier illisible'
@@ -54,7 +59,7 @@ export default function App() {
             }
             alerte={etat.nombreDeRegles === null}
           />
-          <Ligne intitule="Fichier de regles" valeur={etat.cheminRegles} />
+          <Ligne intitule="Fichier de règles" valeur={etat.cheminRegles} />
         </dl>
       )}
     </main>

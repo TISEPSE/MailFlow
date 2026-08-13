@@ -1,14 +1,14 @@
-//! Modele de donnees du fichier `regles.json`.
+//! Modele de données du fichier `regles.json`.
 //!
-//! Les noms de champs sont en francais et calques a l'identique sur le format
-//! decrit au cahier des charges : le fichier reste lisible et editable a la main
-//! par un utilisateur technique (mode avance de la vue 5).
+//! Les noms de champs sont en français et calqués à l'identique sur le format
+//! décrit au cahier des charges : le fichier reste lisible et éditable à la main
+//! par un utilisateur technique (mode avancé de la vue 5).
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Version du format de fichier. A incrementer a chaque changement cassant,
-/// pour permettre une migration plutot qu'un echec de lecture.
+/// Version du format de fichier. À incrémenter à chaque changement cassant,
+/// pour permettre une migration plutôt qu'un échec de lecture.
 pub const VERSION_FORMAT: &str = "1.0";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,10 +29,10 @@ impl Default for RuleSet {
 }
 
 impl RuleSet {
-    /// Regles actives concernant un expediteur donne.
+    /// Règles actives concernant un expéditeur donné.
     ///
-    /// `expediteur_brut` est l'en-tete `From` tel que renvoye par Gmail ; il est
-    /// normalise avant comparaison (voir [`normaliser_adresse`]).
+    /// `expediteur_brut` est l'en-tête `From` tel que renvoyé par Gmail ; il est
+    /// normalisé avant comparaison (voir [`normaliser_adresse`]).
     pub fn regles_pour(&self, expediteur_brut: &str) -> Vec<&Rule> {
         let Some(adresse) = normaliser_adresse(expediteur_brut) else {
             return Vec::new();
@@ -48,11 +48,11 @@ impl RuleSet {
 pub struct Rule {
     pub id: String,
 
-    /// Adresse e-mail de l'expediteur cible, telle que saisie.
+    /// Adresse e-mail de l'expéditeur cible, telle que saisie.
     pub expediteur: String,
 
     /// Libelle affiche dans l'interface (ex. « TLDR AI Digest »).
-    /// Purement cosmetique : ne sert jamais a decider d'une action.
+    /// Purement cosmétique : ne sert jamais à décider d'une action.
     pub nom_affichage: String,
 
     pub categorie: Categorie,
@@ -60,11 +60,11 @@ pub struct Rule {
     pub active: bool,
     pub date_ajout: NaiveDate,
 
-    /// Present uniquement pour les actions recurrentes.
+    /// Present uniquement pour les actions récurrentes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frequence: Option<Frequence>,
 
-    /// Heure locale d'execution, au format `HH:MM`.
+    /// Heure locale d'exécution, au format `HH:MM`.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -74,7 +74,7 @@ pub struct Rule {
 }
 
 impl Rule {
-    /// Adresse comparable de l'expediteur cible.
+    /// Adresse comparable de l'expéditeur cible.
     pub fn adresse_normalisee(&self) -> Option<String> {
         normaliser_adresse(&self.expediteur)
     }
@@ -91,11 +91,11 @@ pub enum Categorie {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
-    /// Envoi systematique a la corbeille.
+    /// Envoi systématique à la corbeille.
     SupprimerToujours,
     /// Resume par le LLM, puis retrait du tag INBOX.
     GenererResumeEtArchiver,
-    /// Retrait du tag INBOX, eventuellement selon `frequence`.
+    /// Retrait du tag INBOX, éventuellement selon `frequence`.
     ArchiverAutomatique,
 }
 
@@ -105,17 +105,17 @@ pub enum Frequence {
     TousLesVendredis,
 }
 
-/// Extrait l'adresse comparable d'un en-tete `From`.
+/// Extrait l'adresse comparable d'un en-tête `From`.
 ///
-/// Point de securite : un en-tete `From` s'ecrit `"Nom affiche" <adresse@x.fr>`,
-/// et le nom affiche est entierement choisi par l'expediteur. Comparer la chaine
-/// brute permettrait a `"contact@ma-banque.fr" <pirate@exemple.net>` de declencher
-/// une regle visant la banque — ou, dans l'autre sens, a un expediteur d'echapper
-/// a une regle de suppression en changeant son nom affiche. Seule la partie entre
+/// Point de sécurité : un en-tête `From` s'écrit `"Nom affiche" <adresse@x.fr>`,
+/// et le nom affiche est entièrement choisi par l'expéditeur. Comparer la chaîne
+/// brute permettrait à `"contact@ma-banque.fr" <pirate@exemple.net>` de déclencher
+/// une règle visant la banque — ou, dans l'autre sens, à un expéditeur d'échapper
+/// à une règle de suppression en changeant son nom affiché. Seule la partie entre
 /// chevrons fait foi.
 ///
-/// La normalisation met aussi en minuscules : la partie domaine est insensible a
-/// la casse, et Gmail traite egalement la partie locale ainsi.
+/// La normalisation met aussi en minuscules : la partie domaine est insensible à
+/// la casse, et Gmail traite également la partie locale ainsi.
 pub fn normaliser_adresse(entete_from: &str) -> Option<String> {
     let brut = entete_from.trim();
 
@@ -135,8 +135,8 @@ pub fn normaliser_adresse(entete_from: &str) -> Option<String> {
     Some(adresse.to_lowercase())
 }
 
-/// `chrono` serialise `NaiveTime` en `HH:MM:SS`, alors que le cahier des charges
-/// specifie `HH:MM`. Ce module fait la conversion dans les deux sens.
+/// `chrono` sérialise `NaiveTime` en `HH:MM:SS`, alors que le cahier des charges
+/// spécifie `HH:MM`. Ce module fait la conversion dans les deux sens.
 mod serde_heure_hhmm {
     use chrono::NaiveTime;
     use serde::{Deserialize, Deserializer, Serializer};
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn un_nom_affiche_usurpant_une_adresse_ne_trompe_pas_la_normalisation() {
-        // Le nom affiche imite une adresse de confiance ; l'adresse reelle est autre.
+        // Le nom affiché imite une adresse de confiance ; l'adresse réelle est autre.
         let usurpation = "\"contact@ma-banque.fr\" <pirate@exemple.net>";
 
         assert_eq!(
@@ -282,7 +282,7 @@ mod tests {
 
         assert!(
             correspondances.is_empty(),
-            "un expediteur usurpant le nom affiche ne doit declencher aucune regle"
+            "un expéditeur usurpant le nom affiché ne doit déclencher aucune règle"
         );
     }
 

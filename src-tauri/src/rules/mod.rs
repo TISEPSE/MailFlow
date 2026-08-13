@@ -1,9 +1,9 @@
-//! Regles d'automatisation : modele de donnees, persistance et moteur d'execution.
+//! Règles d'automatisation : modèle de données, persistance et moteur d'exécution.
 //!
-//! - [`model`] : le format de `regles.json` et la comparaison d'expediteurs.
-//! - [`store`] : lecture et ecriture atomiques du fichier.
-//! - [`engine`] : fonction pure qui, a partir d'un jeu de regles et de
-//!   metadonnees de messages, produit le plan d'actions a appliquer a Gmail.
+//! - [`model`] : le format de `regles.json` et la comparaison d'expéditeurs.
+//! - [`store`] : lecture et écriture atomiques du fichier.
+//! - [`engine`] : fonction pure qui, à partir d'un jeu de règles et de
+//!   métadonnées de messages, produit le plan d'actions à appliquer à Gmail.
 
 pub mod engine;
 pub mod model;

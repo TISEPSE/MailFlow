@@ -1,16 +1,16 @@
-//! Moteur d'application des regles.
+//! Moteur d'application des règles.
 
 use chrono::{DateTime, Datelike, Local, Weekday};
 
 use crate::gmail::libelles;
 use crate::rules::model::{Action, Frequence, Rule, RuleSet};
 
-/// Le strict necessaire au tri : le moteur n'a jamais besoin du corps d'un
-/// message, ce qui evite de le telecharger et de le faire transiter.
+/// Le strict nécessaire au tri : le moteur n'a jamais besoin du corps d'un
+/// message, ce qui évite de le télécharger et de le faire transiter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageResume {
     pub id: String,
-    /// En-tete `From` brut, tel que renvoye par Gmail.
+    /// En-tête `From` brut, tel que renvoyé par Gmail.
     pub from: String,
     /// `labelIds` Gmail du message.
     pub labels: Vec<String>,
@@ -38,11 +38,11 @@ impl ActionPlanifiee {
         }
     }
 
-    /// Departage les regles qui visent un meme message.
+    /// Departage les règles qui visent un même message.
     ///
-    /// La suppression l'emporte sur tout : l'utilisateur a demande explicitement
-    /// que cet expediteur disparaisse, et archiver un message qu'on s'apprete a
-    /// jeter serait un appel d'API pour rien. Le resume l'emporte sur l'archivage
+    /// La suppression l'emporte sur tout : l'utilisateur a demandé explicitement
+    /// que cet expéditeur disparaisse, et archiver un message qu'on s'apprête à
+    /// jeter serait un appel d'API pour rien. Le résumé l'emporte sur l'archivage
     /// simple parce qu'il archive aussi, en faisant davantage.
     fn priorite(self) -> u8 {
         match self {
@@ -60,16 +60,16 @@ pub struct EntreePlan {
     pub regle_id: String,
 }
 
-/// Une regle recurrente n'agit que dans sa fenetre d'execution.
+/// Une règle récurrente n'agit que dans sa fenêtre d'exécution.
 ///
-/// Pour `tous_les_vendredis` a 18 h, la fenetre couvre le vendredi de 18 h a
-/// minuit : l'utilisateur qui ouvre l'application a 21 h doit voir ses e-mails
-/// archives, conformement au « ou a la reouverture de l'application » du cahier
+/// Pour `tous_les_vendredis` à 18 h, la fenêtre couvre le vendredi de 18 h à
+/// minuit : l'utilisateur qui ouvre l'application à 21 h doit voir ses e-mails
+/// archivés, conformément au « ou à la réouverture de l'application » du cahier
 /// des charges.
 ///
-/// Limite connue : une semaine ou l'application n'est pas ouverte le vendredi
-/// soir est simplement sautee. Rattraper demanderait de memoriser la date de
-/// derniere execution, ce qui n'est pas encore fait.
+/// Limite connue : une semaine où l'application n'est pas ouverte le vendredi
+/// soir est simplement sautée. Rattraper demanderait de mémoriser la date de
+/// dernière exécution, ce qui n'est pas encore fait.
 fn fenetre_ouverte(regle: &Rule, maintenant: DateTime<Local>) -> bool {
     let Some(frequence) = regle.frequence else {
         return true;
@@ -88,11 +88,11 @@ fn fenetre_ouverte(regle: &Rule, maintenant: DateTime<Local>) -> bool {
     }
 }
 
-/// Vrai quand l'action changerait reellement l'etat du message cote Gmail.
+/// Vrai quand l'action changerait réellement l'état du message côté Gmail.
 ///
-/// Chaque entree du plan devient un appel d'API compte dans le quota. Replanifier
-/// un archivage sur un message deja hors de la boite, ou une suppression sur un
-/// message deja a la corbeille, ne ferait que consommer ce quota.
+/// Chaque entrée du plan devient un appel d'API compte dans le quota. Replanifier
+/// un archivage sur un message déjà hors de la boîte, ou une suppression sur un
+/// message déjà à la corbeille, ne ferait que consommer ce quota.
 fn action_utile(action: ActionPlanifiee, message: &MessageResume) -> bool {
     if message.a_le_libelle(libelles::TRASH) {
         return false;
@@ -106,16 +106,16 @@ fn action_utile(action: ActionPlanifiee, message: &MessageResume) -> bool {
     }
 }
 
-/// Construit le plan d'actions a appliquer a Gmail.
+/// Construit le plan d'actions à appliquer à Gmail.
 ///
-/// Fonction pure : aucun appel reseau, aucune ecriture. Le plan peut donc etre
-/// calcule, affiche a l'utilisateur, puis execute — ou pas.
+/// Fonction pure : aucun appel réseau, aucune écriture. Le plan peut donc être
+/// calculé, affiché à l'utilisateur, puis exécuté — ou pas.
 ///
-/// `maintenant` est passe en parametre plutot que lu depuis l'horloge : les
-/// regles recurrentes dependent du jour et de l'heure, et un moteur qui consulte
+/// `maintenant` est passé en paramètre plutôt que lu depuis l'horloge : les
+/// règles récurrentes dépendent du jour et de l'heure, et un moteur qui consulte
 /// `Local::now()` en interne n'est pas testable.
 ///
-/// Un message ne recoit **qu'une seule** action, meme si plusieurs regles le
+/// Un message ne reçoit **qu'une seule** action, même si plusieurs règles le
 /// visent : la plus englobante gagne (voir [`ActionPlanifiee::priorite`]).
 pub fn planifier(
     regles: &RuleSet,
@@ -131,9 +131,9 @@ pub fn planifier(
             .filter(|regle| fenetre_ouverte(regle, maintenant))
             .map(|regle| (ActionPlanifiee::depuis(regle.action), regle))
             .filter(|(action, _)| action_utile(*action, message))
-            // `reduce` plutot que `max_by_key` : ce dernier retient le *dernier*
-            // maximum en cas d'egalite, alors qu'on veut la premiere regle du
-            // fichier, pour que le plan ne depende pas de l'ordre d'insertion.
+            // `reduce` plutôt que `max_by_key` : ce dernier retient le *dernier*
+            // maximum en cas d'égalité, alors qu'on veut la première règle du
+            // fichier, pour que le plan ne dépende pas de l'ordre d'insertion.
             .reduce(|retenue, candidate| {
                 if candidate.0.priorite() > retenue.0.priorite() {
                     candidate
@@ -282,8 +282,8 @@ mod tests {
 
     #[test]
     fn une_regle_du_vendredi_planifie_encore_plus_tard_dans_la_soiree() {
-        // L'utilisateur peut n'ouvrir l'application qu'apres 18 h : la fenetre
-        // reste ouverte jusqu'a la fin du vendredi.
+        // L'utilisateur peut n'ouvrir l'application qu'après 18 h : la fenêtre
+        // reste ouverte jusqu'à la fin du vendredi.
         let plan = planifier(
             &regles_du_vendredi(),
             &[message("msg_1", "f@ocr.com")],
@@ -317,12 +317,12 @@ mod tests {
             un_lundi(),
         );
 
-        assert_eq!(plan.len(), 1, "un message ne recoit qu'une action");
+        assert_eq!(plan.len(), 1, "un message ne reçoit qu'une action");
     }
 
     #[test]
     fn la_suppression_l_emporte_sur_l_archivage() {
-        // L'utilisateur a demande explicitement la suppression de cet expediteur :
+        // L'utilisateur a demandé explicitement la suppression de cet expéditeur :
         // archiver puis supprimer gaspillerait un appel d'API pour rien.
         let regles = RuleSet {
             automations: vec![
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn le_resume_l_emporte_sur_l_archivage_simple() {
-        // Les deux archivent, mais l'une produit en plus un resume : la retenir
+        // Les deux archivent, mais l'une produit en plus un résumé : la retenir
         // fait le travail des deux.
         let regles = RuleSet {
             automations: vec![
@@ -409,8 +409,8 @@ mod tests {
 
     #[test]
     fn un_message_archive_reste_supprimable() {
-        // Une regle de suppression s'applique meme hors de la boite de reception :
-        // seule la presence dans la corbeille arrete l'action.
+        // Une règle de suppression s'applique même hors de la boîte de réception :
+        // seule la présence dans la corbeille arrête l'action.
         let regles = RuleSet {
             automations: vec![regle(
                 "rule_01",

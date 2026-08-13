@@ -1,26 +1,26 @@
-//! Resume des newsletters par un modele de langage.
+//! Resume des newsletters par un modèle de langage.
 //!
-//! Le fournisseur n'est pas encore arrete. Ce trait fixe la frontiere pour que le
-//! choix reste un detail d'implementation : la vue 3 depend de `LlmProvider`, pas
+//! Le fournisseur n'est pas encore arrête. Ce trait fixe la frontière pour que le
+//! choix reste un détail d'implémentation : la vue 3 dépend de `LlmProvider`, pas
 //! d'Anthropic ni d'OpenAI ni d'Ollama.
 //!
-//! # Contrainte de confidentialite
+//! # Contrainte de confidentialité
 //!
-//! Resumer une newsletter, c'est envoyer le courrier de l'utilisateur a un tiers.
-//! Trois consequences pour l'implementation :
+//! Résumer une newsletter, c'est envoyer le courrier de l'utilisateur à un tiers.
+//! Trois conséquences pour l'implémentation :
 //!
-//! - Le corps transmis est nettoye au prealable : pas d'en-tetes, pas de pixels de
-//!   suivi, pas d'URL de desabonnement — ces dernieres contiennent l'adresse de
+//! - Le corps transmis est nettoyé au préalable : pas d'en-têtes, pas de pixels de
+//!   suivi, pas d'URL de désabonnement — ces dernières contiennent l'adresse de
 //!   l'utilisateur, souvent en clair.
-//! - Seuls les messages relevant d'une regle `newsletter` sont envoyes. Jamais un
+//! - Seuls les messages relevant d'une règle `newsletter` sont envoyés. Jamais un
 //!   message de la vue 1 (correspondance humaine).
-//! - L'utilisateur doit pouvoir refuser : sans cle d'API configuree, la vue 3
-//!   fonctionne sans resumes plutot que de tomber en panne.
+//! - L'utilisateur doit pouvoir refuser : sans clé d'API configurée, la vue 3
+//!   fonctionne sans résumés plutôt que de tomber en panne.
 //!
 //! Le contenu d'une newsletter est du texte non fiable, susceptible de contenir
-//! des instructions destinees au modele. L'invite doit donc l'encadrer comme une
-//! donnee a resumer, et la reponse ne doit jamais etre traitee comme une commande :
-//! aucune action Gmail ne decoule de ce que le modele repond.
+//! des instructions destinées au modèle. L'invite doit donc l'encadrer comme une
+//! donnée à résumer, et la réponse ne doit jamais être traitée comme une commande :
+//! aucune action Gmail ne découle de ce que le modèle répond.
 
 use crate::error::Resultat;
 
@@ -28,13 +28,13 @@ use crate::error::Resultat;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Resume {
     pub texte: String,
-    /// Etiquettes thematiques servant au filtrage de la vue 3 (`#IA`, `#Tech`...).
+    /// Etiquettes thématiques servant au filtrage de la vue 3 (`#IA`, `#Tech`...).
     pub hashtags: Vec<String>,
 }
 
 #[allow(async_fn_in_trait)]
 pub trait LlmProvider {
-    /// Resume une newsletter isolee, pour sa carte dans la vue 3.
+    /// Resume une newsletter isolée, pour sa carte dans la vue 3.
     async fn resumer_newsletter(&self, contenu: &str) -> Resultat<Resume>;
 
     /// Synthese en trois points de l'ensemble des newsletters du jour.

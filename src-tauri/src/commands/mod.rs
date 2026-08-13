@@ -1,9 +1,9 @@
-//! Surface exposee au frontend.
+//! Surface exposée au frontend.
 //!
-//! C'est la seule frontiere par laquelle le webview peut declencher quoi que ce
-//! soit. Chaque commande ajoutee ici elargit ce que du HTML d'e-mail compromis
+//! C'est la seule frontière par laquelle le webview peut déclencher quoi que ce
+//! soit. Chaque commande ajoutée ici élargit ce que du HTML d'e-mail compromis
 //! pourrait atteindre : on n'expose que ce dont une vue a besoin, et jamais un
-//! primitif generique (« lire ce fichier », « appeler cette URL »).
+//! primitif générique (« lire ce fichier », « appeler cette URL »).
 
 use std::path::PathBuf;
 
@@ -19,11 +19,11 @@ use crate::error::{AppError, Resultat};
 use crate::rules::RulesStore;
 use crate::secrets::KeyringStore;
 
-/// Etat d'authentification partage, gere par Tauri.
+/// État d'authentification partagé, géré par Tauri.
 ///
-/// `client` vaut `None` tant que l'identifiant Google n'a pas ete configure :
-/// l'application se lance quand meme et l'explique, plutot que de refuser de
-/// demarrer sur un fichier `.env` incomplet.
+/// `client` vaut `None` tant que l'identifiant Google n'a pas été configuré :
+/// l'application se lance quand même et l'explique, plutôt que de refuser de
+/// démarrer sur un fichier `.env` incomplet.
 pub struct EtatAuth {
     session: Mutex<SessionAuth<KeyringStore>>,
     client: Option<ClientOAuth>,
@@ -53,7 +53,7 @@ impl EtatAuth {
     fn client(&self) -> Resultat<&ClientOAuth> {
         self.client
             .as_ref()
-            .ok_or_else(|| AppError::Config(format!("{} non renseigne", config::VAR_CLIENT_ID)))
+            .ok_or_else(|| AppError::Config(format!("{} non renseigné", config::VAR_CLIENT_ID)))
     }
 }
 
@@ -72,30 +72,30 @@ pub struct EtatApplication {
 
     /// Faux quand aucun agent de trousseau n'est joignable (session Linux sans
     /// Secret Service, par exemple). La connexion Gmail est alors impossible et
-    /// l'interface doit le dire clairement plutot que d'echouer plus tard.
+    /// l'interface doit le dire clairement plutôt que d'échouer plus tard.
     pub trousseau_disponible: bool,
 
-    /// Expose volontairement : le mode avance de la vue 5 propose d'ouvrir le
-    /// fichier brut. C'est un chemin appartenant a l'utilisateur, dans sa propre
+    /// Expose volontairement : le mode avancé de la vue 5 propose d'ouvrir le
+    /// fichier brut. C'est un chemin appartenant à l'utilisateur, dans sa propre
     /// session — pas un secret.
     pub chemin_regles: String,
 
-    /// `None` quand le fichier existe mais n'a pas pu etre lu.
+    /// `None` quand le fichier existe mais n'a pas pu être lu.
     pub nombre_de_regles: Option<usize>,
 
     pub compte_connecte: bool,
 
-    /// Faux tant que l'identifiant client Google n'a pas ete renseigne. La vue de
+    /// Faux tant que l'identifiant client Google n'a pas été renseigné. La vue de
     /// connexion doit alors renvoyer vers `docs/connexion-google.md` au lieu de
     /// proposer un bouton qui ne peut pas fonctionner.
     pub client_google_configure: bool,
 }
 
-/// Etat de sante du backend, appele au demarrage par le frontend.
+/// État de santé du backend, appelé au démarrage par le frontend.
 ///
 /// Sert aussi de tranche verticale de bout en bout : elle touche le trousseau,
-/// le systeme de fichiers et les chemins Tauri, donc elle echoue bruyamment si
-/// l'un des trois est mal cable.
+/// le système de fichiers et les chemins Tauri, donc elle échoue bruyamment si
+/// l'un des trois est mal câblé.
 #[tauri::command]
 pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<EtatApplication> {
     let dossier = dossier_config(&app)?;
@@ -104,7 +104,7 @@ pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<E
     let nombre_de_regles = match store.charger() {
         Ok(regles) => Some(regles.automations.len()),
         Err(e) => {
-            log::warn!("regles illisibles : {e}");
+            log::warn!("règles illisibles : {e}");
             None
         }
     };
@@ -141,24 +141,24 @@ pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<E
 
 /// Lance le parcours de connexion Google et attend son issue.
 ///
-/// Rend la main quand l'utilisateur a donne son accord, l'a refuse, ou n'a rien
-/// fait dans le delai imparti. Aucun jeton ne remonte au frontend : il apprend le
-/// resultat en rappelant `app_health`.
+/// Rend la main quand l'utilisateur a donné son accord, l'a refusé, ou n'a rien
+/// fait dans le délai imparti. Aucun jeton ne remonte au frontend : il apprend le
+/// résultat en rappelant `app_health`.
 #[tauri::command]
 pub async fn google_connecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
     let client = etat.client()?;
 
-    // Le verrou est pris pour toute la duree du parcours : deux connexions
-    // simultanees ecraseraient mutuellement leur `refresh_token`.
+    // Le verrou est pris pour toute la durée du parcours : deux connexions
+    // simultanées écraseraient mutuellement leur `refresh_token`.
     let mut session = etat.session.lock().await;
 
     connecter(
         client,
         &mut session,
         |url| {
-            // Navigateur systeme, jamais un webview de l'application : c'est ce
-            // qui garantit a l'utilisateur qu'il tape son mot de passe chez
-            // Google et non dans une page que MailFlow controle.
+            // Navigateur système, jamais un webview de l'application : c'est ce
+            // qui garantit à l'utilisateur qu'il tape son mot de passe chez
+            // Google et non dans une page que MailFlow contrôle.
             tauri_plugin_opener::open_url(url.as_str(), None::<&str>)
                 .map_err(|e| AppError::Auth(format!("ouverture du navigateur impossible : {e}")))
         },
@@ -167,23 +167,23 @@ pub async fn google_connecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
     .await
     .inspect_err(|e| log::warn!("connexion Google interrompue : {e}"))?;
 
-    log::info!("compte Gmail connecte");
+    log::info!("compte Gmail connecté");
     Ok(())
 }
 
-/// Deconnecte le compte et revoque l'autorisation chez Google.
+/// Déconnecte le compte et révoque l'autorisation chez Google.
 #[tauri::command]
 pub async fn google_deconnecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
     let a_revoquer = etat.session.lock().await.fermer()?;
 
-    // Le trousseau est deja vide a ce stade : meme si la revocation echoue
-    // (machine hors ligne), l'utilisateur est bien deconnecte localement.
+    // Le trousseau est déjà vide à ce stade : même si la révocation échoue
+    // (machine hors ligne), l'utilisateur est bien déconnecté localement.
     if let (Some(jeton), Ok(client)) = (a_revoquer, etat.client())
         && let Err(e) = client.revoquer(&jeton).await
     {
-        log::warn!("revocation cote Google impossible : {e}");
+        log::warn!("révocation côté Google impossible : {e}");
     }
 
-    log::info!("compte Gmail deconnecte");
+    log::info!("compte Gmail déconnecté");
     Ok(())
 }

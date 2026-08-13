@@ -3,18 +3,18 @@
 //! Le fichier vit dans le dossier de configuration applicatif de l'utilisateur
 //! (`~/Library/Application Support/fr.mailflow.desktop` sur macOS,
 //! `~/.config/fr.mailflow.desktop` sur Linux). Il est « invisible » au sens du
-//! cahier des charges : l'utilisateur lambda n'a jamais a le trouver.
+//! cahier des charges : l'utilisateur lambda n'a jamais à le trouver.
 //!
 //! Deux exigences guident ce module :
 //!
-//! 1. **Ecriture atomique.** Le fichier est reecrit a chaque modification de regle.
-//!    Une coupure au mauvais moment laisserait un JSON tronque, donc toutes les
-//!    automatisations perdues. On ecrit dans un fichier temporaire voisin, puis on
-//!    le renomme — `rename` est atomique au sein d'un meme systeme de fichiers.
+//! 1. **Écriture atomique.** Le fichier est réécrit à chaque modification de règle.
+//!    Une coupure au mauvais moment laisserait un JSON tronqué, donc toutes les
+//!    automatisations perdues. On écrit dans un fichier temporaire voisin, puis on
+//!    le renomme — `rename` est atomique au sein d'un même système de fichiers.
 //!
 //! 2. **Permissions restreintes.** Le fichier liste les correspondants de
-//!    l'utilisateur : qui lui ecrit, quels services il utilise. C'est une donnee
-//!    personnelle. Sur Unix il est cree en `0600`, lisible par son seul proprietaire.
+//!    l'utilisateur : qui lui écrit, quels services il utilise. C'est une donnée
+//!    personnelle. Sur Unix il est créé en `0600`, lisible par son seul propriétaire.
 
 use std::fs;
 use std::io::Write;
@@ -30,7 +30,7 @@ pub struct RulesStore {
 }
 
 impl RulesStore {
-    /// `dossier` est le dossier de configuration applicatif ; il est cree au besoin.
+    /// `dossier` est le dossier de configuration applicatif ; il est créé au besoin.
     pub fn new(dossier: impl AsRef<Path>) -> Self {
         Self {
             chemin: dossier.as_ref().join(NOM_FICHIER),
@@ -45,12 +45,12 @@ impl RulesStore {
         self.chemin.exists()
     }
 
-    /// Charge le jeu de regles.
+    /// Charge le jeu de règles.
     ///
-    /// Un fichier absent rend un [`RuleSet`] vide : c'est l'etat normal au premier
-    /// lancement, pas une erreur. Un fichier present mais illisible, en revanche,
-    /// remonte une erreur — on ne repart pas silencieusement de zero, ce qui
-    /// effacerait sans preavis toutes les automatisations de l'utilisateur.
+    /// Un fichier absent rend un [`RuleSet`] vide : c'est l'état normal au premier
+    /// lancement, pas une erreur. Un fichier présent mais illisible, en revanche,
+    /// remonte une erreur — on ne repart pas silencieusement de zéro, ce qui
+    /// effacerait sans préavis toutes les automatisations de l'utilisateur.
     pub fn charger(&self) -> Resultat<RuleSet> {
         if !self.existe() {
             return Ok(RuleSet::default());
@@ -64,12 +64,12 @@ impl RulesStore {
         })
     }
 
-    /// Ecrit le jeu de regles de facon atomique.
+    /// Écrit le jeu de règles de façon atomique.
     pub fn enregistrer(&self, regles: &RuleSet) -> Resultat<()> {
         let dossier = self
             .chemin
             .parent()
-            .ok_or_else(|| AppError::Config("chemin de regles sans dossier parent".into()))?;
+            .ok_or_else(|| AppError::Config("chemin de règles sans dossier parent".into()))?;
 
         fs::create_dir_all(dossier).map_err(|e| AppError::io(dossier.display(), e))?;
 
@@ -78,13 +78,13 @@ impl RulesStore {
 
         let temporaire = self.chemin.with_extension("json.tmp");
 
-        // Bloc dedie : le fichier doit etre ferme avant le renommage.
+        // Bloc dédié : le fichier doit être fermé avant le renommage.
         {
             let mut f = fichier_prive(&temporaire)?;
             f.write_all(json.as_bytes())
                 .map_err(|e| AppError::io(temporaire.display(), e))?;
-            // Force l'ecriture sur le disque avant le renommage, sinon un
-            // arret brutal peut laisser un fichier renomme mais vide.
+            // Force l'écriture sur le disque avant le renommage, sinon un
+            // arrêt brutal peut laisser un fichier renommé mais vide.
             f.sync_all()
                 .map_err(|e| AppError::io(temporaire.display(), e))?;
         }
@@ -96,10 +96,10 @@ impl RulesStore {
     }
 }
 
-/// Cree le fichier en ecriture, en `0600` sur Unix.
+/// Crée le fichier en écriture, en `0600` sur Unix.
 ///
-/// Les permissions sont posees a la creation plutot qu'apres coup : entre un
-/// `create` en `0644` et un `set_permissions`, le contenu serait brievement
+/// Les permissions sont posées à la création plutôt qu'après coup : entre un
+/// `create` en `0644` et un `set_permissions`, le contenu serait brièvement
 /// lisible par les autres comptes de la machine.
 fn fichier_prive(chemin: &Path) -> Resultat<fs::File> {
     let mut options = fs::OpenOptions::new();
@@ -178,7 +178,7 @@ mod tests {
         let err = store.charger().unwrap_err();
 
         assert_eq!(err.code(), "REGLES_CORROMPUES");
-        assert!(store.existe(), "le fichier ne doit pas avoir ete supprime");
+        assert!(store.existe(), "le fichier ne doit pas avoir été supprimé");
     }
 
     #[test]

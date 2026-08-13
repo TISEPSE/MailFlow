@@ -1,42 +1,42 @@
-//! Authentification OAuth2 aupres de Google.
+//! Authentification OAuth2 auprès de Google.
 //!
 //! # Flux retenu : code d'autorisation + PKCE, redirection loopback
 //!
-//! MailFlow est une application de bureau installee chez l'utilisateur. Elle ne
-//! peut donc pas detenir de secret : tout binaire distribue est desassemblable.
-//! Google le reconnait explicitement pour les clients de type « Desktop app », et
-//! la securite du flux ne repose pas sur le `client_secret` mais sur PKCE
+//! MailFlow est une application de bureau installée chez l'utilisateur. Elle ne
+//! peut donc pas détenir de secret : tout binaire distribué est désassemblable.
+//! Google le reconnaît explicitement pour les clients de type « Desktop app », et
+//! la sécurité du flux ne repose pas sur le `client_secret` mais sur PKCE
 //! (RFC 7636).
 //!
 //! Deroulement :
 //!
-//! 1. Rust ouvre un serveur HTTP ephemere sur `127.0.0.1`, port attribue par l'OS.
-//! 2. Il genere un `code_verifier` aleatoire et son `code_challenge` (SHA-256),
+//! 1. Rust ouvre un serveur HTTP éphémère sur `127.0.0.1`, port attribué par l'OS.
+//! 2. Il génère un `code_verifier` aléatoire et son `code_challenge` (SHA-256),
 //!    ainsi qu'un jeton anti-CSRF (`state`).
-//! 3. Il ouvre l'URL d'autorisation dans le **navigateur systeme**, jamais dans un
+//! 3. Il ouvre l'URL d'autorisation dans le **navigateur système**, jamais dans un
 //!    webview de l'application : l'utilisateur voit la vraie barre d'adresse de
 //!    Google et son gestionnaire de mots de passe fonctionne normalement.
 //! 4. Google redirige vers `http://127.0.0.1:<port>` avec le code d'autorisation.
-//! 5. Le serveur ephemere verifie le `state`, recupere le code, puis s'arrete.
-//! 6. Rust echange le code contre les jetons, en POST, avec le `code_verifier`.
-//! 7. Le `refresh_token` part dans le trousseau systeme (voir [`crate::secrets`]).
-//!    L'`access_token`, de courte duree, reste en memoire uniquement.
+//! 5. Le serveur éphémère vérifie le `state`, récupère le code, puis s'arrête.
+//! 6. Rust échange le code contre les jetons, en POST, avec le `code_verifier`.
+//! 7. Le `refresh_token` part dans le trousseau système (voir [`crate::secrets`]).
+//!    L'`access_token`, de courte durée, reste en mémoire uniquement.
 //!
 //! # Ce qui ne doit jamais arriver
 //!
-//! - Aucun jeton ne traverse l'IPC vers le webview. Le frontend ne connait que
-//!   l'etat « connecte / non connecte » et l'adresse du compte.
-//! - Le serveur loopback n'accepte qu'une seule requete, sur le chemin de
+//! - Aucun jeton ne traverse l'IPC vers le webview. Le frontend ne connaît que
+//!   l'état « connecté / non connecté » et l'adresse du compte.
+//! - Le serveur loopback n'accepte qu'une seule requête, sur le chemin de
 //!   redirection, et compare le `state` en temps constant avant tout traitement.
-//! - Une redirection vers `localhost` plutot que `127.0.0.1` est a eviter : la
-//!   resolution peut passer par IPv6 ou par un fichier `hosts` modifie.
+//! - Une redirection vers `localhost` plutôt que `127.0.0.1` est à éviter : la
+//!   résolution peut passer par IPv6 ou par un fichier `hosts` modifié.
 //!
-//! # Portee des autorisations
+//! # Portée des autorisations
 //!
 //! `gmail.modify` est un scope *restricted* chez Google. En mode test, il est
-//! limite a 100 comptes. Toute distribution publique impose une verification
-//! annuelle avec audit de securite par un tiers. C'est un prealable a la
-//! diffusion, pas au developpement.
+//! limité à 100 comptes. Toute distribution publique impose une vérification
+//! annuelle avec audit de sécurité par un tiers. C'est un préalable à la
+//! diffusion, pas au développement.
 
 pub mod flux;
 pub mod jetons;
@@ -44,32 +44,32 @@ pub mod loopback;
 pub mod serveur;
 pub mod session;
 
-/// Lecture des messages, gestion des libelles, mise a la corbeille.
+/// Lecture des messages, gestion des libellés, mise à la corbeille.
 ///
 /// Volontairement sans `gmail.send` : le bouton « Repondre » de la vue 1 ouvrira
-/// un brouillon dans le client par defaut plutot que d'obtenir le droit d'envoyer
+/// un brouillon dans le client par défaut plutôt que d'obtenir le droit d'envoyer
 /// du courrier au nom de l'utilisateur.
 pub const SCOPE_GMAIL: &str = "https://www.googleapis.com/auth/gmail.modify";
 
-/// Adresse du compte connecte, pour l'afficher dans l'interface.
+/// Adresse du compte connecté, pour l'afficher dans l'interface.
 pub const SCOPE_EMAIL: &str = "https://www.googleapis.com/auth/userinfo.email";
 
 pub const URL_AUTORISATION: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub const URL_JETON: &str = "https://oauth2.googleapis.com/token";
 pub const URL_REVOCATION: &str = "https://oauth2.googleapis.com/revoke";
 
-/// Adresse d'ecoute du serveur de redirection. Le port est attribue par l'OS.
+/// Adresse d'écoute du serveur de redirection. Le port est attribué par l'OS.
 pub const HOTE_REDIRECTION: &str = "127.0.0.1";
 
-/// Marge appliquee a l'expiration de l'`access_token` : il est renouvele un peu
-/// avant l'echeance annoncee, pour absorber la derive d'horloge et la latence.
+/// Marge appliquée à l'expiration de l'`access_token` : il est renouvelé un peu
+/// avant l'echeance annoncée, pour absorber la dérive d'horloge et la latence.
 pub const MARGE_RENOUVELLEMENT_SECS: i64 = 60;
 
-/// Temps laisse a l'utilisateur pour donner son accord chez Google.
+/// Temps laissé à l'utilisateur pour donner son accord chez Google.
 ///
 /// Assez large pour se connecter, retrouver un mot de passe et passer une
-/// validation en deux etapes ; assez court pour que le port loopback ne reste pas
-/// ouvert une demi-journee si l'onglet est simplement oublie.
+/// validation en deux étapes ; assez court pour que le port loopback ne reste pas
+/// ouvert une demi-journée si l'onglet est simplement oublié.
 pub const DELAI_AUTORISATION: Duration = Duration::from_secs(5 * 60);
 
 use std::time::Duration;
@@ -84,12 +84,12 @@ use session::SessionAuth;
 
 /// Deroule le parcours complet de connexion.
 ///
-/// `ouvrir_navigateur` est injecte plutot qu'appele en dur : c'est le seul effet
+/// `ouvrir_navigateur` est injecté plutôt qu'appelé en dur : c'est le seul effet
 /// de bord de la fonction, et l'isoler la rend observable.
 ///
 /// L'ordre compte. Le serveur est ouvert **avant** de construire l'URL, parce que
-/// l'URI de redirection annoncee a Google doit contenir le port reellement ecoute.
-/// Construire l'URL d'abord obligerait a deviner un port, donc a en choisir un
+/// l'URI de redirection annoncée à Google doit contenir le port réellement écouté.
+/// Construire l'URL d'abord obligerait à deviner un port, donc à en choisir un
 /// fixe — et un port fixe est un port qu'un autre programme peut avoir pris.
 pub async fn connecter<S: SecretStore>(
     client: &ClientOAuth,
@@ -117,7 +117,7 @@ mod tests {
 
     const CLIENT_ID: &str = "123456789012-abcdef.apps.googleusercontent.com";
 
-    /// Interrompt le parcours juste apres l'ouverture du navigateur, ce qui
+    /// Interrompt le parcours juste après l'ouverture du navigateur, ce qui
     /// permet d'observer l'URL sans joindre Google.
     async fn url_proposee_a_l_utilisateur() -> url::Url {
         let client = ClientOAuth::nouveau(CLIENT_ID.into()).unwrap();
@@ -136,7 +136,7 @@ mod tests {
         .await;
 
         assert!(r.is_err());
-        vue.into_inner().expect("le navigateur doit etre sollicite")
+        vue.into_inner().expect("le navigateur doit être sollicité")
     }
 
     #[tokio::test]
@@ -151,7 +151,7 @@ mod tests {
 
         let port = redirect
             .strip_prefix("http://127.0.0.1:")
-            .expect("la redirection doit viser la boucle locale en adresse numerique");
+            .expect("la redirection doit viser la boucle locale en adresse numérique");
         assert!(port.parse::<u16>().unwrap() > 0);
     }
 

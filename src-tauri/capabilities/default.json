@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions de la fenetre principale. Volontairement minimales : le webview affiche du HTML d'e-mail, donc du contenu non fiable. Rien n'est ajoute ici sans qu'une vue en ait un besoin demontre.",
+  "description": "Permissions de la fenêtre principale. Volontairement minimales : le webview affiche du HTML d'e-mail, donc du contenu non fiable. Rien n'est ajouté ici sans qu'une vue en ait un besoin démontré.",
   "windows": ["main"],
   "permissions": [
     "core:default"
