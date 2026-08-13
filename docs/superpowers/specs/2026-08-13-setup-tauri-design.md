@@ -180,9 +180,46 @@ Total : 26 tests Rust, 5 tests TypeScript, clippy sans avertissement.
 | Signature et notarisation macOS | Avant toute distribution. Demande un compte Apple Developer. |
 | Verification Google du scope restreint | Avant de depasser 100 utilisateurs. Audit de securite annuel par un tiers. |
 | Politique de reessai sur quotas Gmail | Avec le client Gmail. Recul exponentiel sur 429 et 5xx uniquement. |
+| Rattrapage d'un vendredi manque | Voir section 5. Demande de memoriser la date de derniere execution. |
 
-## 5. Suite
+## 5. Moteur de regles
 
-Le moteur de regles (`rules/engine`) est la brique suivante : il ne depend que du
-modele deja ecrit et peut etre developpe et teste sans reseau, avant meme que
-l'authentification Google fonctionne.
+Ecrit en TDD apres la mise en place, dans `rules/engine.rs`. 14 tests.
+
+**Le moteur produit un plan, il ne l'execute pas.** `planifier` est une fonction
+pure : jeu de regles + metadonnees de messages + horodatage → liste d'actions.
+Aucun reseau, aucun effet de bord. L'execution Gmail sera une couche distincte.
+Deux benefices : le moteur est integralement testable sans reseau, et l'interface
+pourra montrer ce qui va se passer avant que ca se passe.
+
+**L'horodatage est injecte**, pas lu depuis `Local::now()`. Les regles
+recurrentes dependent du jour et de l'heure ; un moteur qui consulte l'horloge en
+interne n'est pas testable.
+
+**Un message ne recoit qu'une action**, meme si plusieurs regles le visent. La
+priorite : suppression > resume+archivage > archivage simple. La suppression
+l'emporte parce que l'utilisateur l'a demandee explicitement et qu'archiver un
+message qu'on s'apprete a jeter serait un appel d'API pour rien. Le resume
+l'emporte sur l'archivage simple parce qu'il archive aussi, en faisant davantage.
+A priorite egale, la premiere regle du fichier gagne, pour que le plan ne depende
+pas de l'ordre d'insertion.
+
+**Les actions sans effet sont ecartees.** Chaque entree du plan devient un appel
+d'API compte dans le quota Gmail : un archivage sur un message deja hors de la
+boite, ou une suppression sur un message deja a la corbeille, ne sont pas
+planifies.
+
+### Limite connue : le vendredi manque
+
+La fenetre de `tous_les_vendredis` a 18 h couvre le vendredi de 18 h a minuit —
+ce qui couvre le « ou a la reouverture de l'application » du cahier des charges
+tant que l'utilisateur ouvre MailFlow le vendredi soir.
+
+Une semaine ou l'application reste fermee ce soir-la est simplement sautee.
+Rattraper demanderait de memoriser la date de derniere execution de chaque regle,
+ce qui n'est pas fait. C'est un choix a confirmer, pas un oubli.
+
+## 6. Suite
+
+Le client Gmail (`gmail/`) et l'authentification (`auth/`) sont les briques
+suivantes. Elles debloquent l'execution du plan, puis les vues.

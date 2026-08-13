@@ -9,10 +9,10 @@ Cibles : macOS et Linux.
 
 ## Etat du projet
 
-Mise en place terminee. Le backend expose sa surface d'erreurs, le stockage des
-secrets, la persistance des regles et une commande de diagnostic. Les cinq vues
-du cahier des charges, l'authentification Google et le client Gmail restent a
-implementer.
+Mise en place terminee, moteur de regles ecrit. Le backend expose sa surface
+d'erreurs, le stockage des secrets, la persistance des regles, le calcul du plan
+d'actions et une commande de diagnostic. Les cinq vues du cahier des charges,
+l'authentification Google et le client Gmail restent a implementer.
 
 Voir [`Cahier-des-Charges-MailFlow.md`](Cahier-des-Charges-MailFlow.md) pour la
 specification fonctionnelle, et
@@ -39,7 +39,7 @@ src-tauri/src/
   commands/           Surface exposee au webview
   error.rs            Erreurs, et leur reduction avant passage a l'IPC
   secrets.rs          Trousseau systeme (Keychain / Secret Service)
-  rules/              Modele et persistance de regles.json
+  rules/              Modele, persistance et moteur de planification
   auth/               OAuth2 PKCE Google (surface declaree)
   gmail/              Client API Gmail (surface declaree)
   llm/                Resumes de newsletters (surface declaree)
