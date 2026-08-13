@@ -1,0 +1,24 @@
+# Dependances
+node_modules/
+
+# Sorties de build
+dist/
+dist-ssr/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Environnement local
+.env
+.env.*
+!.env.example
+
+# Editeurs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.local
+
+# Journaux
+*.log
+npm-debug.log*

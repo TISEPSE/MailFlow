@@ -1,0 +1,87 @@
+name: Release
+
+# Declenchement manuel, ou sur un tag de version.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.nom }}
+    runs-on: ${{ matrix.plateforme }}
+    strategy:
+      # Un echec sur une plateforme ne doit pas annuler les autres :
+      # mieux vaut publier deux binaires sur trois que zero.
+      fail-fast: false
+      matrix:
+        include:
+          - nom: macOS Apple Silicon
+            plateforme: macos-14
+            args: '--target aarch64-apple-darwin'
+            rust_target: aarch64-apple-darwin
+
+          - nom: macOS Intel
+            plateforme: macos-13
+            args: '--target x86_64-apple-darwin'
+            rust_target: x86_64-apple-darwin
+
+          # Ubuntu 22.04 et non une version plus recente : la glibc du runner
+          # fixe la version minimale requise chez l'utilisateur. Compiler sur
+          # une distribution recente produit des binaires qui refusent de
+          # demarrer sur les distributions encore supportees.
+          - nom: Linux x86_64
+            plateforme: ubuntu-22.04
+            args: ''
+            rust_target: x86_64-unknown-linux-gnu
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Dependances systeme Tauri (Linux)
+        if: startsWith(matrix.plateforme, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            build-essential \
+            pkg-config \
+            file \
+            patchelf
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.rust_target }}
+
+      - run: npm ci
+
+      # Les artefacts macOS ne sont ni signes ni notarises a ce stade : au
+      # premier lancement, Gatekeeper les bloque et l'utilisateur doit passer
+      # par clic droit puis « Ouvrir ». Signer demande un compte Apple Developer
+      # (99 $/an) ; les secrets se branchent alors ici sans toucher au reste.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v0.0.0-dev-{0}', github.run_number) }}
+          releaseName: 'MailFlow ${{ github.ref_type == ''tag'' && github.ref_name || ''(build de developpement)'' }}'
+          releaseDraft: true
+          prerelease: ${{ github.ref_type != 'tag' }}
+          args: ${{ matrix.args }}

@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans:
+    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  /* Le webview WebKit autorise le glisser-deposer de la fenetre depuis
+     n'importe quelle zone de texte selectionnee ; on garde la selection
+     limitee au contenu utile plutot qu'a toute la chrome applicative. */
+  -webkit-user-select: none;
+  user-select: none;
+}
