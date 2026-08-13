@@ -25,6 +25,14 @@ pub enum AppError {
     #[error("aucun compte Gmail connecte")]
     NonAuthentifie,
 
+    /// Le flux OAuth2 n'a pas abouti : refus de l'utilisateur, `state` invalide,
+    /// redirection malformee, ou refus de Google a l'echange du code.
+    ///
+    /// Le detail reste interne : il contient des fragments de protocole (`state`,
+    /// codes d'autorisation) qui n'ont rien a faire dans le webview.
+    #[error("echec de l'autorisation Google : {0}")]
+    Auth(String),
+
     #[error("l'API Gmail a repondu {statut}")]
     ApiGmail { statut: u16 },
 
@@ -52,6 +60,7 @@ impl AppError {
             Self::Io { .. } => "ERREUR_FICHIER",
             Self::FormatRegles(_) => "REGLES_CORROMPUES",
             Self::NonAuthentifie => "NON_AUTHENTIFIE",
+            Self::Auth(_) => "ECHEC_CONNEXION",
             Self::ApiGmail { .. } => "ERREUR_GMAIL",
             Self::Reseau(_) => "ERREUR_RESEAU",
             Self::Config(_) => "CONFIG_INVALIDE",
@@ -76,6 +85,9 @@ impl AppError {
                     .into()
             }
             Self::NonAuthentifie => "Aucun compte Gmail n'est connecte.".into(),
+            Self::Auth(_) => {
+                "La connexion a votre compte Gmail n'a pas abouti. Vous pouvez reessayer.".into()
+            }
             Self::ApiGmail { .. } => {
                 "Gmail n'a pas pu traiter la demande. Reessayez dans quelques instants.".into()
             }
@@ -148,6 +160,17 @@ mod tests {
 
         assert!(!json.contains("abc123"));
         assert!(!json.contains("client_secret"));
+    }
+
+    #[test]
+    fn une_erreur_d_autorisation_ne_revele_pas_le_detail_du_protocole() {
+        let err = AppError::Auth("state=9f3c2a1b ne correspond pas".into());
+
+        assert_eq!(err.code(), "ECHEC_CONNEXION");
+
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(!json.contains("9f3c2a1b"));
+        assert!(!json.contains("state"));
     }
 
     #[test]

@@ -8,8 +8,11 @@
 //! du HTML d'e-mail, c'est-a-dire du contenu fourni par des tiers inconnus. Une
 //! faille d'injection dans le rendu ne doit pas donner acces a la boite mail.
 
+use tauri::Manager;
+
 pub mod auth;
 pub mod commands;
+pub mod config;
 pub mod error;
 pub mod gmail;
 pub mod llm;
@@ -28,9 +31,17 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Construit apres l'initialisation des logs, pour que l'absence
+            // d'identifiant client soit visible dans la console.
+            app.manage(commands::EtatAuth::nouveau());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::app_health])
+        .invoke_handler(tauri::generate_handler![
+            commands::app_health,
+            commands::google_connecter,
+            commands::google_deconnecter,
+        ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de l'application Tauri");
 }

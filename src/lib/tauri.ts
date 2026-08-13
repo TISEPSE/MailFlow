@@ -35,3 +35,19 @@ export function messageDErreur(e: unknown): string {
 export function appHealth(): Promise<EtatApplication> {
   return invoke<EtatApplication>('app_health')
 }
+
+/**
+ * Lance le parcours de connexion Google.
+ *
+ * La promesse ne se resout qu'a la fin du parcours — l'utilisateur passe par son
+ * navigateur entre-temps. Aucun jeton ne revient ici : l'etat de connexion se
+ * relit avec `appHealth`.
+ */
+export function googleConnecter(): Promise<void> {
+  return invoke<void>('google_connecter')
+}
+
+/** Deconnecte le compte et revoque l'autorisation chez Google. */
+export function googleDeconnecter(): Promise<void> {
+  return invoke<void>('google_deconnecter')
+}

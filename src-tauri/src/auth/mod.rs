@@ -38,6 +38,12 @@
 //! annuelle avec audit de securite par un tiers. C'est un prealable a la
 //! diffusion, pas au developpement.
 
+pub mod flux;
+pub mod jetons;
+pub mod loopback;
+pub mod serveur;
+pub mod session;
+
 /// Lecture des messages, gestion des libelles, mise a la corbeille.
 ///
 /// Volontairement sans `gmail.send` : le bouton « Repondre » de la vue 1 ouvrira
@@ -58,3 +64,130 @@ pub const HOTE_REDIRECTION: &str = "127.0.0.1";
 /// Marge appliquee a l'expiration de l'`access_token` : il est renouvele un peu
 /// avant l'echeance annoncee, pour absorber la derive d'horloge et la latence.
 pub const MARGE_RENOUVELLEMENT_SECS: i64 = 60;
+
+/// Temps laisse a l'utilisateur pour donner son accord chez Google.
+///
+/// Assez large pour se connecter, retrouver un mot de passe et passer une
+/// validation en deux etapes ; assez court pour que le port loopback ne reste pas
+/// ouvert une demi-journee si l'onglet est simplement oublie.
+pub const DELAI_AUTORISATION: Duration = Duration::from_secs(5 * 60);
+
+use std::time::Duration;
+
+use chrono::Utc;
+
+use crate::error::Resultat;
+use crate::secrets::SecretStore;
+use flux::ClientOAuth;
+use serveur::ServeurRedirection;
+use session::SessionAuth;
+
+/// Deroule le parcours complet de connexion.
+///
+/// `ouvrir_navigateur` est injecte plutot qu'appele en dur : c'est le seul effet
+/// de bord de la fonction, et l'isoler la rend observable.
+///
+/// L'ordre compte. Le serveur est ouvert **avant** de construire l'URL, parce que
+/// l'URI de redirection annoncee a Google doit contenir le port reellement ecoute.
+/// Construire l'URL d'abord obligerait a deviner un port, donc a en choisir un
+/// fixe — et un port fixe est un port qu'un autre programme peut avoir pris.
+pub async fn connecter<S: SecretStore>(
+    client: &ClientOAuth,
+    session: &mut SessionAuth<S>,
+    ouvrir_navigateur: impl FnOnce(&url::Url) -> Resultat<()>,
+    delai: Duration,
+) -> Resultat<()> {
+    let serveur = ServeurRedirection::ouvrir().await?;
+    let demande = client.demarrer(serveur.uri_redirection())?;
+
+    ouvrir_navigateur(demande.url())?;
+
+    let code = serveur.attendre_le_code(demande.state(), delai).await?;
+    let reponse = client.echanger_le_code(&demande, &code).await?;
+
+    session.ouvrir(reponse, Utc::now())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::AppError;
+    use crate::secrets::MemoryStore;
+    use std::cell::RefCell;
+
+    const CLIENT_ID: &str = "123456789012-abcdef.apps.googleusercontent.com";
+
+    /// Interrompt le parcours juste apres l'ouverture du navigateur, ce qui
+    /// permet d'observer l'URL sans joindre Google.
+    async fn url_proposee_a_l_utilisateur() -> url::Url {
+        let client = ClientOAuth::nouveau(CLIENT_ID.into()).unwrap();
+        let mut session = SessionAuth::nouvelle(MemoryStore::new());
+        let vue = RefCell::new(None);
+
+        let r = connecter(
+            &client,
+            &mut session,
+            |url| {
+                *vue.borrow_mut() = Some(url.clone());
+                Err(AppError::Auth("navigateur indisponible".into()))
+            },
+            Duration::from_millis(50),
+        )
+        .await;
+
+        assert!(r.is_err());
+        vue.into_inner().expect("le navigateur doit etre sollicite")
+    }
+
+    #[tokio::test]
+    async fn la_redirection_annoncee_a_google_porte_un_port_reellement_attribue() {
+        let url = url_proposee_a_l_utilisateur().await;
+
+        let redirect = url
+            .query_pairs()
+            .find(|(k, _)| k == "redirect_uri")
+            .map(|(_, v)| v.into_owned())
+            .expect("redirect_uri absent");
+
+        let port = redirect
+            .strip_prefix("http://127.0.0.1:")
+            .expect("la redirection doit viser la boucle locale en adresse numerique");
+        assert!(port.parse::<u16>().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn un_navigateur_indisponible_n_ouvre_aucune_session() {
+        let client = ClientOAuth::nouveau(CLIENT_ID.into()).unwrap();
+        let mut session = SessionAuth::nouvelle(MemoryStore::new());
+
+        let e = connecter(
+            &client,
+            &mut session,
+            |_| Err(AppError::Auth("navigateur indisponible".into())),
+            Duration::from_millis(50),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(e.code(), "ECHEC_CONNEXION");
+        assert!(!session.est_connecte().unwrap());
+    }
+
+    #[tokio::test]
+    async fn un_accord_qui_n_arrive_jamais_finit_par_abandonner() {
+        let client = ClientOAuth::nouveau(CLIENT_ID.into()).unwrap();
+        let mut session = SessionAuth::nouvelle(MemoryStore::new());
+
+        let e = connecter(
+            &client,
+            &mut session,
+            |_| Ok(()),
+            Duration::from_millis(100),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(e.code(), "ECHEC_CONNEXION");
+        assert!(!session.est_connecte().unwrap());
+    }
+}

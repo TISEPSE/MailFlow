@@ -1,8 +1,11 @@
 # Mise en place de MailFlow — Tauri, backend Rust, securite
 
 Date : 2026-08-13
-Portee : socle technique. Ni les cinq vues, ni l'authentification Google, ni le
-client Gmail ne sont implementes ici.
+Portee : socle technique, moteur de regles, authentification Google. Ni les cinq
+vues ni le client Gmail ne sont implementes ici.
+
+Ce document grandit avec le projet : les sections 5 et 6 ont ete ajoutees apres
+la mise en place initiale.
 
 ## 1. Decisions structurantes
 
@@ -162,14 +165,20 @@ Gmail : elle est affichee, pas executee.
 - `rules/model.rs` — format `regles.json` conforme au cahier des charges,
   comparaison d'expediteurs, 11 tests.
 - `rules/store.rs` — persistance atomique en `0600`, 7 tests.
-- `commands/app_health` — tranche verticale React → IPC → Rust, touchant le
+- `rules/engine.rs` — planification des actions Gmail, 14 tests (section 5).
+- `auth/` — flux OAuth2 PKCE complet : serveur loopback, echange et
+  renouvellement de jetons, session adossee au trousseau, 58 tests (section 6).
+- `config.rs` — resolution de l'identifiant client Google, 7 tests.
+- `commands/` — `app_health`, `google_connecter`, `google_deconnecter`.
+  `app_health` sert de tranche verticale React → IPC → Rust, touchant le
   trousseau, le disque et les chemins Tauri.
-- `auth/`, `gmail/`, `llm/` — surfaces declarees : constantes, trait, et les
-  contraintes d'implementation documentees. Aucune fausse implementation.
+- `gmail/`, `llm/` — surfaces declarees : constantes, trait, et les contraintes
+  d'implementation documentees. Aucune fausse implementation.
 - CI (lint, types, tests des deux cotes, `cargo audit`) et workflow de release
   en matrice trois plateformes.
 
-Total : 26 tests Rust, 5 tests TypeScript, clippy sans avertissement.
+Total apres les briques 5 et 6 : 106 tests Rust, 5 tests TypeScript,
+clippy sans avertissement.
 
 ## 4. Decisions reportees
 
@@ -181,6 +190,7 @@ Total : 26 tests Rust, 5 tests TypeScript, clippy sans avertissement.
 | Verification Google du scope restreint | Avant de depasser 100 utilisateurs. Audit de securite annuel par un tiers. |
 | Politique de reessai sur quotas Gmail | Avec le client Gmail. Recul exponentiel sur 429 et 5xx uniquement. |
 | Rattrapage d'un vendredi manque | Voir section 5. Demande de memoriser la date de derniere execution. |
+| Affichage de l'adresse du compte connecte | Avec la vue de connexion. Le scope `userinfo.email` est deja demande. |
 
 ## 5. Moteur de regles
 
@@ -219,7 +229,94 @@ Une semaine ou l'application reste fermee ce soir-la est simplement sautee.
 Rattraper demanderait de memoriser la date de derniere execution de chaque regle,
 ce qui n'est pas fait. C'est un choix a confirmer, pas un oubli.
 
-## 6. Suite
+## 6. Authentification Google
 
-Le client Gmail (`gmail/`) et l'authentification (`auth/`) sont les briques
-suivantes. Elles debloquent l'execution du plan, puis les vues.
+Ecrite en TDD dans `auth/`, decoupee en cinq fichiers : 58 tests, plus 7 pour
+`config.rs` et 1 pour la nouvelle variante d'erreur.
+
+Le decoupage suit une ligne : ce qui est testable sans reseau est separe de ce qui
+ne l'est pas, et la seconde categorie est reduite au minimum. `flux.rs` construit
+les requetes et interprete les reponses — teste ; il ne reste comme code non
+couvert que l'appel HTTP lui-meme.
+
+### Le serveur loopback
+
+`serveur.rs` ouvre un port sur `127.0.0.1`, attribue par l'OS. **L'ordre compte** :
+le serveur est ouvert avant la construction de l'URL d'autorisation, parce que
+l'URI de redirection annoncee a Google doit contenir le port reellement ecoute.
+Construire l'URL d'abord obligerait a fixer un port a l'avance — donc un port
+qu'un autre programme peut deja occuper.
+
+Ce port est joignable par tout processus de la session pendant que la fenetre est
+ouverte. C'est inherent au flux loopback, et ce qui protege est ailleurs :
+
+- le `state` est imprevisible et compare **a temps constant** ; un `==` classique
+  s'arrete au premier octet different, ce qui laisse reconstituer la valeur
+  attendue par la mesure ;
+- la fenetre est de cinq minutes, pas d'une session entiere ;
+- la ligne de requete est plafonnee a 8 Kio et sa lecture a cinq secondes : une
+  connexion muette ou bavarde ne bloque ni ne gonfle rien.
+
+Une requete qui n'est pas la redirection attendue — le navigateur reclame
+volontiers `/favicon.ico` — recoit un 404 et ne compte pas. Un test le verifie.
+
+### Ce qui n'est jamais imprimable
+
+`ReponseJeton`, `Jetons` et `DemandeAutorisation` ont un `Debug` ecrit a la main.
+Le `Debug` derive imprimerait `access_token`, `refresh_token` et `code_verifier`
+en clair, et ce sont exactement les structures qu'on est tente de journaliser au
+moment ou un echange echoue. Quatre tests verrouillent la propriete.
+
+Meme logique sur les erreurs : `AppError::Auth` porte le detail de protocole cote
+Rust et ne serialise qu'un message neutre. Le corps d'erreur de Google contient un
+`error_description` bavard, parfois porteur d'un identifiant de compte ; seul le
+code court (`invalid_grant`) est retenu, et il reste dans les logs.
+
+### Renouvellement : distinguer « revoque » de « hors ligne »
+
+`session.rs` renouvelle a la demande, jamais en tache de fond. Un timer qui
+rafraichit en permanence garde un jeton chaud sans raison.
+
+La distinction critique est la reaction a un echec de renouvellement :
+
+- **Google a repondu et refuse** (`AppError::Auth`) — le `refresh_token` est mort,
+  l'utilisateur a revoque l'acces ou change son mot de passe. Il est efface. Le
+  garder ferait croire l'application connectee a chaque lancement sans jamais
+  aboutir.
+- **Google n'a pas repondu** (`AppError::Reseau`) — l'utilisateur est hors ligne,
+  pas deconnecte. Le jeton est conserve : l'effacer obligerait a refaire tout le
+  parcours Google au retour du reseau.
+
+Deux tests couvrent ce couple, et deux autres le fait que Google peut faire
+tourner le `refresh_token` (il faut alors reecrire le trousseau) et qu'une
+premiere autorisation sans `refresh_token` est une erreur immediate — c'est ce
+qu'on obtient si `access_type=offline` manque a l'URL, et l'echec surviendrait
+sinon une heure plus tard, sans explication.
+
+### Ce que le frontend peut declencher
+
+Deux commandes, `google_connecter` et `google_deconnecter`. Aucune ne rend de
+jeton : le frontend apprend l'issue en relisant `app_health`. Le verrou de session
+est tenu pendant tout le parcours, pour que deux connexions simultanees
+n'ecrasent pas mutuellement leur `refresh_token`.
+
+`google_deconnecter` revoque cote Google en plus d'effacer le trousseau. Le
+trousseau est vide d'abord : si la revocation echoue faute de reseau,
+l'utilisateur est quand meme deconnecte localement.
+
+### L'identifiant client n'est pas un secret
+
+`config.rs` le lit dans l'ordre : variable d'environnement, valeur figee a la
+compilation, puis fichier `.env`. Il ne va **pas** dans le trousseau : Google le
+publie de fait dans l'URL d'autorisation, et le traiter comme un secret rendrait
+la mise en place inutilement penible sans rien proteger.
+
+Absent, l'application se lance quand meme et le dit (`clientGoogleConfigure`
+faux). La vue de connexion pourra renvoyer vers `docs/connexion-google.md` plutot
+que d'afficher un bouton qui ne peut pas aboutir.
+
+## 7. Suite
+
+Le client Gmail (`gmail/`) est la brique suivante : appels a l'API, execution du
+plan produit par le moteur de regles, politique de reessai sur les quotas. Elle
+debloque les vues.

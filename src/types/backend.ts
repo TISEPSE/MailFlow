@@ -16,6 +16,12 @@ export interface EtatApplication {
   /** `null` quand le fichier de regles existe mais est illisible. */
   nombreDeRegles: number | null
   compteConnecte: boolean
+  /**
+   * Faux tant que l'identifiant client Google n'a pas ete renseigne. La vue de
+   * connexion doit alors renvoyer vers `docs/connexion-google.md` plutot que de
+   * proposer un bouton qui ne peut pas aboutir.
+   */
+  clientGoogleConfigure: boolean
 }
 
 /**
@@ -34,6 +40,7 @@ export type CodeErreur =
   | 'ERREUR_FICHIER'
   | 'REGLES_CORROMPUES'
   | 'NON_AUTHENTIFIE'
+  | 'ECHEC_CONNEXION'
   | 'ERREUR_GMAIL'
   | 'ERREUR_RESEAU'
   | 'CONFIG_INVALIDE'
