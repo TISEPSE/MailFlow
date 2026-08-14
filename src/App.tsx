@@ -5,6 +5,7 @@ import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
 import { initiales, ton } from './lib/presentation'
+import { creerCache, ranger, type CacheCorps } from './lib/corps'
 import {
   DEFAUTS,
   MINUTES,
@@ -93,6 +94,13 @@ export default function App() {
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
   const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [libelles, setLibelles] = useState<LibelleGmail[]>([])
+
+  /** Corps déjà chargés, gardés le temps de la session.
+   *
+   *  Vidé au changement de compte : les identifiants d'une boîte ne désignent
+   *  rien dans une autre, et rendre le corps d'un message d'un compte sous
+   *  l'adresse d'un autre serait pire qu'un rechargement. */
+  const [corpsConnus, setCorpsConnus] = useState<CacheCorps>(creerCache)
 
   /** Vrai tant que le premier relevé n'a pas abouti.
    *
@@ -236,6 +244,7 @@ export default function App() {
       // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
       setBoite([])
       setPremierReleve(true)
+      setCorpsConnus(creerCache())
       setProfil(await compteProfil().catch(() => null))
       setLibelles(await libellesLister().catch(() => []))
       return `Compte actif : ${adresse}.`
@@ -245,6 +254,7 @@ export default function App() {
     agir(async () => {
       await googleDeconnecter()
       setBoite([])
+      setCorpsConnus(creerCache())
       setProfil(null)
       setLibelles([])
       setPremierReleve(false)
@@ -256,6 +266,7 @@ export default function App() {
       await compteAjouter()
       setBoite([])
       setPremierReleve(true)
+      setCorpsConnus(creerCache())
       setProfil(await compteProfil().catch(() => null))
       setLibelles(await libellesLister().catch(() => []))
       return 'Compte ajouté.'
@@ -464,10 +475,10 @@ export default function App() {
                 <Bouton
                   icone="refresh"
                   onClick={() => void agir(async () => (await relever(), null))}
-                  disabled={enCours}
-                  enAttente={enCours}
+                  disabled={enCours || premierReleve}
+                  enAttente={enCours || premierReleve}
                 >
-                  {enCours ? 'Recherche…' : 'Actualiser'}
+                  {enCours || premierReleve ? 'Recherche…' : 'Actualiser'}
                 </Bouton>
               )}
             </EnTete>
@@ -546,6 +557,10 @@ export default function App() {
               proposition={PROPOSITIONS[vue]}
               logos={logos}
               onOuvrir={(id) => void marquerLu(id)}
+              corpsConnus={corpsConnus}
+              onCorpsCharge={(id, corps) =>
+                setCorpsConnus((connus) => ranger(connus, id, corps))
+              }
               libelles={vue === 'humain' ? libelles : undefined}
               onRepondre={
                 vue === 'humain'

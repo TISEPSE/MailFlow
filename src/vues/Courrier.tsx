@@ -51,6 +51,8 @@ export function Courrier({
   sombre,
   logos,
   onOuvrir,
+  corpsConnus,
+  onCorpsCharge,
   onSignalerSpam,
   onRepondre,
   onRanger,
@@ -67,6 +69,9 @@ export function Courrier({
   logos: Record<string, string>
   /** Ouvrir un message le marque comme lu chez Gmail. */
   onOuvrir: (id: string) => void
+  /** Corps déjà chargés, tenus par `App` pour survivre au changement de vue. */
+  corpsConnus: ReadonlyMap<string, CorpsMessage>
+  onCorpsCharge: (id: string, corps: CorpsMessage) => void
   /** Absent pour les vues où le signalement n'a pas de sens. */
   onSignalerSpam?: (id: string) => void
   /** Absents hors des mails directs, où répondre n'aurait pas de sens. */
@@ -81,28 +86,36 @@ export function Courrier({
   const [enCours, setEnCours] = useState(false)
 
   const choisi = messages.find((m) => m.id === selection) ?? messages[0]
-  const [corps, setCorps] = useState<CorpsMessage | null>(null)
   const [chargementCorps, setChargementCorps] = useState(false)
 
   const idAffiche = choisi?.id
-  useEffect(() => {
-    if (!idAffiche) return
+  const corps = idAffiche ? (corpsConnus.get(idAffiche) ?? null) : null
 
-    // Un identifiant témoin : quand l'utilisateur enchaîne les messages, la
+  useEffect(() => {
+    // Déjà en mémoire : ni appel réseau, ni squelette. C'est tout l'objet du
+    // cache — revenir sur un message retéléchargeait ses images à chaque fois.
+    if (!idAffiche || corpsConnus.has(idAffiche)) {
+      setChargementCorps(false)
+      return
+    }
+
+    // Un témoin d'actualité : quand l'utilisateur enchaîne les messages, la
     // réponse d'une lecture abandonnée ne doit pas s'afficher sous un autre
     // en-tête.
     let courant = true
-    setCorps(null)
     setChargementCorps(true)
 
     messageCorps(idAffiche)
-      .then((c) => courant && setCorps(c))
-      .catch(() => courant && setCorps(null))
+      .then((c) => courant && onCorpsCharge(idAffiche, c))
+      .catch(() => undefined)
       .finally(() => courant && setChargementCorps(false))
 
     return () => {
       courant = false
     }
+    // `corpsConnus` volontairement absent : son changement vient de cet effet
+    // même, et le relancer dessus le ferait tourner en boucle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idAffiche])
   if (chargement) {
     return (
@@ -189,6 +202,7 @@ export function Courrier({
                   icone={proposition.icone}
                   onClick={() => void poser()}
                   disabled={enCours}
+                  titre={proposition.effet(choisi.nom)}
                 >
                   {enCours ? 'Enregistrement…' : proposition.libelle}
                 </Bouton>
@@ -205,14 +219,6 @@ export function Courrier({
               </span>
             )}
 
-            {proposition && !regleExistante && (
-              <span
-                className="w-full text-[12px]"
-                style={{ color: 'var(--sub)' }}
-              >
-                {proposition.effet(choisi.nom)}
-              </span>
-            )}
           </>
         }
       />
@@ -321,7 +327,7 @@ function ChoixDeRangement({
         <span className="text-[12.5px] font-semibold">Ranger sous</span>
         <Selecteur
           valeurs={[
-            { valeur: '', texte: 'Aucun libellé — simplement archiver' },
+            { valeur: '', texte: 'Aucun libellé' },
             ...libelles.map((l) => ({ valeur: l.id, texte: l.nom })),
           ]}
           valeur={choix}
@@ -345,7 +351,7 @@ function ChoixDeRangement({
             }}
             placeholder="Factures, Voyages…"
             aria-label="Nom du nouveau libellé"
-            className="selectionnable h-9 min-w-0 flex-1 rounded-lg border px-3 text-[13px] outline-none"
+            className="selectionnable h-11 min-w-0 flex-1 rounded-xl border px-3.5 text-[13px] outline-none"
             style={{
               background: 'var(--sunk)',
               borderColor: 'var(--line)',
@@ -356,6 +362,7 @@ function ChoixDeRangement({
             onClick={() => void creer()}
             disabled={!nouveau.trim() || creation}
             icone="add"
+            className="h-11 rounded-xl px-4"
           >
             {creation ? 'Création…' : 'Créer'}
           </Bouton>

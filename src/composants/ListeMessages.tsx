@@ -40,7 +40,7 @@ export function ListeMessages({
             onClick={() => onSelect(m.id)}
             aria-current={choisi}
             data-neuf={neuf}
-            className="tuile relative flex items-start gap-2.5 border-b py-2.5 pr-3 pl-3 text-left"
+            className="tuile relative flex items-center gap-2.5 border-b py-2.5 pr-3 pl-3 text-left"
             // Aucun fond en style en ligne : il l'emporterait sur les règles de
             // survol et de sélection, qui sont dans la feuille de styles.
             style={{ borderColor: 'var(--line)' }}
@@ -126,14 +126,12 @@ export function Lecture({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className="selectionnable flex-none border-b px-6 pt-3 pb-2.5"
+        className="selectionnable flex-none border-b px-6 py-2.5"
         style={{ borderColor: 'var(--line)' }}
       >
-        <h2 className="text-[15px] font-semibold tracking-tight">
-          {message.sujet || '(sans objet)'}
-        </h2>
-
-        <div className="mt-2 flex items-center gap-2.5">
+        {/* Deux lignes plutôt que trois blocs empilés : chaque ligne gagnée en
+            hauteur est une ligne de message affichée en plus. */}
+        <div className="flex items-center gap-2.5">
           <Pastille
             texte={initiales(message.nom)}
             taille={30}
@@ -141,18 +139,29 @@ export function Lecture({
             couleur={encre}
             logo={logos[domaineDe(message.adresse)]}
           />
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold">{message.nom}</div>
-            <div className="font-mono text-[11px]" style={{ color: 'var(--sub)' }}>
-              {message.adresse}
-            </div>
-          </div>
-          <div className="flex-none text-[12px]" style={{ color: 'var(--sub)' }}>
+          <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
+            {message.sujet || '(sans objet)'}
+          </h2>
+          <span className="flex-none text-[12px]" style={{ color: 'var(--sub)' }}>
             {heureCourte(message.date)}
-          </div>
+          </span>
         </div>
 
-        {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
+        {/* Sans retour à la ligne : c'est l'adresse qui se tronque, pas le
+            bouton qui descend d'un cran. Elle figure de toute façon aussi dans
+            la tuile de gauche. */}
+        <div className="mt-1.5 flex items-center gap-2 pl-[40px]">
+          <span className="flex-none text-[12.5px] font-semibold">
+            {message.nom}
+          </span>
+          <span
+            className="min-w-0 flex-1 truncate font-mono text-[11px]"
+            style={{ color: 'var(--sub)' }}
+          >
+            {message.adresse}
+          </span>
+          {actions}
+        </div>
       </div>
 
       <Corps message={message} corps={corps} chargement={chargement} />

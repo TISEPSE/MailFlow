@@ -506,6 +506,7 @@ export function Bouton({
   disabled = false,
   titre,
   enAttente = false,
+  className = '',
 }: {
   children: ReactNode
   onClick: () => void
@@ -515,6 +516,8 @@ export function Bouton({
   titre?: string
   /** Fait tourner l'icône tant que l'action n'a pas rendu la main. */
   enAttente?: boolean
+  /** Pour s'accorder à la hauteur d'un champ voisin. */
+  className?: string
 }) {
   const teintes: Record<string, string> = {
     principal: 'bouton-principal',
@@ -529,7 +532,7 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className={`bouton ${teintes[variante]} inline-flex h-9 flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs leading-none font-semibold whitespace-nowrap`}
+      className={`bouton ${teintes[variante]} inline-flex h-9 flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs leading-none font-semibold whitespace-nowrap ${className}`}
     >
       {icone && <Icone nom={icone} taille={14} compenser tourne={enAttente} />}
       {children}

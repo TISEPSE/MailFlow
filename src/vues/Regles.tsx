@@ -351,7 +351,7 @@ function FormulaireAjout({
         <Champ titre="Ranger sous">
           <Selecteur
             valeurs={[
-              { valeur: '', texte: 'Aucun libellé — simplement archiver' },
+              { valeur: '', texte: 'Aucun libellé' },
               ...libelles.map((l) => ({ valeur: l.id, texte: l.nom })),
             ]}
             valeur={destination}
