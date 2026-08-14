@@ -659,6 +659,7 @@ pub async fn compte_basculer(
 ) -> Resultat<()> {
     let dossier = dossier_config(&app)?;
     let mut annuaire = comptes::charger(&dossier);
+    identifier_l_actif(&etat, &mut annuaire).await;
 
     let mut session = etat.session.lock().await;
     session.basculer(|secrets| comptes::basculer(secrets, &mut annuaire, &adresse))?;
@@ -666,6 +667,31 @@ pub async fn compte_basculer(
 
     log::info!("compte actif changé");
     Ok(())
+}
+
+/// Complète l'annuaire quand il ignore à qui appartient le jeton en place.
+///
+/// L'annuaire peut perdre ce renseignement — un ajout de compte interrompu, une
+/// installation antérieure à son existence. Sans lui, déplacer le jeton actif
+/// reviendrait à le détruire. Gmail, lui, sait toujours répondre : une unité de
+/// quota vaut mieux qu'un compte perdu.
+async fn identifier_l_actif(etat: &State<'_, EtatAuth>, annuaire: &mut Annuaire) {
+    if annuaire.actif.is_some() {
+        return;
+    }
+    let Ok(true) = etat.session.lock().await.est_connecte() else {
+        return;
+    };
+
+    let client = match TransportHttp::nouveau() {
+        Ok(t) => ClientGmail::nouveau(t, JetonsDeSession { etat }),
+        Err(_) => return,
+    };
+
+    if let Ok(adresse) = client.adresse_du_compte().await {
+        log::info!("compte actif identifié auprès de Gmail");
+        annuaire.retenir(&adresse, None, None);
+    }
 }
 
 /// Met le compte actif de côté et lance l'autorisation d'un autre.
@@ -677,6 +703,7 @@ pub async fn compte_basculer(
 pub async fn compte_ajouter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<()> {
     let dossier = dossier_config(&app)?;
     let mut annuaire = comptes::charger(&dossier);
+    identifier_l_actif(&etat, &mut annuaire).await;
 
     {
         let mut session = etat.session.lock().await;

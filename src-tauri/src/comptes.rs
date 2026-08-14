@@ -149,15 +149,21 @@ pub fn ecrire(dossier: &Path, annuaire: &Annuaire) -> Resultat<()> {
 
 /// Déplace le jeton actif vers son emplacement nommé.
 ///
-/// Sans objet quand l'adresse active est inconnue : le jeton reste où il est,
-/// et sera écrasé par la bascule. C'est le cas d'une installation antérieure à
-/// l'annuaire, dont on ignore encore à qui appartient le jeton.
+/// Rend une erreur quand un jeton occupe l'emplacement actif sans qu'on sache à
+/// qui il appartient. C'est le seul cas où l'on doit refuser d'agir : écraser ce
+/// jeton reviendrait à déconnecter un compte sans l'avoir dit, et sans pouvoir
+/// le retrouver. L'appelant a le moyen de lever le doute — demander son adresse
+/// à Gmail — et doit le faire avant.
 fn ranger_l_actif<S: SecretStore>(secrets: &S, adresse_active: Option<&str>) -> Resultat<()> {
-    let Some(adresse) = adresse_active else {
+    let Some(jeton) = secrets.get(CLE_REFRESH_TOKEN_GOOGLE)? else {
+        // Emplacement libre : rien à ranger, rien à perdre.
         return Ok(());
     };
-    let Some(jeton) = secrets.get(CLE_REFRESH_TOKEN_GOOGLE)? else {
-        return Ok(());
+
+    let Some(adresse) = adresse_active else {
+        return Err(AppError::Auth(
+            "impossible d'identifier le compte actif ; reconnectez-vous".into(),
+        ));
     };
 
     secrets.set(&cle_compte(adresse), &jeton)
@@ -342,6 +348,33 @@ mod tests {
     }
 
     #[test]
+    fn basculer_sans_savoir_qui_est_actif_ne_detruit_pas_son_jeton() {
+        // Observé sur une vraie installation : l'annuaire pouvait perdre son
+        // champ `actif` alors qu'un jeton occupait l'emplacement. La bascule
+        // l'écrasait alors en silence, et le compte devenait injoignable sans
+        // qu'aucun message ne le dise.
+        let secrets = MemoryStore::new();
+        let mut a = annuaire_avec(&["a@x.fr", "b@x.fr"]);
+        a.actif = None;
+        secrets
+            .set(CLE_REFRESH_TOKEN_GOOGLE, "jeton-inconnu")
+            .unwrap();
+        secrets.set(&cle_compte("b@x.fr"), "jeton-b").unwrap();
+
+        assert!(basculer(&secrets, &mut a, "b@x.fr").is_err());
+        assert_eq!(
+            secrets.get(CLE_REFRESH_TOKEN_GOOGLE).unwrap().as_deref(),
+            Some("jeton-inconnu"),
+            "le jeton en place doit survivre au refus"
+        );
+        assert_eq!(
+            secrets.get(&cle_compte("b@x.fr")).unwrap().as_deref(),
+            Some("jeton-b"),
+            "celui de la cible aussi"
+        );
+    }
+
+    #[test]
     fn basculer_vers_un_compte_inconnu_echoue() {
         let secrets = MemoryStore::new();
         let mut a = annuaire_avec(&["a@x.fr"]);
@@ -369,18 +402,27 @@ mod tests {
     }
 
     #[test]
-    fn une_installation_sans_annuaire_ne_perd_pas_son_jeton() {
-        // Version antérieure : le trousseau porte un jeton, l'annuaire est
-        // vide, et on ignore à qui il appartient.
+    fn mettre_de_cote_sans_savoir_qui_est_actif_est_refuse() {
+        // Même raison que pour la bascule : libérer l'emplacement sans avoir
+        // rangé le jeton, c'est le perdre.
         let secrets = MemoryStore::new();
         let mut a = Annuaire::default();
         secrets.set(CLE_REFRESH_TOKEN_GOOGLE, "historique").unwrap();
 
-        mettre_de_cote(&secrets, &mut a).unwrap();
+        assert!(mettre_de_cote(&secrets, &mut a).is_err());
+        assert_eq!(
+            secrets.get(CLE_REFRESH_TOKEN_GOOGLE).unwrap().as_deref(),
+            Some("historique")
+        );
+    }
 
-        // Il n'y avait nulle part où le ranger, mais rien d'autre n'a été
-        // corrompu et l'utilisateur peut se reconnecter.
-        assert_eq!(secrets.get(CLE_REFRESH_TOKEN_GOOGLE).unwrap(), None);
+    #[test]
+    fn mettre_de_cote_sur_un_emplacement_vide_reussit() {
+        // Rien à perdre : c'est le cas d'un premier lancement.
+        let secrets = MemoryStore::new();
+        let mut a = Annuaire::default();
+
+        assert!(mettre_de_cote(&secrets, &mut a).is_ok());
     }
 
     #[test]

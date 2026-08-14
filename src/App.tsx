@@ -101,6 +101,7 @@ export default function App() {
    *  yeux de l'utilisateur. */
   const [premierReleve, setPremierReleve] = useState(true)
   const [menuCompte, setMenuCompte] = useState(false)
+  const boutonProfil = useRef<HTMLButtonElement>(null)
   const [logos, setLogos] = useState<Record<string, string>>({})
 
   const { sombre, accent, barreRepliee: repliee } = prefs
@@ -235,6 +236,16 @@ export default function App() {
       setProfil(await compteProfil().catch(() => null))
       setLibelles(await libellesLister().catch(() => []))
       return `Compte actif : ${adresse}.`
+    })
+
+  const deconnecter = () =>
+    agir(async () => {
+      await googleDeconnecter()
+      setBoite([])
+      setProfil(null)
+      setLibelles([])
+      setPremierReleve(false)
+      return 'Compte déconnecté et autorisation révoquée.'
     })
 
   const ajouterUnCompte = () =>
@@ -376,6 +387,7 @@ export default function App() {
             {menuCompte && (
               <MenuDeCompte
                 comptes={comptes}
+                declencheur={boutonProfil}
                 onFermer={() => setMenuCompte(false)}
                 onBasculer={(adresse) => {
                   setMenuCompte(false)
@@ -389,6 +401,10 @@ export default function App() {
                   setMenuCompte(false)
                   setVue('parametres')
                 }}
+                onDeconnecter={() => {
+                  setMenuCompte(false)
+                  void deconnecter()
+                }}
               />
             )}
 
@@ -396,6 +412,7 @@ export default function App() {
                 couvrir tout ce qui désigne le compte, sans quoi le fond gris
                 s'arrête au bord de la photo. */}
             <button
+              ref={boutonProfil}
               type="button"
               onClick={() => setMenuCompte((o) => !o)}
               aria-haspopup="menu"
@@ -489,14 +506,7 @@ export default function App() {
                   return 'Compte Gmail connecté.'
                 })
               }
-              onDeconnecter={() =>
-                void agir(async () => {
-                  await googleDeconnecter()
-                  setBoite([])
-                  setProfil(null)
-                  return 'Compte déconnecté et autorisation révoquée.'
-                })
-              }
+              onDeconnecter={() => void deconnecter()}
               comptes={comptes}
               onBasculer={(adresse) => void basculerVers(adresse)}
               onAjouterCompte={() => void ajouterUnCompte()}
@@ -593,22 +603,34 @@ export default function App() {
  */
 function MenuDeCompte({
   comptes,
+  declencheur,
   onFermer,
   onBasculer,
   onAjouter,
   onParametres,
+  onDeconnecter,
 }: {
   comptes: CompteConnu[]
+  /** Le bouton qui ouvre le menu, exclu du « clic à l'extérieur ». */
+  declencheur: React.RefObject<HTMLButtonElement | null>
   onFermer: () => void
   onBasculer: (adresse: string) => void
   onAjouter: () => void
   onParametres: () => void
+  onDeconnecter: () => void
 }) {
   const cadre = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const dehors = (e: MouseEvent) => {
-      if (!cadre.current?.contains(e.target as Node)) onFermer()
+      const cible = e.target as Node
+      // Le bouton d'ouverture n'est pas « l'extérieur ». Sans cette exclusion,
+      // le clic le fermait puis son `onClick` le rouvrait aussitôt : le menu
+      // paraissait ne jamais se fermer.
+      if (cadre.current?.contains(cible) || declencheur.current?.contains(cible)) {
+        return
+      }
+      onFermer()
     }
     const auClavier = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onFermer()
@@ -626,9 +648,14 @@ function MenuDeCompte({
       document.removeEventListener('mousedown', dehors, true)
       document.removeEventListener('keydown', auClavier)
     }
-  }, [onFermer])
+  }, [onFermer, declencheur])
 
-  const autres = comptes.filter((c) => !c.actif)
+  // L'actif est retiré quand l'annuaire sait lequel c'est. S'il l'ignore, mieux
+  // vaut tout proposer que d'afficher une liste vide : basculer sur le compte
+  // déjà actif ne fait rien de fâcheux.
+  const autres = comptes.some((c) => c.actif)
+    ? comptes.filter((c) => !c.actif)
+    : comptes
 
   return (
     <div
@@ -705,6 +732,17 @@ function MenuDeCompte({
       >
         <Icone nom="settings" taille={16} compenser style={{ color: 'var(--sub)' }} />
         Paramètres
+      </button>
+
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onDeconnecter}
+        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold"
+        style={{ color: '#C2410C' }}
+      >
+        <Icone nom="logout" taille={16} compenser />
+        Se déconnecter
       </button>
     </div>
   )
