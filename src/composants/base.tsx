@@ -6,22 +6,24 @@
  * d'accent de basculer sans que chaque vue ait à s'en occuper.
  */
 import type { CSSProperties, ReactNode } from 'react'
-import { GLYPHES, type NomIcone } from './glyphes'
+import { BOITE, GLYPHES, type NomIcone } from './glyphes'
 
 /**
- * Glyphe Material Symbols, rendu par son point de code.
+ * Icône, dessinée en SVG.
  *
- * Pas par son nom : la police accepte les ligatures, mais celles-ci échouent
- * en silence si la table ne survit pas au découpage — l'application affiche
- * alors « settings » au lieu de l'icône. Le type `NomIcone` fait en plus qu'une
- * icône absente du sous-ensemble soit une erreur de compilation.
+ * Pas une police : deux tentatives ont montré qu'une police d'icônes découpée
+ * cesse d'afficher ses glyphes sans lever la moindre erreur — d'abord des noms
+ * en toutes lettres, puis des espaces vides. Un tracé ne dépend de rien.
+ *
+ * `rempli` n'a plus d'effet : les variantes pleines demandaient l'axe variable
+ * `FILL` de la police. Le paramètre est conservé pour ne pas toucher tous les
+ * appels, mais il ne change rien au dessin.
  */
 export function Icone({
   nom,
   taille = 18,
   className = '',
   style,
-  rempli = false,
 }: {
   nom: NomIcone
   taille?: number
@@ -30,17 +32,17 @@ export function Icone({
   rempli?: boolean
 }) {
   return (
-    <span
+    <svg
       aria-hidden
-      className={`material-symbols-rounded ${className}`}
-      style={{
-        fontSize: taille,
-        fontVariationSettings: `'FILL' ${rempli ? 1 : 0}, 'wght' 400, 'opsz' 20`,
-        ...style,
-      }}
+      focusable="false"
+      viewBox={BOITE}
+      width={taille}
+      height={taille}
+      className={`inline-block flex-none ${className}`}
+      style={{ fill: 'currentColor', ...style }}
     >
-      {GLYPHES[nom]}
-    </span>
+      <path d={GLYPHES[nom]} />
+    </svg>
   )
 }
 
