@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bouton, EnTete, Icone, Vide } from './composants/base'
+import { listen } from '@tauri-apps/api/event'
+import { Bouton, Icone, Progression, Vide } from './composants/base'
 import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
@@ -21,6 +22,9 @@ import {
   compteBasculer,
   compteOublier,
   compteProfil,
+  corpsPrecharger,
+  EVENEMENT_PRECHARGEMENT,
+  type Avancement,
   comptesLister,
   logosExpediteurs,
   gmailSynchroniser,
@@ -58,14 +62,6 @@ const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'regles', libelle: 'Règles automatiques', glyphe: 'bolt' },
 ]
 
-const ENTETES: Record<Vue, [string, string]> = {
-  humain: ['Mails directs', 'Les messages écrits par de vraies personnes. Rien d’automatique ici.'],
-  publicite: ['Publicités', 'Coupez la source une bonne fois, plutôt que de supprimer chaque semaine.'],
-  newsletter: ['Newsletters', 'Ce que vous recevez en nombre, et ce que vous voulez en faire.'],
-  formation: ['Rappels de formations', 'Les rappels que vous avez rangés là par une règle.'],
-  regles: ['Règles automatiques', 'Tout ce que MailFlow fait en votre nom, en une phrase par règle.'],
-  parametres: ['Paramètres', 'Compte, apparence, synchronisation et automatisations.'],
-}
 
 /** Ce que chaque vue de courrier propose de faire d'un expéditeur. */
 const PROPOSITIONS: Partial<Record<Vue, Proposition>> = {
@@ -109,6 +105,9 @@ export default function App() {
    *  yeux de l'utilisateur. */
   const [premierReleve, setPremierReleve] = useState(true)
   const [menuCompte, setMenuCompte] = useState(false)
+
+  /** Avancement du préchargement, `null` quand il n'est pas en cours. */
+  const [avancement, setAvancement] = useState<Avancement | null>(null)
   const boutonProfil = useRef<HTMLButtonElement>(null)
   const [logos, setLogos] = useState<Record<string, string>>({})
 
@@ -167,9 +166,12 @@ export default function App() {
       logosExpediteurs(adresses)
         .then((trouves) => setLogos((connus) => ({ ...connus, ...trouves })))
         .catch(() => undefined)
+
+      return messages
     } catch (e) {
       annoncer(messageDErreur(e), true)
       setPremierReleve(false)
+      return null
     }
   }, [annoncer])
 
@@ -192,6 +194,17 @@ export default function App() {
   )
 
   useEffect(() => {
+    // L'écoute est posée avant tout appel : un événement émis pendant qu'on
+    // s'abonne serait sinon perdu, et la barre resterait à zéro.
+    const arret = listen<Avancement>(EVENEMENT_PRECHARGEMENT, (e) =>
+      setAvancement(e.payload),
+    )
+    return () => {
+      void arret.then((f) => f())
+    }
+  }, [])
+
+  useEffect(() => {
     void rafraichir().then(async (sante) => {
       if (!sante?.compteConnecte) return
       setProfil(await compteProfil().catch(() => null))
@@ -201,7 +214,15 @@ export default function App() {
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)
       }
-      await relever()
+      const messages = await relever()
+
+      // Le préchargement suit le premier relevé : c'est lui qui donne la liste
+      // des messages à charger.
+      if (messages?.length) {
+        setAvancement({ faits: 0, total: messages.length })
+        await corpsPrecharger(messages.map((m) => m.id)).catch(() => null)
+      }
+      setAvancement(null)
     })
   }, [rafraichir, relever])
 
@@ -290,7 +311,6 @@ export default function App() {
         ? 0
         : parCategorie[v as CategorieMessage].length
 
-  const [titre, sous] = ENTETES[vue]
 
   return (
     <div
@@ -392,6 +412,31 @@ export default function App() {
             )
           })}
 
+          {etat?.compteConnecte && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => void agir(async () => (await relever(), null))}
+                disabled={enCours || premierReleve}
+                title={repliee ? 'Actualiser la boîte' : undefined}
+                className="bouton bouton-doux flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold"
+              >
+                <span className="flex h-7 w-7 flex-none items-center justify-center">
+                  <Icone
+                    nom="refresh"
+                    taille={16}
+                    tourne={enCours || premierReleve}
+                  />
+                </span>
+                {!repliee && (
+                  <span className="min-w-0 flex-1 truncate">
+                    {enCours || premierReleve ? 'Recherche…' : 'Actualiser'}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
           <div className="flex-1" />
 
           <div
@@ -467,23 +512,6 @@ export default function App() {
         </nav>
 
         <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
-          {/* La vue Règles porte son propre en-tête, avec son bouton d'ajout :
-              le répéter ici afficherait deux fois le même titre. */}
-          {vue !== 'regles' && (
-            <EnTete titre={titre} sous={sous}>
-              {etat?.compteConnecte && vue !== 'parametres' && (
-                <Bouton
-                  icone="refresh"
-                  onClick={() => void agir(async () => (await relever(), null))}
-                  disabled={enCours || premierReleve}
-                  enAttente={enCours || premierReleve}
-                >
-                  {enCours || premierReleve ? 'Recherche…' : 'Actualiser'}
-                </Bouton>
-              )}
-            </EnTete>
-          )}
-
           {message && (
             <div
               role="status"
@@ -498,7 +526,9 @@ export default function App() {
             </div>
           )}
 
-          {!etat ? (
+          {avancement ? (
+            <Progression faits={avancement.faits} total={avancement.total} />
+          ) : !etat ? (
             <Vide icone="hourglass_empty" titre="Démarrage…" detail="Lecture de l'état du backend." />
           ) : vue === 'parametres' ? (
             <Parametres

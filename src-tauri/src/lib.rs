@@ -67,6 +67,7 @@ pub fn run() {
             commands::regle_basculer,
             commands::boite_lister,
             commands::message_corps,
+            commands::corps_precharger,
             commands::message_ranger,
             commands::libelles_lister,
             commands::libelle_creer,

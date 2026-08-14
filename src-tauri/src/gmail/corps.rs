@@ -27,6 +27,7 @@
 //!    bac à sable non. Il ne faut donc jamais rien lui faire porter seul.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use crate::gmail::modele::Charge;
 use crate::html::{fin_de_balise, valeur_attribut};
@@ -41,7 +42,7 @@ const TAILLE_MAX: usize = 2 * 1024 * 1024;
 pub const IMAGES_MAX: usize = 40;
 
 /// Ce qu'on a su tirer d'un message.
-#[derive(Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CorpsMessage {
     pub html: Option<String>,
     pub texte: Option<String>,
@@ -621,11 +622,84 @@ mod tests {
     }
 
     #[test]
+    fn un_corps_range_se_relit() {
+        let dossier = tempfile::tempdir().unwrap();
+        let corps = CorpsMessage {
+            html: Some("<p>a</p>".into()),
+            texte: None,
+        };
+
+        ranger(dossier.path(), "m1", &corps);
+
+        assert_eq!(lire(dossier.path(), "m1"), Some(corps));
+        assert_eq!(lire(dossier.path(), "inconnu"), None);
+    }
+
+    #[test]
+    fn le_nom_de_fichier_ne_peut_pas_sortir_du_dossier() {
+        // L'identifiant vient de Gmail : il ne sert jamais tel quel.
+        let dossier = Path::new("/tmp/corps");
+        let chemin = chemin_cache(dossier, "../../etc/passwd");
+
+        assert_eq!(chemin.parent(), Some(dossier));
+        let nom = chemin.file_name().unwrap().to_string_lossy();
+        assert!(!nom.contains('/') && !nom.contains(".."), "nom : {nom}");
+    }
+
+    #[test]
+    fn le_cache_vit_dans_un_dossier_efface_au_demarrage_machine() {
+        // C'est tout l'intérêt du choix : rien ne s'installe durablement.
+        let d = dossier_cache();
+
+        assert!(d.ends_with("mailflow/corps"), "{}", d.display());
+    }
+
+    #[test]
     fn un_corps_demesure_est_refuse() {
         use base64::Engine;
         let enorme =
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(vec![b'a'; TAILLE_MAX + 1]);
 
         assert!(decoder(&enorme).is_none());
+    }
+}
+
+/// Dossier où déposer les corps déjà chargés.
+///
+/// `$XDG_RUNTIME_DIR` de préférence : le système l'efface à chaque démarrage de
+/// la machine. Fermer et rouvrir MailFlow retrouve donc tout, mais éteindre
+/// l'ordinateur remet à zéro — le contenu des messages ne s'installe jamais
+/// durablement sur le disque.
+pub fn dossier_cache() -> PathBuf {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+
+    base.join("mailflow").join("corps")
+}
+
+/// Chemin du fichier d'un message.
+///
+/// L'identifiant vient de Gmail, mais il ne sert jamais tel quel comme nom de
+/// fichier : la même précaution que pour les logos, pour la même raison.
+pub fn chemin_cache(dossier: &Path, id: &str) -> PathBuf {
+    let sur: String = id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    dossier.join(format!("{sur}.json"))
+}
+
+/// Lit un corps déjà rangé, ou `None`.
+pub fn lire(dossier: &Path, id: &str) -> Option<CorpsMessage> {
+    let texte = std::fs::read_to_string(chemin_cache(dossier, id)).ok()?;
+    serde_json::from_str(&texte).ok()
+}
+
+/// Range un corps. Un échec d'écriture n'est pas une raison de ne rien rendre.
+pub fn ranger(dossier: &Path, id: &str, corps: &CorpsMessage) {
+    let _ = std::fs::create_dir_all(dossier);
+    if let Ok(texte) = serde_json::to_string(corps) {
+        let _ = std::fs::write(chemin_cache(dossier, id), texte);
     }
 }

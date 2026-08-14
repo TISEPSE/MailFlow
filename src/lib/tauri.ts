@@ -137,6 +137,25 @@ export function repondreAuMessage(destinataire: string, sujet: string): Promise<
   return invoke<void>('repondre_au_message', { destinataire, sujet })
 }
 
+/** Avancement du prechargement, tel que l'evenement le porte. */
+export interface Avancement {
+  faits: number
+  total: number
+}
+
+/** Nom de l'evenement emis pendant le prechargement. */
+export const EVENEMENT_PRECHARGEMENT = 'corps-precharges'
+
+/**
+ * Charge d'avance le corps de tous les messages donnes.
+ *
+ * L'attente est groupee au demarrage, avec une barre de progression, au lieu
+ * d'etre subie message par message.
+ */
+export function corpsPrecharger(ids: string[]): Promise<number> {
+  return invoke<number>('corps_precharger', { ids })
+}
+
 /**
  * Signale un message comme indesirable.
  *

@@ -12,7 +12,6 @@
 import { useState } from 'react'
 import {
   Bouton,
-  EnTete,
   Modale,
   Selecteur,
   Etiquette,
@@ -91,19 +90,6 @@ export function Regles({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <EnTete titre="Règles automatiques" sous={decompte(regles.length)}>
-        <button
-          type="button"
-          onClick={() => setFormulaireOuvert(true)}
-          aria-haspopup="dialog"
-          className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[13px] leading-none font-semibold"
-        >
-          <Icone nom="playlist_add_check" taille={15} rempli compenser />
-          Ajouter une règle
-        </button>
-      </EnTete>
-
-
       <div
         className="flex flex-none items-center gap-4 border-b px-8 py-4"
         style={{ borderColor: 'var(--line)' }}
@@ -125,6 +111,16 @@ export function Regles({
             style={{ color: 'var(--fg)' }}
           />
         </div>
+
+        <button
+          type="button"
+          onClick={() => setFormulaireOuvert(true)}
+          aria-haspopup="dialog"
+          className="bouton bouton-principal inline-flex h-10 flex-none items-center justify-center gap-2 rounded-xl px-4 text-[13px] leading-none font-semibold"
+        >
+          <Icone nom="playlist_add_check" taille={15} rempli compenser />
+          Ajouter une règle
+        </button>
 
         <div
           role="tablist"
@@ -251,6 +247,7 @@ export function Regles({
           <FormulaireAjout
             expediteurs={expediteurs}
             libelles={libelles}
+            sombre={sombre}
             onAnnuler={() => setFormulaireOuvert(false)}
             onValider={async (regle) => {
               await onCreerRegle(regle)
@@ -263,12 +260,6 @@ export function Regles({
   )
 }
 
-/** « 5 règles enregistrées… » — au singulier quand il n'y en a qu'une. */
-function decompte(n: number): string {
-  if (n === 0) return "Aucune règle enregistrée pour l'instant."
-  const s = n > 1 ? 's' : ''
-  return `${n} règle${s} enregistrée${s} dans MailFlow. Tout est modifiable ici.`
-}
 
 /**
  * Formulaire d'ajout.
@@ -281,14 +272,17 @@ function FormulaireAjout({
   onAnnuler,
   expediteurs,
   libelles,
+  sombre,
 }: {
   onValider: (regle: Regle) => Promise<void>
   onAnnuler: () => void
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
+  sombre: boolean
 }) {
   const [adresse, setAdresse] = useState('')
   const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>('Publicités')
+  const [choisiParDefaut, setChoisiParDefaut] = useState(true)
   const [libelleAction, setLibelleAction] = useState<LibelleAction>('Archiver')
   const [destination, setDestination] = useState('')
   const [enCours, setEnCours] = useState(false)
@@ -325,14 +319,35 @@ function FormulaireAjout({
       }}
       className="flex flex-col gap-4"
     >
-      <ChampAdresse adresse={adresse} onChange={setAdresse} expediteurs={expediteurs} />
+      <ChampAdresse
+        adresse={adresse}
+        expediteurs={expediteurs}
+        sombre={sombre}
+        categorie={CATEGORIE_ONGLET[categorie]}
+        onChange={(v, devinee) => {
+          setAdresse(v)
+          // La catégorie ne se règle d'elle-même que tant que l'utilisateur n'y
+          // a pas touché : lui reprendre son choix serait pire que ne rien
+          // deviner.
+          if (devinee && choisiParDefaut) {
+            const nom = (Object.entries(CATEGORIE_ONGLET) as [
+              (typeof CATEGORIES)[number],
+              Categorie,
+            ][]).find(([, c]) => c === devinee)
+            if (nom) setCategorie(nom[0])
+          }
+        }}
+      />
 
       <div className="flex flex-wrap items-center gap-6">
         <Champ titre="Catégorie">
           <Segments
             valeurs={CATEGORIES}
             valeur={categorie}
-            onChange={setCategorie}
+            onChange={(v) => {
+              setCategorie(v)
+              setChoisiParDefaut(false)
+            }}
             libelle="Catégorie de la règle"
           />
         </Champ>
@@ -395,12 +410,55 @@ function ChampAdresse({
   adresse,
   onChange,
   expediteurs,
+  categorie,
+  sombre,
 }: {
   adresse: string
-  onChange: (v: string) => void
+  onChange: (v: string, categorie?: Categorie) => void
   expediteurs: MessageAffiche[]
+  categorie: Categorie
+  sombre: boolean
 }) {
   const [ouvert, setOuvert] = useState(false)
+  const choisi = expediteurs.find((m) => m.adresse === adresse)
+
+  // Une fois l'adresse retenue, elle devient une étiquette : on ne risque plus
+  // de la modifier d'une frappe, et la croix dit comment revenir en arrière.
+  if (adresseValide(adresse)) {
+    const [encre, fond] = ton(categorie, sombre)
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
+        <div
+          className="flex h-11 items-center gap-2.5 rounded-xl border px-3"
+          style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+        >
+          <span
+            className="inline-flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5"
+            style={{ background: fond, color: encre }}
+          >
+            <span className="truncate font-mono text-[12.5px] font-semibold">
+              {adresse}
+            </span>
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              aria-label="Changer d'adresse"
+              className="flex-none rounded-md transition-opacity hover:opacity-70"
+              style={{ color: encre }}
+            >
+              <Icone nom="close" taille={14} />
+            </button>
+          </span>
+          {choisi && (
+            <span className="truncate text-[12.5px]" style={{ color: 'var(--sub)' }}>
+              {choisi.nom}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   const q = adresse.trim().toLowerCase()
   const propositions = Array.from(
@@ -417,10 +475,8 @@ function ChampAdresse({
     ).values(),
   ).slice(0, 6)
 
-  const montrer = ouvert && propositions.length > 0 && propositions[0]?.adresse !== q
-
   return (
-    <label className="relative flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5">
       <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
       <input
         type="text"
@@ -430,9 +486,6 @@ function ChampAdresse({
           setOuvert(true)
         }}
         onFocus={() => setOuvert(true)}
-        // `blur` est retardé : sans ce délai, la liste disparaîtrait avant que
-        // le clic sur une proposition n'ait le temps d'aboutir.
-        onBlur={() => window.setTimeout(() => setOuvert(false), 120)}
         placeholder="promo@offres-tech.fr"
         autoFocus
         autoComplete="off"
@@ -440,38 +493,49 @@ function ChampAdresse({
         style={{ background: 'var(--sunk)', borderColor: 'var(--line)', color: 'var(--fg)' }}
       />
 
-      {montrer && (
+      {ouvert && propositions.length > 0 && (
         <div
-          className="absolute top-full right-0 left-0 z-10 mt-1 overflow-hidden rounded-xl border p-1"
-          style={{
-            background: 'var(--card)',
-            borderColor: 'var(--line)',
-            boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
-          }}
+          className="mt-1 flex flex-col gap-0.5 rounded-xl border p-1"
+          style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
         >
-          {propositions.map((m) => (
-            <button
-              key={m.adresse}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                onChange(m.adresse)
-                setOuvert(false)
-              }}
-              className="survolable flex w-full flex-col rounded-lg px-2.5 py-1.5 text-left"
-            >
-              <span className="truncate text-[12.5px] font-semibold">{m.nom}</span>
-              <span
-                className="truncate font-mono text-[11px]"
-                style={{ color: 'var(--sub)' }}
+          {propositions.map((m) => {
+            const [encre, fond] = ton(m.categorie, sombre)
+            return (
+              <button
+                key={m.adresse}
+                type="button"
+                onClick={() => {
+                  // La catégorie du message porte déjà le classement : la
+                  // reprendre évite à l'utilisateur de la redonner.
+                  onChange(m.adresse, m.categorie === 'humain' ? undefined : m.categorie)
+                  setOuvert(false)
+                }}
+                className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
               >
-                {m.adresse}
-              </span>
-            </button>
-          ))}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] font-semibold">
+                    {m.nom}
+                  </span>
+                  <span
+                    className="block truncate font-mono text-[11px]"
+                    style={{ color: 'var(--sub)' }}
+                  >
+                    {m.adresse}
+                  </span>
+                </span>
+                {m.categorie !== 'humain' && (
+                  <Etiquette
+                    texte={LIBELLE_CATEGORIE[m.categorie]}
+                    fond={fond}
+                    couleur={encre}
+                  />
+                )}
+              </button>
+            )
+          })}
         </div>
       )}
-    </label>
+    </div>
   )
 }
 

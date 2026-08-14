@@ -223,44 +223,6 @@ export function Segments<T extends string>({
   )
 }
 
-/**
- * En-tête de page : titre, phrase d'explication, actions à droite.
- *
- * Partagé par toutes les vues, pour qu'une page ne puisse pas se retrouver avec
- * deux titres empilés ni avec une typographie qui lui soit propre.
- */
-export function EnTete({
-  titre,
-  sous,
-  children,
-}: {
-  titre: string
-  sous: string
-  children?: ReactNode
-}) {
-  return (
-    <div
-      className="flex flex-none items-center gap-4 border-b px-6 py-3"
-      style={{ borderColor: 'var(--line)' }}
-    >
-      <div className="flex min-w-0 flex-1 items-baseline gap-3">
-        <h1 className="flex-none text-[16px] font-semibold tracking-tight">{titre}</h1>
-        {/* La phrase d'explication passe sur la même ligne et s'efface la
-            première quand la largeur manque : elle rassure au premier passage,
-            elle n'a pas à coûter une bande de la hauteur de l'écran à chaque
-            lecture de message. */}
-        <p
-          className="hidden min-w-0 truncate text-[12.5px] lg:block"
-          style={{ color: 'var(--sub)' }}
-        >
-          {sous}
-        </p>
-      </div>
-      {children}
-    </div>
-  )
-}
-
 /** Carte de réglage : icône, intitulé, explication, contrôle à droite. */
 export function LigneReglage({
   icone,
@@ -411,7 +373,9 @@ export function Modale({
           </button>
         </div>
 
-        <div className="px-6 py-5">{children}</div>
+        {/* Défilement interne : les suggestions d'adresse débordaient de la
+            fenêtre au lieu de la faire défiler. */}
+        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
       </div>
     </div>
   )
@@ -472,6 +436,47 @@ export function SqueletteLecture() {
           <span key={i} className="squelette h-3.5" style={{ width: `${largeur}%` }} />
         ))}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Barre de progression du préchargement.
+ *
+ * Chiffrée autant que dessinée : une barre seule ne dit pas si l'attente sera
+ * de trois secondes ou d'une minute, alors que « 12 sur 48 » le laisse estimer.
+ */
+export function Progression({ faits, total }: { faits: number; total: number }) {
+  const part = total > 0 ? Math.min(100, Math.round((faits / total) * 100)) : 0
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10">
+      <div className="text-sm font-semibold">Préparation de votre boîte…</div>
+      <div
+        role="progressbar"
+        aria-valuenow={faits}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-label="Chargement des messages"
+        className="h-1.5 w-64 overflow-hidden rounded-full"
+        style={{ background: 'var(--faint)' }}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${part}%`,
+            background: 'var(--accent)',
+            transition: 'width 200ms ease',
+          }}
+        />
+      </div>
+      <div className="font-mono text-[12px]" style={{ color: 'var(--sub)' }}>
+        {faits} sur {total}
+      </div>
+      <p className="max-w-sm text-center text-[12.5px]" style={{ color: 'var(--sub)' }}>
+        Les messages sont chargés une fois pour toutes. Ils resteront
+        instantanés jusqu'au prochain redémarrage de l'ordinateur.
+      </p>
     </div>
   )
 }

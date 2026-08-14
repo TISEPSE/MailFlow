@@ -124,9 +124,9 @@ export function Lecture({
   const [fond, encre] = palette(0)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div
-        className="selectionnable flex-none border-b px-6 py-2.5"
+        className="selectionnable min-w-0 flex-none border-b px-6 py-2.5"
         style={{ borderColor: 'var(--line)' }}
       >
         {/* Deux lignes plutôt que trois blocs empilés : chaque ligne gagnée en
@@ -194,10 +194,12 @@ function Corps({
     return (
       <iframe
         title="Contenu du message"
-        // `allow-popups` sans `allow-scripts` : le cadre peut demander
-        // l'ouverture d'un lien, jamais exécuter de code. C'est le backend qui
-        // décide ensuite d'ouvrir l'adresse dans le navigateur du système.
-        sandbox="allow-popups allow-popups-to-escape-sandbox"
+        // Bac à sable strict, sans `allow-scripts` : rien ne s'exécute. Le
+        // clic sur un lien navigue le cadre lui-même — le journal a montré
+        // qu'une fenêtre surgissante, elle, n'atteignait jamais le backend.
+        // Cette navigation-ci est annulée côté Rust, qui ouvre l'adresse dans
+        // le navigateur du système.
+        sandbox=""
         srcDoc={documentIsole(corps.html)}
         className="min-h-0 w-full flex-1"
         style={{ border: 0, background: '#FFFFFF' }}
@@ -248,11 +250,13 @@ function Avertissement() {
 function documentIsole(html: string): string {
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
-<base target="_blank">
 <style>
   html { background: #ffffff; }
   body {
     margin: 0; padding: 20px 24px;
+    /* Un message bâti sur un tableau large défile ici, au lieu d'élargir le
+       cadre et de pousser toute l'application hors de la fenêtre. */
+    overflow-x: auto;
     font: 14px/1.55 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
     color: #1d1d1f; overflow-wrap: break-word;
   }

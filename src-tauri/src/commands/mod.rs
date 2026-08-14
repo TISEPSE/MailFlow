@@ -352,6 +352,13 @@ pub async fn message_corps(
 ) -> Resultat<crate::gmail::corps::CorpsMessage> {
     use crate::gmail::corps;
 
+    // Déjà rangé : ni appel Gmail, ni images à retélécharger. Le dossier est
+    // effacé au démarrage de la machine, jamais avant.
+    let dossier = corps::dossier_cache();
+    if let Some(connu) = corps::lire(&dossier, &id) {
+        return Ok(connu);
+    }
+
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
     let message = client.message_complet(&id).await?;
 
@@ -382,7 +389,52 @@ pub async fn message_corps(
             _ => "aucun",
         }
     );
+    corps::ranger(&dossier, &id, &trouve);
     Ok(trouve)
+}
+
+/// Avancement du préchargement, envoyé à l'interface.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Avancement {
+    pub faits: usize,
+    pub total: usize,
+}
+
+/// Nom de l'événement écouté par l'interface.
+pub const EVENEMENT_PRECHARGEMENT: &str = "corps-precharges";
+
+/// Charge d'avance le corps de tous les messages de la boîte.
+///
+/// L'attente est ainsi groupée au démarrage, avec une barre de progression, au
+/// lieu d'être subie message par message. Les corps déjà rangés sont comptés
+/// sans appel : relancer l'application ne recommence rien.
+///
+/// Un message qui échoue n'interrompt pas les autres : il sera simplement
+/// rechargé à l'ouverture.
+#[tauri::command]
+pub async fn corps_precharger(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    ids: Vec<String>,
+) -> Resultat<usize> {
+    use crate::gmail::corps;
+    use tauri::Emitter;
+
+    let dossier = corps::dossier_cache();
+    let total = ids.len();
+    let mut faits = 0;
+
+    for id in ids {
+        if corps::lire(&dossier, &id).is_none() {
+            let _ = message_corps(etat.clone(), id).await;
+        }
+        faits += 1;
+        let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });
+    }
+
+    log::info!("{faits} corps de message prêts");
+    Ok(faits)
 }
 
 /// Rapatrie les images d'un message et les rend indexées par leur `src`.
