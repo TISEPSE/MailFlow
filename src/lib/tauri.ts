@@ -13,6 +13,7 @@ import type {
   MessageAffiche,
   CompteConnu,
   CorpsMessage,
+  LibelleGmail,
   ProfilCompte,
   RapportExecution,
   Regle,
@@ -109,6 +110,26 @@ export function boiteLister(): Promise<MessageAffiche[]> {
  */
 export function messageCorps(id: string): Promise<CorpsMessage> {
   return invoke<CorpsMessage>('message_corps', { id })
+}
+
+/** Libelles crees par l'utilisateur, par ordre alphabetique. */
+export function libellesLister(): Promise<LibelleGmail[]> {
+  return invoke<LibelleGmail[]>('libelles_lister')
+}
+
+/** Range un message sous un libelle, ou l'archive quand `libelle` est absent. */
+export function messageRanger(id: string, libelle?: string): Promise<void> {
+  return invoke<void>('message_ranger', { id, libelle: libelle ?? null })
+}
+
+/**
+ * Ouvre un brouillon de reponse dans le client de courrier du systeme.
+ *
+ * MailFlow n'a pas le droit d'envoyer du courrier en votre nom : la portee
+ * `gmail.send` est ecartee depuis le debut.
+ */
+export function repondreAuMessage(destinataire: string, sujet: string): Promise<void> {
+  return invoke<void>('repondre_au_message', { destinataire, sujet })
 }
 
 /**

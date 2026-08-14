@@ -39,6 +39,12 @@ export interface CorpsMessage {
   texte: string | null
 }
 
+/** Miroir de `commands::LibelleAffiche`. */
+export interface LibelleGmail {
+  id: string
+  nom: string
+}
+
 /** Miroir de `commands::CompteConnu`. */
 export interface CompteConnu {
   adresse: string

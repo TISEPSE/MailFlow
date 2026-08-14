@@ -17,6 +17,7 @@ import type {
   ActionRegle,
   CorpsMessage,
   CategorieMessage,
+  LibelleGmail,
   MessageAffiche,
   Regle,
 } from '../types/backend'
@@ -42,6 +43,9 @@ export function Courrier({
   logos,
   onOuvrir,
   onSignalerSpam,
+  onRepondre,
+  onRanger,
+  libelles,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -54,6 +58,10 @@ export function Courrier({
   onOuvrir: (id: string) => void
   /** Absent pour les vues où le signalement n'a pas de sens. */
   onSignalerSpam?: (id: string) => void
+  /** Absents hors des mails directs, où répondre n'aurait pas de sens. */
+  onRepondre?: (message: MessageAffiche) => void
+  onRanger?: (id: string, libelle?: string) => void
+  libelles?: LibelleGmail[]
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
@@ -130,6 +138,16 @@ export function Courrier({
               couleur={encre}
             />
 
+            {onRepondre && onRanger && (
+              <BarreDeReponse
+                message={choisi}
+                libelles={libelles ?? []}
+                enCours={enCours}
+                onRepondre={onRepondre}
+                onRanger={onRanger}
+              />
+            )}
+
             {onSignalerSpam ? (
               <Bouton
                 variante="principal"
@@ -176,5 +194,72 @@ export function Courrier({
         }
       />
     </div>
+  )
+}
+
+/**
+ * Répondre et ranger, pour les mails directs.
+ *
+ * « Répondre » ouvre le client de courrier du système : MailFlow n'a pas — et
+ * ne demande pas — le droit d'envoyer du courrier au nom de l'utilisateur.
+ *
+ * Le choix du libellé se fait avant de ranger, pas après : l'utilisateur voit
+ * où le message va partir au moment où il décide, plutôt que de l'apprendre par
+ * un message de confirmation.
+ */
+function BarreDeReponse({
+  message,
+  libelles,
+  enCours,
+  onRepondre,
+  onRanger,
+}: {
+  message: MessageAffiche
+  libelles: LibelleGmail[]
+  enCours: boolean
+  onRepondre: (message: MessageAffiche) => void
+  onRanger: (id: string, libelle?: string) => void
+}) {
+  const [destination, setDestination] = useState('')
+
+  return (
+    <>
+      <Bouton
+        variante="principal"
+        icone="reply"
+        onClick={() => onRepondre(message)}
+        disabled={enCours}
+      >
+        Répondre
+      </Bouton>
+
+      <Bouton
+        icone="archive"
+        onClick={() => onRanger(message.id, destination || undefined)}
+        disabled={enCours}
+      >
+        Archiver
+      </Bouton>
+
+      {libelles.length > 0 && (
+        <label className="inline-flex items-center gap-2 text-[12px]" style={{ color: 'var(--sub)' }}>
+          dans
+          <select
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            aria-label="Libellé de destination"
+            className="bouton bouton-neutre rounded-lg px-3 py-2 text-xs font-semibold"
+            style={{ color: 'var(--fg)' }}
+          >
+            <option value="">Aucun libellé</option>
+            {libelles.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nom}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </>
   )
 }

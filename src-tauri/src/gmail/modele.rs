@@ -93,6 +93,28 @@ pub struct CorpsPartie {
     pub attachment_id: Option<String>,
 }
 
+/// Réponse de `users.labels.list`.
+#[derive(Debug, Default, Deserialize)]
+pub struct ReponseLibelles {
+    #[serde(default)]
+    pub labels: Vec<LibelleGmail>,
+}
+
+/// Un libellé Gmail.
+///
+/// `type` vaut `user` pour ceux que l'utilisateur a créés et `system` pour ceux
+/// que Gmail impose — `INBOX`, `SPAM`, `CATEGORY_PROMOTIONS`… Ranger un message
+/// dans l'un de ces derniers n'aurait pas de sens : ce sont des états, pas des
+/// dossiers.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibelleGmail {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type", default)]
+    pub genre: String,
+}
+
 /// Réponse de `users.messages.attachments.get`.
 #[derive(Debug, Deserialize)]
 pub struct PieceJointe {

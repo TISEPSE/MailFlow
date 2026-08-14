@@ -121,6 +121,10 @@ fn url_complet(id: &str) -> String {
     format!("{BASE_API}/users/me/messages/{id}?format=full")
 }
 
+fn url_libelles() -> String {
+    format!("{BASE_API}/users/me/labels")
+}
+
 /// URL de `users.messages.attachments.get`.
 fn url_piece_jointe(message: &str, piece: &str) -> String {
     let encoder = |v: &str| url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>();
@@ -318,6 +322,51 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         let corps = serde_json::json!({
             "ids": ids,
             "addLabelIds": [libelles::SPAM],
+            "removeLabelIds": [libelles::INBOX],
+        })
+        .to_string();
+
+        self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
+            .await
+            .map(|_| ())
+    }
+
+    /// Libellés que l'utilisateur a créés lui-même.
+    ///
+    /// Les libellés système — `INBOX`, `SPAM`, `CATEGORY_PROMOTIONS` — sont
+    /// écartés : ce sont des états de message, pas des dossiers où l'on range.
+    /// Les proposer conduirait l'utilisateur à croire qu'il peut classer un
+    /// message dans « Indésirables » comme dans « Factures ».
+    pub async fn libelles(&self) -> Resultat<Vec<crate::gmail::modele::LibelleGmail>> {
+        use crate::gmail::modele::ReponseLibelles;
+
+        let corps = self.appeler(Methode::Get, &url_libelles(), None).await?;
+        let reponse: ReponseLibelles = serde_json::from_str(&corps)
+            .map_err(|e| AppError::Reseau(format!("libellés illisibles : {e}")))?;
+
+        let mut propres: Vec<_> = reponse
+            .labels
+            .into_iter()
+            .filter(|l| l.genre == "user")
+            .collect();
+
+        propres.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        Ok(propres)
+    }
+
+    /// Range des messages sous un libellé et les sort de la boîte de réception.
+    ///
+    /// Sans `libelle`, c'est un archivage simple — exactement le bouton
+    /// d'archivage de Gmail, qui ne fait qu'ôter `INBOX`.
+    pub async fn ranger(&self, ids: &[String], libelle: Option<&str>) -> Resultat<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let ajouts: Vec<&str> = libelle.into_iter().collect();
+        let corps = serde_json::json!({
+            "ids": ids,
+            "addLabelIds": ajouts,
             "removeLabelIds": [libelles::INBOX],
         })
         .to_string();
@@ -747,6 +796,55 @@ mod tests {
 
         assert_eq!(c.client.adresse_du_compte().await.unwrap(), "moi@gmail.com");
         assert!(c.urls()[0].ends_with("/users/me/profile"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn seuls_les_libelles_de_l_utilisateur_sont_proposes() {
+        // `INBOX` ou `SPAM` sont des états, pas des dossiers : les offrir comme
+        // destination laisserait croire qu'on peut y ranger un message.
+        let c = client(vec![ok(r#"{"labels":[
+                {"id":"INBOX","name":"INBOX","type":"system"},
+                {"id":"L2","name":"factures","type":"user"},
+                {"id":"L1","name":"Archives","type":"user"}
+            ]}"#)]);
+
+        let noms: Vec<String> = c
+            .client
+            .libelles()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|l| l.name)
+            .collect();
+
+        // Triés sans tenir compte de la casse, sinon « factures » passerait
+        // après tous les libellés commençant par une majuscule.
+        assert_eq!(noms, ["Archives", "factures"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ranger_sans_libelle_se_contente_d_archiver() {
+        let c = client(vec![ok("{}")]);
+
+        c.client.ranger(&["m1".to_string()], None).await.unwrap();
+
+        let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
+        assert_eq!(envoye["addLabelIds"], serde_json::json!([]));
+        assert_eq!(envoye["removeLabelIds"], serde_json::json!(["INBOX"]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ranger_sous_un_libelle_le_pose_et_retire_la_boite() {
+        let c = client(vec![ok("{}")]);
+
+        c.client
+            .ranger(&["m1".to_string()], Some("L1"))
+            .await
+            .unwrap();
+
+        let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
+        assert_eq!(envoye["addLabelIds"], serde_json::json!(["L1"]));
+        assert_eq!(envoye["removeLabelIds"], serde_json::json!(["INBOX"]));
     }
 
     #[tokio::test(start_paused = true)]

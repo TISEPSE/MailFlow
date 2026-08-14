@@ -26,7 +26,10 @@ import {
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
+  libellesLister,
   messageMarquerLu,
+  messageRanger,
+  repondreAuMessage,
   messageSignalerSpam,
   regleAjouter,
   regleBasculer,
@@ -39,6 +42,7 @@ import type {
   JeuDeRegles,
   MessageAffiche,
   CompteConnu,
+  LibelleGmail,
   ProfilCompte,
 } from './types/backend'
 
@@ -87,6 +91,7 @@ export default function App() {
   const [prefs, setPrefs] = useState(DEFAUTS)
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
   const [comptes, setComptes] = useState<CompteConnu[]>([])
+  const [libelles, setLibelles] = useState<LibelleGmail[]>([])
   const [logos, setLogos] = useState<Record<string, string>>({})
 
   const { sombre, accent } = prefs
@@ -167,6 +172,9 @@ export default function App() {
     void rafraichir().then(async (sante) => {
       if (!sante?.compteConnecte) return
       setProfil(await compteProfil().catch(() => null))
+      // Une seule lecture par session : la liste des libellés bouge rarement,
+      // et la relire à chaque relevé dépenserait du quota pour rien.
+      setLibelles(await libellesLister().catch(() => []))
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)
       }
@@ -446,6 +454,25 @@ export default function App() {
               proposition={PROPOSITIONS[vue]}
               logos={logos}
               onOuvrir={(id) => void marquerLu(id)}
+              libelles={vue === 'humain' ? libelles : undefined}
+              onRepondre={
+                vue === 'humain'
+                  ? (m) =>
+                      void agir(async () => {
+                        await repondreAuMessage(m.adresse, m.sujet)
+                        return null
+                      })
+                  : undefined
+              }
+              onRanger={
+                vue === 'humain'
+                  ? (id, libelle) =>
+                      void agir(async () => {
+                        await messageRanger(id, libelle)
+                        return 'Message archivé.'
+                      })
+                  : undefined
+              }
               onSignalerSpam={
                 vue === 'publicite'
                   ? (id) =>

@@ -460,6 +460,86 @@ where
 /// Images distantes demandées de front. Bornées : ce sont des serveurs tiers.
 const IMAGES_DE_FRONT: usize = 6;
 
+/// Un libellé Gmail, tel que l'interface le propose.
+#[derive(Debug, Serialize)]
+pub struct LibelleAffiche {
+    pub id: String,
+    pub nom: String,
+}
+
+/// Libellés créés par l'utilisateur, par ordre alphabétique.
+#[tauri::command]
+pub async fn libelles_lister(etat: State<'_, EtatAuth>) -> Resultat<Vec<LibelleAffiche>> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+
+    Ok(client
+        .libelles()
+        .await?
+        .into_iter()
+        .map(|l| LibelleAffiche {
+            id: l.id,
+            nom: l.name,
+        })
+        .collect())
+}
+
+/// Range un message sous un libellé, ou l'archive simplement.
+#[tauri::command]
+pub async fn message_ranger(
+    etat: State<'_, EtatAuth>,
+    id: String,
+    libelle: Option<String>,
+) -> Resultat<()> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    client.ranger(&[id], libelle.as_deref()).await?;
+
+    log::info!("message rangé hors de la boîte de réception");
+    Ok(())
+}
+
+/// Ouvre un brouillon de réponse dans le client de courrier du système.
+///
+/// MailFlow n'a pas — et ne demande pas — le droit d'envoyer du courrier en
+/// votre nom : la portée `gmail.send` est écartée depuis le début. La réponse
+/// s'écrit donc là où l'utilisateur écrit déjà son courrier, et part de son
+/// compte, pas du nôtre.
+#[tauri::command]
+pub async fn repondre_au_message(destinataire: String, sujet: String) -> Resultat<()> {
+    let url = url_mailto(&destinataire, &sujet)?;
+
+    tauri_plugin_opener::open_url(&url, None::<&str>)
+        .map_err(|e| AppError::Config(format!("aucun client de courrier joignable : {e}")))?;
+
+    log::info!("brouillon de réponse ouvert dans le client du système");
+    Ok(())
+}
+
+/// Construit un `mailto:` à partir d'une adresse et d'un sujet.
+///
+/// Le sujet vient d'un tiers : il passe par l'encodage de requête, sans quoi un
+/// `&` ou un saut de ligne y ajouterait des champs — `bcc`, `body` — que
+/// l'utilisateur n'a pas voulus.
+fn url_mailto(destinataire: &str, sujet: &str) -> Resultat<String> {
+    let destinataire = destinataire.trim();
+    if destinataire.is_empty() || !destinataire.contains('@') || destinataire.contains(['<', '>']) {
+        return Err(AppError::Config("adresse de réponse inutilisable".into()));
+    }
+
+    let encoder = |v: &str| url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>();
+    let sujet = sujet.trim();
+    let prefixe = if sujet.to_lowercase().starts_with("re:") || sujet.is_empty() {
+        String::new()
+    } else {
+        "Re: ".to_string()
+    };
+
+    Ok(format!(
+        "mailto:{}?subject={}",
+        encoder(destinataire),
+        encoder(&format!("{prefixe}{sujet}"))
+    ))
+}
+
 /// Signale un message comme indésirable.
 ///
 /// Même geste que dans Gmail : le message rejoint les indésirables et quitte la
@@ -754,4 +834,38 @@ pub async fn logos_expediteurs(
 
     log::info!("{} logo(s) d'expéditeur disponibles", trouves.len());
     Ok(trouves)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::url_mailto;
+
+    #[test]
+    fn le_sujet_est_prefixe_une_seule_fois() {
+        let url = url_mailto("a@b.fr", "Disponibilités").unwrap();
+
+        assert!(url.contains("subject=Re%3A+Disponibilit"), "{url}");
+        assert!(
+            !url_mailto("a@b.fr", "Re: déjà")
+                .unwrap()
+                .contains("Re%3A+Re%3A")
+        );
+    }
+
+    #[test]
+    fn un_sujet_hostile_n_ajoute_pas_de_champs() {
+        // Sans encodage, ce sujet glisserait une copie cachée dans le brouillon
+        // que l'utilisateur s'apprête à envoyer.
+        let url = url_mailto("a@b.fr", "Bonjour&bcc=espion@ailleurs.fr").unwrap();
+
+        assert!(!url.contains("&bcc="), "{url}");
+    }
+
+    #[test]
+    fn une_adresse_inutilisable_est_refusee() {
+        // Mieux vaut le dire que d'ouvrir un client de courrier sur un vide.
+        assert!(url_mailto("", "x").is_err());
+        assert!(url_mailto("sans-arobase", "x").is_err());
+        assert!(url_mailto("Nom <a@b.fr>", "x").is_err());
+    }
 }
