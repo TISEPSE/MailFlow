@@ -324,3 +324,52 @@ pub async fn boite_lister(
     log::info!("{} message(s) relevé(s)", boite.len());
     Ok(boite)
 }
+
+/// Adresse du compte relié, ou `None` si aucun ne l'est.
+///
+/// Séparée de `app_health` : celle-ci s'appelle à chaque rafraîchissement, y
+/// compris hors connexion, et n'a pas à consommer du quota Gmail pour ça.
+#[tauri::command]
+pub async fn compte_adresse(etat: State<'_, EtatAuth>) -> Resultat<Option<String>> {
+    if !etat.session.lock().await.est_connecte()? {
+        return Ok(None);
+    }
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    client.adresse_du_compte().await.map(Some)
+}
+
+/// Logos des expéditeurs, un par domaine.
+///
+/// Chaque logo est demandé au domaine de l'expéditeur, jamais à un service
+/// tiers : un agrégateur d'icônes apprendrait la liste complète des
+/// correspondants de l'utilisateur. Voir [`crate::gmail::logos`].
+#[tauri::command]
+pub async fn logos_expediteurs(
+    app: AppHandle,
+    adresses: Vec<String>,
+) -> Resultat<std::collections::HashMap<String, String>> {
+    let domaines: std::collections::BTreeSet<String> = adresses
+        .iter()
+        .filter_map(|a| crate::gmail::logos::domaine(a))
+        .map(str::to_string)
+        .collect();
+
+    let dossier = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| AppError::Config(format!("dossier de cache introuvable : {e}")))?
+        .join("logos");
+
+    let http = reqwest::Client::builder()
+        .https_only(true)
+        .build()
+        .map_err(|e| AppError::Config(format!("client HTTP inutilisable : {e}")))?;
+
+    let trouves =
+        crate::gmail::logos::logos(&http, &dossier, &domaines.into_iter().collect::<Vec<_>>())
+            .await?;
+
+    log::info!("{} logo(s) d'expéditeur disponibles", trouves.len());
+    Ok(trouves)
+}

@@ -97,3 +97,21 @@ export function regleBasculer(id: string): Promise<JeuDeRegles> {
 export function boiteLister(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('boite_lister')
 }
+
+/** Adresse du compte relié, ou `null` si aucun ne l'est. */
+export function compteAdresse(): Promise<string | null> {
+  return invoke<string | null>('compte_adresse')
+}
+
+/**
+ * Logos des expediteurs, indexes par domaine.
+ *
+ * Chaque logo est demande au domaine de l'expediteur, jamais a un service
+ * tiers : un agregateur d'icones apprendrait la liste complete des
+ * correspondants de l'utilisateur.
+ */
+export function logosExpediteurs(
+  adresses: string[],
+): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>('logos_expediteurs', { adresses })
+}

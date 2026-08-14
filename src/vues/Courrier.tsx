@@ -36,6 +36,7 @@ export function Courrier({
   regles,
   onCreerRegle,
   sombre,
+  logos,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -43,6 +44,7 @@ export function Courrier({
   regles: Regle[]
   onCreerRegle: (regle: Regle) => Promise<void>
   sombre: boolean
+  logos: Record<string, string>
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
@@ -84,9 +86,11 @@ export function Courrier({
         messages={messages}
         selection={choisi.id}
         onSelect={setSelection}
+        logos={logos}
       />
       <Lecture
         message={choisi}
+        logos={logos}
         actions={
           <>
             <Etiquette

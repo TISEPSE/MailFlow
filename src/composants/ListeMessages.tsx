@@ -7,17 +7,19 @@
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
 import { Icone, Pastille } from './base'
-import { heureCourte, initiales, palette } from '../lib/presentation'
+import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
 import type { MessageAffiche } from '../types/backend'
 
 export function ListeMessages({
   messages,
   selection,
   onSelect,
+  logos,
 }: {
   messages: MessageAffiche[]
   selection: string | null
   onSelect: (id: string) => void
+  logos: Record<string, string>
 }) {
   return (
     <div
@@ -43,7 +45,12 @@ export function ListeMessages({
               className="mt-2 h-1.5 w-1.5 flex-none rounded-full"
               style={{ background: m.nonLu ? 'var(--accent)' : 'transparent' }}
             />
-            <Pastille texte={initiales(m.nom)} fond={fond} couleur={encre} />
+            <Pastille
+              texte={initiales(m.nom)}
+              fond={fond}
+              couleur={encre}
+              logo={logos[domaineDe(m.adresse)]}
+            />
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-2">
                 <span
@@ -85,9 +92,11 @@ export function ListeMessages({
 export function Lecture({
   message,
   actions,
+  logos,
 }: {
   message: MessageAffiche | null
   actions?: React.ReactNode
+  logos: Record<string, string>
 }) {
   if (!message) {
     return (
@@ -110,7 +119,13 @@ export function Lecture({
         </h2>
 
         <div className="mt-4 flex items-center gap-3">
-          <Pastille texte={initiales(message.nom)} taille={36} fond={fond} couleur={encre} />
+          <Pastille
+            texte={initiales(message.nom)}
+            taille={36}
+            fond={fond}
+            couleur={encre}
+            logo={logos[domaineDe(message.adresse)]}
+          />
           <div className="min-w-0 flex-1">
             <div className="text-[13.5px] font-semibold">{message.nom}</div>
             <div className="font-mono text-[11px]" style={{ color: 'var(--sub)' }}>

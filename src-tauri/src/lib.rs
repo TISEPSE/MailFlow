@@ -63,6 +63,8 @@ pub fn run() {
             commands::regle_supprimer,
             commands::regle_basculer,
             commands::boite_lister,
+            commands::compte_adresse,
+            commands::logos_expediteurs,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de l'application Tauri");

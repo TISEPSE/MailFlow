@@ -46,19 +46,42 @@ export function Icone({
   )
 }
 
-/** Pastille d'initiales, à défaut d'avatar réel — Gmail n'en fournit pas via
- *  l'API metadata. */
+/**
+ * Pastille d'expéditeur : son logo s'il en a un, ses initiales sinon.
+ *
+ * Gmail ne fournit aucun avatar ; le logo vient du domaine de l'expéditeur.
+ * Les initiales restent le cas normal, pas un pis-aller.
+ */
 export function Pastille({
   texte,
   taille = 30,
   fond,
   couleur,
+  logo,
 }: {
   texte: string
   taille?: number
   fond: string
   couleur: string
+  logo?: string
 }) {
+  if (logo) {
+    return (
+      <img
+        src={logo}
+        alt=""
+        className="flex-none rounded-full object-contain"
+        style={{
+          width: taille,
+          height: taille,
+          background: 'var(--card)',
+          border: '1px solid var(--line)',
+          padding: taille * 0.14,
+        }}
+      />
+    )
+  }
+
   return (
     <div
       className="flex flex-none items-center justify-center rounded-full font-semibold"

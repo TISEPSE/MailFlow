@@ -29,6 +29,7 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "
 reqwest = { version = "0.13.4", features = ["json", "gzip", "brotli", "form"] }
 oauth2 = { version = "5.0.0", default-features = false }
 keyring = { version = "4.1.6", features = ["apple-native-keyring-store"] }
+base64 = "0.23.1"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -221,6 +221,27 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         Ok(trouves)
     }
 
+    /// Adresse du compte relié, telle que Gmail la connaît.
+    ///
+    /// Une unité de quota, et pas de scope supplémentaire : `gmail.modify`
+    /// suffit. Sert à afficher de quel compte il s'agit — utile dès qu'on en
+    /// gère plusieurs, et rassurant quand on n'en a qu'un.
+    pub async fn adresse_du_compte(&self) -> Resultat<String> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Profil {
+            email_address: String,
+        }
+
+        let corps = self
+            .appeler(Methode::Get, &format!("{BASE_API}/users/me/profile"), None)
+            .await?;
+
+        serde_json::from_str::<Profil>(&corps)
+            .map(|p| p.email_address)
+            .map_err(|e| AppError::Reseau(format!("profil illisible : {e}")))
+    }
+
     pub async fn metadonnees(&self, id: &str) -> Resultat<MessageMetadata> {
         let corps = self
             .appeler(Methode::Get, &url_metadonnees(id), None)
@@ -600,6 +621,16 @@ mod tests {
 
         assert_eq!(rapport.echecs, 1);
         assert_eq!(rapport.mis_a_la_corbeille, 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn l_adresse_du_compte_est_lue_sur_le_profil() {
+        let c = client(vec![ok(
+            r#"{"emailAddress":"moi@gmail.com","messagesTotal":42}"#,
+        )]);
+
+        assert_eq!(c.client.adresse_du_compte().await.unwrap(), "moi@gmail.com");
+        assert!(c.urls()[0].ends_with("/users/me/profile"));
     }
 
     #[tokio::test(start_paused = true)]

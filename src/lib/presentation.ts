@@ -109,3 +109,8 @@ export function initiales(nom: string): string {
   if (mots.length === 1) return mots[0]!.slice(0, 2).toUpperCase()
   return (mots[0]![0]! + mots[1]![0]!).toUpperCase()
 }
+
+/** Domaine d'une adresse normalisée, clé de la table des logos. */
+export function domaineDe(adresse: string): string {
+  return adresse.split('@')[1] ?? ''
+}

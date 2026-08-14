@@ -1,102 +1,74 @@
 /**
- * Vue « Paramètres ».
+ * Vue « Paramètres », reprise de la maquette.
  *
- * Elle distingue nettement deux choses : ce qui est réglable aujourd'hui, et ce
- * qui relève du diagnostic. Annoncer un réglage qui ne fait rien serait pire que
- * de ne pas l'afficher — d'où l'absence, ici, des options de fréquence et de
- * moteur d'IA tant que le code derrière n'existe pas.
+ * Un écart assumé : « Résumer les newsletters automatiquement » est affiché mais
+ * désactivé. Le module d'IA n'existe pas encore ; un interrupteur qui bascule
+ * sans rien déclencher serait pire qu'une absence, parce que l'utilisateur
+ * croirait le réglage actif.
  */
-import { Bloc, Bouton, Icone, Interrupteur, LigneReglage } from '../composants/base'
+import { Bloc, Bouton, Icone, Interrupteur, Segments } from '../composants/base'
+import { LogoGoogle } from '../composants/LogoGoogle'
+import { FREQUENCES, type Frequence } from '../lib/preferences'
 import type { EtatApplication } from '../types/backend'
 
 const ACCENTS = ['#2F6BFF', '#1F7A5A', '#4C3BCF', '#C2410C'] as const
 
 export function Parametres({
   etat,
+  compte,
   sombre,
   onBasculerTheme,
   accent,
   onAccent,
+  syncAuLancement,
+  onSyncAuLancement,
+  frequence,
+  onFrequence,
   onConnecter,
   onDeconnecter,
   enCours,
 }: {
   etat: EtatApplication
+  compte: string | null
   sombre: boolean
   onBasculerTheme: () => void
   accent: string
   onAccent: (c: string) => void
+  syncAuLancement: boolean
+  onSyncAuLancement: () => void
+  frequence: Frequence
+  onFrequence: (f: Frequence) => void
   onConnecter: () => void
   onDeconnecter: () => void
   enCours: boolean
 }) {
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-2xl px-8 py-7">
-        <div
-          className="flex items-center gap-4 rounded-xl border p-4"
-          style={{
-            background: 'var(--card)',
-            borderColor: 'var(--line)',
-            boxShadow: 'var(--shadow)',
-          }}
-        >
-          <div
-            className="flex h-11 w-11 flex-none items-center justify-center rounded-full"
-            style={{
-              background: etat.compteConnecte ? 'var(--accent-soft)' : 'var(--faint)',
-              color: etat.compteConnecte ? 'var(--accent-fg)' : 'var(--sub)',
-            }}
-          >
-            <Icone nom={etat.compteConnecte ? 'mail' : 'person_off'} taille={22} />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-semibold">
-              {etat.compteConnecte ? 'Compte Gmail connecté' : 'Aucun compte connecté'}
-            </div>
-            <div className="pt-0.5 text-[12px]" style={{ color: 'var(--sub)' }}>
-              {etat.compteConnecte
-                ? 'L’autorisation est conservée dans le trousseau de votre système.'
-                : 'MailFlow ne peut rien trier tant qu’aucun compte n’est autorisé.'}
-            </div>
-          </div>
-
-          {etat.compteConnecte ? (
-            <Bouton onClick={onDeconnecter} disabled={enCours} icone="logout">
-              Déconnecter
-            </Bouton>
-          ) : (
-            <Bouton
-              variante="principal"
-              onClick={onConnecter}
-              disabled={enCours || !etat.clientGoogleConfigure || !etat.trousseauDisponible}
-              icone="login"
-            >
-              Connecter
-            </Bouton>
-          )}
-        </div>
+      <div className="mx-auto w-full max-w-3xl px-8 py-7">
+        <CarteCompte
+          connecte={etat.compteConnecte}
+          compte={compte}
+          bloque={!etat.clientGoogleConfigure || !etat.trousseauDisponible}
+          enCours={enCours}
+          onConnecter={onConnecter}
+          onDeconnecter={onDeconnecter}
+        />
 
         <Bloc titre="Apparence">
-          <LigneReglage
+          <Reglage
             icone="dark_mode"
             titre="Thème sombre"
             detail="Indépendant du réglage de votre système."
           >
-            <Interrupteur
-              actif={sombre}
-              onChange={onBasculerTheme}
-              libelle="Thème sombre"
-            />
-          </LigneReglage>
+            <Interrupteur actif={sombre} onChange={onBasculerTheme} libelle="Thème sombre" />
+          </Reglage>
 
-          <LigneReglage
+          <Reglage
             icone="palette"
             titre="Couleur d'accent"
             detail="Appliquée aux boutons, filtres et interrupteurs."
           >
-            <div className="flex flex-none gap-2">
+            <div className="flex flex-none gap-2.5">
               {ACCENTS.map((c) => (
                 <button
                   key={c}
@@ -104,7 +76,7 @@ export function Parametres({
                   onClick={() => onAccent(c)}
                   aria-label={`Couleur d'accent ${c}`}
                   aria-pressed={c === accent}
-                  className="h-6 w-6 rounded-full transition-transform hover:scale-110"
+                  className="h-7 w-7 rounded-full transition-transform hover:scale-110"
                   style={{
                     background: c,
                     outline: c === accent ? '2px solid var(--fg)' : 'none',
@@ -113,57 +85,193 @@ export function Parametres({
                 />
               ))}
             </div>
-          </LigneReglage>
+          </Reglage>
+        </Bloc>
+
+        <Bloc titre="Synchronisation Gmail">
+          <Reglage
+            icone="sync"
+            titre="Appliquer les règles au lancement"
+            detail="Le tri se fait avant même l'ouverture de la boîte."
+          >
+            <Interrupteur
+              actif={syncAuLancement}
+              onChange={onSyncAuLancement}
+              disabled={!etat.compteConnecte}
+              libelle="Appliquer les règles au lancement"
+            />
+          </Reglage>
+
+          <Reglage
+            icone="hourglass_empty"
+            titre="Fréquence de vérification"
+            detail="Intervalle entre deux relevés de la boîte de réception."
+          >
+            <Segments
+              valeurs={FREQUENCES}
+              valeur={frequence}
+              onChange={onFrequence}
+              libelle="Fréquence de vérification"
+            />
+          </Reglage>
+        </Bloc>
+
+        <Bloc titre="Résumés IA">
+          <Reglage
+            icone="auto_awesome"
+            titre="Résumer les newsletters automatiquement"
+            detail="Pas encore disponible : aucun moteur de résumé n'est branché."
+          >
+            <Interrupteur
+              actif={false}
+              onChange={() => {}}
+              disabled
+              libelle="Résumer les newsletters automatiquement"
+            />
+          </Reglage>
         </Bloc>
 
         <Bloc titre="Diagnostic">
-          <LigneReglage
+          <Reglage
             icone="key"
             titre="Trousseau du système"
             detail="Sans lui, la connexion Gmail ne peut pas être conservée."
           >
             <Statut ok={etat.trousseauDisponible} />
-          </LigneReglage>
+          </Reglage>
 
-          <LigneReglage
+          <Reglage
             icone="badge"
             titre="Identifiants Google"
             detail="Voir docs/connexion-google.md pour les renseigner."
           >
             <Statut ok={etat.clientGoogleConfigure} />
-          </LigneReglage>
+          </Reglage>
 
-          <LigneReglage
+          <Reglage
             icone="rule_folder"
             titre="Fichier de règles"
             detail={etat.cheminRegles}
           >
-            <span
-              className="flex-none font-mono text-[11px]"
-              style={{ color: 'var(--sub)' }}
-            >
+            <span className="flex-none font-mono text-[11px]" style={{ color: 'var(--sub)' }}>
               {etat.nombreDeRegles === null ? 'illisible' : `${etat.nombreDeRegles} règles`}
             </span>
-          </LigneReglage>
+          </Reglage>
 
-          <LigneReglage
+          <Reglage
             icone="info"
             titre="Version"
             detail={`MailFlow ${etat.version} — ${etat.plateforme}`}
           >
             <span />
-          </LigneReglage>
+          </Reglage>
         </Bloc>
+      </div>
+    </div>
+  )
+}
 
-        <p
-          className="px-1 pt-5 text-[12px] leading-relaxed"
+/**
+ * Carte de compte.
+ *
+ * Teintée de la couleur d'accent quand un compte est relié, neutre sinon : la
+ * différence doit sauter aux yeux avant même de lire le texte.
+ */
+function CarteCompte({
+  connecte,
+  compte,
+  bloque,
+  enCours,
+  onConnecter,
+  onDeconnecter,
+}: {
+  connecte: boolean
+  compte: string | null
+  bloque: boolean
+  enCours: boolean
+  onConnecter: () => void
+  onDeconnecter: () => void
+}) {
+  return (
+    <div
+      className="flex items-center gap-4 rounded-2xl p-4"
+      style={{
+        background: connecte ? 'var(--accent-soft)' : 'var(--sunk)',
+        border: '1px solid var(--line)',
+      }}
+    >
+      <div
+        className="flex h-12 w-12 flex-none items-center justify-center rounded-full"
+        style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
+      >
+        {connecte ? (
+          <LogoGoogle taille={24} />
+        ) : (
+          <Icone nom="person_off" taille={22} style={{ color: 'var(--sub)' }} />
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="text-[15px] font-semibold">
+          {connecte ? 'Compte Google relié' : 'Aucun compte relié'}
+        </div>
+        <div
+          className="selectionnable truncate pt-0.5 font-mono text-[12px]"
           style={{ color: 'var(--sub)' }}
         >
-          La fréquence de synchronisation et les résumés par IA ne sont pas encore
-          réglables : le code correspondant n'existe pas. Ils apparaîtront ici
-          quand ils feront réellement quelque chose.
-        </p>
+          {connecte
+            ? (compte ?? 'autorisation conservée dans le trousseau')
+            : bloque
+              ? 'configuration incomplète, voir le diagnostic ci-dessous'
+              : 'MailFlow ne peut rien trier tant qu’aucun compte n’est autorisé'}
+        </div>
       </div>
+
+      {connecte ? (
+        <Bouton onClick={onDeconnecter} disabled={enCours} icone="logout">
+          Déconnecter
+        </Bouton>
+      ) : (
+        <Bouton
+          variante="principal"
+          onClick={onConnecter}
+          disabled={enCours || bloque}
+          icone="login"
+        >
+          Connecter mon compte Gmail
+        </Bouton>
+      )}
+    </div>
+  )
+}
+
+/** Ligne de réglage : icône en pastille, intitulé, explication, contrôle. */
+function Reglage({
+  icone,
+  titre,
+  detail,
+  children,
+}: {
+  icone: Parameters<typeof Icone>[0]['nom']
+  titre: string
+  detail: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-3.5 px-4 py-4">
+      <div
+        className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px]"
+        style={{ background: 'var(--sunk)' }}
+      >
+        <Icone nom={icone} taille={18} style={{ color: 'var(--sub)' }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[13.5px] font-semibold">{titre}</div>
+        <div className="truncate pt-0.5 text-[12.5px]" style={{ color: 'var(--sub)' }}>
+          {detail}
+        </div>
+      </div>
+      {children}
     </div>
   )
 }
@@ -174,7 +282,7 @@ function Statut({ ok }: { ok: boolean }) {
       className="inline-flex flex-none items-center gap-1.5 text-[12px] font-semibold"
       style={{ color: ok ? 'var(--accent-fg)' : '#C2410C' }}
     >
-      <Icone nom={ok ? 'check_circle' : 'error'} taille={16} rempli />
+      <Icone nom={ok ? 'check_circle' : 'error'} taille={16} />
       {ok ? 'disponible' : 'indisponible'}
     </span>
   )

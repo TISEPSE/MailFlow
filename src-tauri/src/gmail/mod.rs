@@ -30,6 +30,7 @@ pub mod boite;
 pub mod classement;
 pub mod client;
 pub mod execution;
+pub mod logos;
 pub mod modele;
 pub mod reessai;
 pub mod synchronisation;
