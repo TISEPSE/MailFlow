@@ -42,17 +42,32 @@ const CATEGORIE_ONGLET: Record<Exclude<Onglet, 'Toutes'>, Categorie> = {
 const CATEGORIES = ['Publicités', 'Newsletters', 'Formations'] as const
 
 /**
- * Les deux seules actions proposées ici.
+ * Les trois actions proposées ici.
+ *
+ * « Classer seulement » vient en premier : c'est la seule qui ne change rien
+ * dans Gmail, et c'est elle qui permet de remplir « Rappels de formations » —
+ * une vue que rien ne devine, et que l'archivage viderait aussitôt.
  *
  * `generer_resume_et_archiver` est volontairement absente : le module de résumé
  * n'existe pas, et une règle qui promet un résumé archiverait sans résumer.
  */
-const ACTIONS = ['Archiver', 'Mettre à la corbeille'] as const
+const ACTIONS = ['Classer seulement', 'Archiver', 'Mettre à la corbeille'] as const
 type LibelleAction = (typeof ACTIONS)[number]
 
 const ACTION: Record<LibelleAction, ActionRegle> = {
+  'Classer seulement': 'classer_seulement',
   Archiver: 'archiver_automatique',
   'Mettre à la corbeille': 'supprimer_toujours',
+}
+
+/**
+ * Action proposée d'emblée pour une catégorie.
+ *
+ * Une formation se range pour être lue ; une publicité se range pour ne plus
+ * l'être. Le réglage par défaut suit cette intention, et reste modifiable.
+ */
+function actionParDefaut(categorie: (typeof CATEGORIES)[number]): LibelleAction {
+  return categorie === 'Formations' ? 'Classer seulement' : 'Archiver'
 }
 
 export function Regles({
@@ -63,6 +78,8 @@ export function Regles({
   expediteurs,
   libelles,
   sombre,
+  ouvrirPour,
+  onOuverture,
 }: {
   regles: Regle[]
   onBasculer: (id: string) => Promise<void>
@@ -72,11 +89,21 @@ export function Regles({
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
   sombre: boolean
+  /** Ouvre la fenêtre d'ajout sur cette catégorie, à l'arrivée sur la page. */
+  ouvrirPour?: Categorie | null
+  /** Signale que la demande d'ouverture a été honorée, pour qu'elle ne se
+   *  rejoue pas au prochain passage sur la page. */
+  onOuverture?: () => void
 }) {
   const [onglet, setOnglet] = useState<Onglet>('Toutes')
   const [recherche, setRecherche] = useState('')
   const [aConfirmer, setAConfirmer] = useState<string | null>(null)
-  const [formulaireOuvert, setFormulaireOuvert] = useState(false)
+  const [formulaireOuvert, setFormulaireOuvert] = useState(Boolean(ouvrirPour))
+
+  const fermer = () => {
+    setFormulaireOuvert(false)
+    onOuverture?.()
+  }
 
   const q = recherche.trim().toLowerCase()
   const visibles = regles
@@ -242,16 +269,17 @@ export function Regles({
         <Modale
           titre="Ajouter une règle"
           sous="Elle vaudra pour tous les messages à venir de cet expéditeur."
-          onFermer={() => setFormulaireOuvert(false)}
+          onFermer={fermer}
         >
           <FormulaireAjout
             expediteurs={expediteurs}
             libelles={libelles}
             sombre={sombre}
-            onAnnuler={() => setFormulaireOuvert(false)}
+            categorieInitiale={ouvrirPour ?? undefined}
+            onAnnuler={fermer}
             onValider={async (regle) => {
               await onCreerRegle(regle)
-              setFormulaireOuvert(false)
+              fermer()
             }}
           />
         </Modale>
@@ -273,19 +301,34 @@ function FormulaireAjout({
   expediteurs,
   libelles,
   sombre,
+  categorieInitiale,
 }: {
   onValider: (regle: Regle) => Promise<void>
   onAnnuler: () => void
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
   sombre: boolean
+  /** Catégorie posée d'avance, quand la fenêtre est ouverte depuis une vue. */
+  categorieInitiale?: Categorie
 }) {
+  const depart =
+    (Object.entries(CATEGORIE_ONGLET) as [(typeof CATEGORIES)[number], Categorie][]).find(
+      ([, c]) => c === categorieInitiale,
+    )?.[0] ?? 'Publicités'
+
   const [adresse, setAdresse] = useState('')
-  const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>('Publicités')
+  const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>(depart)
   const [choisiParDefaut, setChoisiParDefaut] = useState(true)
-  const [libelleAction, setLibelleAction] = useState<LibelleAction>('Archiver')
+  const [actionChoisie, setActionChoisie] = useState(false)
+  const [libelleAction, setLibelleAction] = useState<LibelleAction>(actionParDefaut(depart))
   const [destination, setDestination] = useState('')
   const [enCours, setEnCours] = useState(false)
+
+  /** Change la catégorie, et l'action avec elle tant qu'on n'y a pas touché. */
+  const changerCategorie = (v: (typeof CATEGORIES)[number]) => {
+    setCategorie(v)
+    if (!actionChoisie) setLibelleAction(actionParDefaut(v))
+  }
 
   const valide = adresseValide(adresse)
   const archive = ACTION[libelleAction] === 'archiver_automatique'
@@ -334,7 +377,7 @@ function FormulaireAjout({
               (typeof CATEGORIES)[number],
               Categorie,
             ][]).find(([, c]) => c === devinee)
-            if (nom) setCategorie(nom[0])
+            if (nom) changerCategorie(nom[0])
           }
         }}
       />
@@ -345,7 +388,7 @@ function FormulaireAjout({
             valeurs={CATEGORIES}
             valeur={categorie}
             onChange={(v) => {
-              setCategorie(v)
+              changerCategorie(v)
               setChoisiParDefaut(false)
             }}
             libelle="Catégorie de la règle"
@@ -356,7 +399,10 @@ function FormulaireAjout({
           <Segments
             valeurs={ACTIONS}
             valeur={libelleAction}
-            onChange={setLibelleAction}
+            onChange={(v) => {
+              setLibelleAction(v)
+              setActionChoisie(true)
+            }}
             libelle="Action de la règle"
           />
         </Champ>
@@ -429,38 +475,44 @@ function ChampAdresse({
     return (
       <div className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
+        {/* Hauteur libre plutôt que fixe : c'est l'adresse qui fait la règle,
+            elle doit se relire en entier. Une adresse longue passe donc à la
+            ligne au lieu d'être coupée. */}
         <div
-          className="flex h-11 items-center gap-2.5 rounded-xl border px-3"
+          className="flex min-h-11 items-center rounded-xl border px-3 py-2"
           style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
         >
           <span
-            className="inline-flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5"
+            className="inline-flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-1.5"
             style={{ background: fond, color: encre }}
           >
-            <span className="truncate font-mono text-[12.5px] font-semibold">
+            <span className="font-mono text-[12.5px] leading-5 font-semibold break-all">
               {adresse}
             </span>
             <button
               type="button"
               onClick={() => onChange('')}
               aria-label="Changer d'adresse"
-              className="flex-none rounded-md transition-opacity hover:opacity-70"
+              className="mt-0.5 flex-none rounded-md transition-opacity hover:opacity-70"
               style={{ color: encre }}
             >
               <Icone nom="close" taille={14} />
             </button>
           </span>
-          {choisi && (
-            <span className="truncate text-[12.5px]" style={{ color: 'var(--sub)' }}>
-              {choisi.nom}
-            </span>
-          )}
         </div>
+        {choisi && (
+          <span className="truncate text-[12px]" style={{ color: 'var(--sub)' }}>
+            {choisi.nom}
+          </span>
+        )}
       </div>
     )
   }
 
   const q = adresse.trim().toLowerCase()
+  // Tous les expéditeurs connus, pas les six premiers : la règle qu'on vient
+  // ajouter ici vise justement quelqu'un dont le message n'est pas sous les
+  // yeux. La liste est bornée en hauteur, pas en nombre.
   const propositions = Array.from(
     new Map(
       expediteurs
@@ -473,7 +525,7 @@ function ChampAdresse({
         )
         .map((m) => [m.adresse, m] as const),
     ).values(),
-  ).slice(0, 6)
+  ).sort((a, b) => (a.nom || a.adresse).localeCompare(b.nom || b.adresse, 'fr'))
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -495,7 +547,7 @@ function ChampAdresse({
 
       {ouvert && propositions.length > 0 && (
         <div
-          className="mt-1 flex flex-col gap-0.5 rounded-xl border p-1"
+          className="mt-1 flex max-h-60 flex-col gap-0.5 overflow-y-auto rounded-xl border p-1"
           style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
         >
           {propositions.map((m) => {

@@ -30,11 +30,17 @@ pub enum ActionPlanifiee {
 }
 
 impl ActionPlanifiee {
-    fn depuis(action: Action) -> Self {
+    /// `None` pour une règle qui ne demande rien à Gmail.
+    ///
+    /// `ClasserSeulement` range l'expéditeur dans une vue et s'arrête là. Lui
+    /// inventer une action ici la ferait archiver ou supprimer, c'est-à-dire
+    /// exactement ce que l'utilisateur n'a pas demandé.
+    fn depuis(action: Action) -> Option<Self> {
         match action {
-            Action::SupprimerToujours => Self::MettreALaCorbeille,
-            Action::ArchiverAutomatique => Self::RetirerDeLaBoiteDeReception,
-            Action::GenererResumeEtArchiver => Self::ResumerPuisArchiver,
+            Action::SupprimerToujours => Some(Self::MettreALaCorbeille),
+            Action::ArchiverAutomatique => Some(Self::RetirerDeLaBoiteDeReception),
+            Action::GenererResumeEtArchiver => Some(Self::ResumerPuisArchiver),
+            Action::ClasserSeulement => None,
         }
     }
 
@@ -132,7 +138,7 @@ pub fn planifier(
             .regles_pour(&message.from)
             .into_iter()
             .filter(|regle| fenetre_ouverte(regle, maintenant))
-            .map(|regle| (ActionPlanifiee::depuis(regle.action), regle))
+            .filter_map(|regle| ActionPlanifiee::depuis(regle.action).map(|a| (a, regle)))
             .filter(|(action, _)| action_utile(*action, message))
             // `reduce` plutôt que `max_by_key` : ce dernier retient le *dernier*
             // maximum en cas d'égalité, alors qu'on veut la première règle du
@@ -210,6 +216,43 @@ mod tests {
                 libelle: None,
             }]
         );
+    }
+
+    /// Une règle de rangement ne doit jamais toucher à la boîte : c'est toute
+    /// sa raison d'être. Un message rangé en « formation » reste lisible dans
+    /// Gmail comme ici.
+    #[test]
+    fn une_regle_classer_seulement_ne_planifie_rien() {
+        let regles = RuleSet {
+            automations: vec![regle(
+                "rule_00",
+                "cfppa@combourg.fr",
+                Action::ClasserSeulement,
+            )],
+            ..Default::default()
+        };
+        let messages = vec![message("msg_1", "CFPPA <cfppa@combourg.fr>")];
+
+        assert!(planifier(&regles, &messages, un_lundi()).is_empty());
+    }
+
+    /// Et elle ne masque pas les autres : une seconde règle sur le même message
+    /// garde son action, au lieu de perdre au départage.
+    #[test]
+    fn une_regle_classer_seulement_laisse_agir_une_autre_regle() {
+        let regles = RuleSet {
+            automations: vec![
+                regle("rule_00", "cfppa@combourg.fr", Action::ClasserSeulement),
+                regle("rule_01", "cfppa@combourg.fr", Action::SupprimerToujours),
+            ],
+            ..Default::default()
+        };
+        let messages = vec![message("msg_1", "CFPPA <cfppa@combourg.fr>")];
+
+        let plan = planifier(&regles, &messages, un_lundi());
+
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].action, ActionPlanifiee::MettreALaCorbeille);
     }
 
     #[test]

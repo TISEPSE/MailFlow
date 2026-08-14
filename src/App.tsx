@@ -43,6 +43,7 @@ import {
   reglesLister,
 } from './lib/tauri'
 import type {
+  Categorie,
   CategorieMessage,
   EtatApplication,
   JeuDeRegles,
@@ -106,8 +107,18 @@ export default function App() {
   const [premierReleve, setPremierReleve] = useState(true)
   const [menuCompte, setMenuCompte] = useState(false)
 
+  /** Le menu reste dans la page le temps de sa disparition.
+   *
+   *  Sans ce sursis, React l'ôte à l'instant du clic : l'animation de sortie
+   *  n'aurait rien à jouer, et le menu s'effacerait d'un coup. */
+  const [menuMonte, setMenuMonte] = useState(false)
+
   /** Avancement du préchargement, `null` quand il n'est pas en cours. */
   const [avancement, setAvancement] = useState<Avancement | null>(null)
+
+  /** Catégorie sur laquelle ouvrir la fenêtre d'ajout de règle, quand on
+   *  arrive sur la page Règles depuis une vue vide. */
+  const [regleAOuvrir, setRegleAOuvrir] = useState<Categorie | null>(null)
   const boutonProfil = useRef<HTMLButtonElement>(null)
   const [logos, setLogos] = useState<Record<string, string>>({})
 
@@ -176,6 +187,25 @@ export default function App() {
   }, [annoncer])
 
   /**
+   * Relève la boîte, puis charge d'avance tous les corps, barre à l'appui.
+   *
+   * C'est la séquence du premier démarrage. Elle vaut aussi à chaque bascule de
+   * compte : la boîte d'à côté n'a rien en cache, et sans ce passage l'attente
+   * se paierait message par message, sans que rien ne l'annonce.
+   */
+  const chargerLaBoite = useCallback(async () => {
+    const messages = await relever()
+    if (!messages?.length) {
+      setAvancement(null)
+      return
+    }
+
+    setAvancement({ faits: 0, total: messages.length })
+    await corpsPrecharger(messages.map((m) => m.id)).catch(() => null)
+    setAvancement(null)
+  }, [relever])
+
+  /**
    * Marque un message comme lu, d'abord à l'écran puis chez Gmail.
    *
    * L'affichage est mis à jour sans attendre le réseau : le message est sous
@@ -192,6 +222,18 @@ export default function App() {
     },
     [annoncer],
   )
+
+  useEffect(() => {
+    if (menuCompte) {
+      setMenuMonte(true)
+      return
+    }
+    if (!menuMonte) return
+
+    // La durée suit celle de `.menu-disparait` dans la feuille de styles.
+    const minuteur = window.setTimeout(() => setMenuMonte(false), 120)
+    return () => window.clearTimeout(minuteur)
+  }, [menuCompte, menuMonte])
 
   useEffect(() => {
     // L'écoute est posée avant tout appel : un événement émis pendant qu'on
@@ -214,17 +256,9 @@ export default function App() {
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)
       }
-      const messages = await relever()
-
-      // Le préchargement suit le premier relevé : c'est lui qui donne la liste
-      // des messages à charger.
-      if (messages?.length) {
-        setAvancement({ faits: 0, total: messages.length })
-        await corpsPrecharger(messages.map((m) => m.id)).catch(() => null)
-      }
-      setAvancement(null)
+      await chargerLaBoite()
     })
-  }, [rafraichir, relever])
+  }, [rafraichir, chargerLaBoite])
 
   /** Relevé périodique. La fréquence est un réglage, pas une constante : le
    *  minuteur se reconstruit quand elle change. */
@@ -239,7 +273,12 @@ export default function App() {
 
   /** Toute action qui touche au backend passe par ici : un seul endroit gère
    *  l'état « occupé », les erreurs et le rafraîchissement qui suit. */
-  async function agir(travail: () => Promise<string | null>) {
+  async function agir(
+    travail: () => Promise<string | null>,
+    // `rechargerTout` pour les actions qui changent de boîte : un simple relevé
+    // laisserait les corps à charger un par un.
+    { rechargerTout = false }: { rechargerTout?: boolean } = {},
+  ) {
     setEnCours(true)
     setMessage(null)
     try {
@@ -252,24 +291,30 @@ export default function App() {
       // arrêtait l'animation alors que la boîte se chargeait encore, ce qui
       // laissait croire que le travail était fini.
       const sante = await rafraichir()
-      if (sante?.compteConnecte) await relever()
+      if (sante?.compteConnecte) {
+        if (rechargerTout) await chargerLaBoite()
+        else await relever()
+      }
       setEnCours(false)
     }
   }
 
   /** Bascule de compte, partagée par la barre latérale et les Paramètres. */
   const basculerVers = (adresse: string) =>
-    agir(async () => {
-      await compteBasculer(adresse)
-      // La boîte affichée est celle du compte précédent : la vider avant le
-      // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
-      setBoite([])
-      setPremierReleve(true)
-      setCorpsConnus(creerCache())
-      setProfil(await compteProfil().catch(() => null))
-      setLibelles(await libellesLister().catch(() => []))
-      return `Compte actif : ${adresse}.`
-    })
+    agir(
+      async () => {
+        await compteBasculer(adresse)
+        // La boîte affichée est celle du compte précédent : la vider avant le
+        // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
+        setBoite([])
+        setPremierReleve(true)
+        setCorpsConnus(creerCache())
+        setProfil(await compteProfil().catch(() => null))
+        setLibelles(await libellesLister().catch(() => []))
+        return `Compte actif : ${adresse}.`
+      },
+      { rechargerTout: true },
+    )
 
   const deconnecter = () =>
     agir(async () => {
@@ -283,15 +328,18 @@ export default function App() {
     })
 
   const ajouterUnCompte = () =>
-    agir(async () => {
-      await compteAjouter()
-      setBoite([])
-      setPremierReleve(true)
-      setCorpsConnus(creerCache())
-      setProfil(await compteProfil().catch(() => null))
-      setLibelles(await libellesLister().catch(() => []))
-      return 'Compte ajouté.'
-    })
+    agir(
+      async () => {
+        await compteAjouter()
+        setBoite([])
+        setPremierReleve(true)
+        setCorpsConnus(creerCache())
+        setProfil(await compteProfil().catch(() => null))
+        setLibelles(await libellesLister().catch(() => []))
+        return 'Compte ajouté.'
+      },
+      { rechargerTout: true },
+    )
 
   const parCategorie = useMemo(() => {
     const vides: Record<CategorieMessage, MessageAffiche[]> = {
@@ -421,8 +469,8 @@ export default function App() {
                 title={repliee ? 'Actualiser la boîte' : undefined}
                 // Replié, il prend la forme des entrées de navigation : un pavé
                 // large au milieu de carrés se lisait comme un élément étranger.
-                className={`bouton bouton-doux flex items-center gap-3 rounded-lg py-2 text-left text-[13px] font-semibold ${
-                  repliee ? 'w-fit px-2.5' : 'w-full px-2.5'
+                className={`bouton bouton-doux flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[13px] font-semibold ${
+                  repliee ? 'justify-center' : 'text-left'
                 }`}
               >
                 <span className="flex h-7 w-7 flex-none items-center justify-center">
@@ -447,9 +495,10 @@ export default function App() {
             className="relative mt-3 flex items-center gap-1.5 border-t pt-3"
             style={{ borderColor: 'var(--line)' }}
           >
-            {menuCompte && (
+            {menuMonte && (
               <MenuDeCompte
                 comptes={comptes}
+                sortant={!menuCompte}
                 declencheur={boutonProfil}
                 onFermer={() => setMenuCompte(false)}
                 onBasculer={(adresse) => {
@@ -573,6 +622,8 @@ export default function App() {
               expediteurs={boite}
               libelles={libelles}
               sombre={sombre}
+              ouvrirPour={regleAOuvrir}
+              onOuverture={() => setRegleAOuvrir(null)}
               onBasculer={(id) => agir(async () => (setRegles(await regleBasculer(id)), null))}
               onSupprimer={(id) => agir(async () => (setRegles(await regleSupprimer(id)), 'Règle supprimée.'))}
               onCreerRegle={(r) =>
@@ -635,7 +686,24 @@ export default function App() {
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
-              vide={VIDES[vue]}
+              // Les formations ne se devinent pas : la page vide doit donc
+              // offrir le geste qui la remplit, au lieu de renvoyer chercher
+              // la page des règles de son propre chef.
+              vide={
+                vue === 'formation'
+                  ? {
+                      ...VIDES.formation,
+                      action: {
+                        libelle: 'Ranger un expéditeur ici',
+                        icone: 'playlist_add_check' as NomIcone,
+                        onClick: () => {
+                          setRegleAOuvrir('formation')
+                          setVue('regles')
+                        },
+                      },
+                    }
+                  : VIDES[vue]
+              }
             />
           )}
         </main>
@@ -656,6 +724,7 @@ export default function App() {
  */
 function MenuDeCompte({
   comptes,
+  sortant,
   declencheur,
   onFermer,
   onBasculer,
@@ -664,6 +733,8 @@ function MenuDeCompte({
   onDeconnecter,
 }: {
   comptes: CompteConnu[]
+  /** Vrai pendant la disparition : le menu est encore là, mais s'en va. */
+  sortant: boolean
   /** Le bouton qui ouvre le menu, exclu du « clic à l'extérieur ». */
   declencheur: React.RefObject<HTMLButtonElement | null>
   onFermer: () => void
@@ -714,9 +785,12 @@ function MenuDeCompte({
     <div
       ref={cadre}
       role="menu"
+      aria-hidden={sortant}
       // Rembourrage horizontal : sans lui, le fond de survol d'une ligne va
       // d'un bord à l'autre et coupe les arrondis du menu.
-      className="absolute bottom-full left-2 z-40 mb-2 rounded-xl border p-1.5"
+      className={`${
+        sortant ? 'menu-disparait' : 'menu-apparait'
+      } absolute bottom-full left-2 z-40 mb-2 rounded-xl border p-1.5`}
       style={{
         // Une largeur fixe, plus généreuse que la barre : « Ajouter un compte
         // Google » passait à la ligne dans les 236 pixels disponibles, et un
@@ -870,7 +944,7 @@ const VIDES: Record<
     icone: 'school',
     titre: 'Aucun rappel de formation',
     detail:
-      "Cette catégorie ne se devine pas : un message n'y apparaît que si vous y avez rangé son expéditeur par une règle.",
+      "Rien, dans un message, ne distingue un rappel de cours d'une autre notification : c'est à vous de désigner les expéditeurs à ranger ici. Leurs messages resteront intacts dans Gmail.",
   },
 }
 
@@ -887,9 +961,14 @@ function PasConnecte({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-      <Icone nom="mail_lock" taille={36} style={{ color: 'var(--sub)', opacity: 0.5 }} />
-      <div className="text-sm font-semibold">Aucun compte Gmail connecté</div>
-      <p className="max-w-sm text-[13px]" style={{ color: 'var(--sub)' }}>
+      <Icone nom="mail_lock" taille={52} style={{ color: 'var(--sub)', opacity: 0.45 }} />
+      <div className="text-[19px] font-semibold tracking-tight">
+        Aucun compte Gmail connecté
+      </div>
+      <p
+        className="max-w-md text-[14.5px] leading-relaxed"
+        style={{ color: 'var(--sub)' }}
+      >
         {bloque
           ? "La configuration n'est pas complète. Les Paramètres disent ce qui manque."
           : 'MailFlow ouvrira votre navigateur sur la vraie page de connexion Google.'}

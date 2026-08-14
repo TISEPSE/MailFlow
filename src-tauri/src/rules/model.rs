@@ -144,6 +144,14 @@ pub enum Action {
     GenererResumeEtArchiver,
     /// Retrait du tag INBOX, éventuellement selon `frequence`.
     ArchiverAutomatique,
+    /// Aucune action sur Gmail : la règle ne sert qu'à ranger l'expéditeur dans
+    /// une vue.
+    ///
+    /// C'est le seul moyen de peupler « Rappels de formations », que rien dans
+    /// un en-tête ne permet de deviner (voir `gmail::classement`). Sans elle,
+    /// désigner un expéditeur comme formateur revenait à l'archiver, donc à le
+    /// faire disparaître de la vue qu'on voulait remplir.
+    ClasserSeulement,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

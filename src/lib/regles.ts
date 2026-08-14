@@ -6,9 +6,25 @@ import type { ActionRegle, Categorie, Regle } from '../types/backend'
  * Le miroir exact de `RuleSet::sentence` côté maquette : l'utilisateur doit
  * pouvoir relire ce qu'il a demandé sans traduire du vocabulaire technique.
  */
+/**
+ * Nom de la vue où une catégorie range les messages.
+ *
+ * Distinct de `LIBELLE_CATEGORIE`, qui nomme l'étiquette d'un message : la
+ * phrase d'une règle désigne une destination, et l'utilisateur doit reconnaître
+ * l'entrée de la barre latérale où il ira les lire.
+ */
+export const VUE_DE_CATEGORIE: Record<Categorie, string> = {
+  publicite: 'Triage & publicités',
+  newsletter: 'Newsletters',
+  formation: 'Rappels de formations',
+}
+
 export function phrase(r: Regle): string {
   const cible = r.nom_affichage || r.expediteur
 
+  if (r.action === 'classer_seulement') {
+    return `Afficher les messages de ${cible} dans « ${VUE_DE_CATEGORIE[r.categorie]} », sans rien y changer.`
+  }
   if (r.action === 'supprimer_toujours') {
     return `Supprimer systématiquement les messages de ${cible}.`
   }

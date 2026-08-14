@@ -382,6 +382,17 @@ export function Modale({
 }
 
 /**
+ * Géométrie de la liste de messages.
+ *
+ * Ces deux valeurs sont partagées par la liste, son squelette et l'en-tête du
+ * panneau de lecture. La hauteur surtout : c'est elle qui fait tomber le trait
+ * sous la première tuile exactement sur celui qui souligne l'en-tête. Deux
+ * réglages séparés dérivaient de quelques pixels, ce qui se voit.
+ */
+export const LARGEUR_LISTE = 352
+export const HAUTEUR_LIGNE = 88
+
+/**
  * Squelette d'une liste de messages.
  *
  * Il reprend la géométrie des tuiles réelles — pastille, deux lignes de texte,
@@ -391,19 +402,22 @@ export function Modale({
 export function SqueletteListe({ lignes = 7 }: { lignes?: number }) {
   return (
     <div
-      className="flex w-[368px] flex-none flex-col overflow-hidden border-r"
-      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+      className="flex flex-none flex-col overflow-hidden border-r"
+      style={{
+        width: LARGEUR_LISTE,
+        background: 'var(--sunk)',
+        borderColor: 'var(--line)',
+      }}
       aria-hidden
     >
       {Array.from({ length: lignes }, (_, i) => (
         <div
           key={i}
-          className="flex items-start gap-3 border-b px-4 py-3"
-          style={{ borderColor: 'var(--line)' }}
+          className="flex items-center gap-3 overflow-hidden border-b px-3"
+          style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
         >
-          <span className="mt-2 h-1.5 w-1.5 flex-none" />
           <span className="squelette h-[30px] w-[30px] flex-none rounded-full" />
-          <span className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
+          <span className="flex min-w-0 flex-1 flex-col gap-1.5">
             <span className="squelette h-3 w-1/2" />
             <span className="squelette h-3 w-4/5" />
             <span className="squelette h-3 w-2/3" />
@@ -419,17 +433,14 @@ export function SqueletteLecture() {
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-hidden>
       <div
-        className="flex-none border-b px-7 pt-4 pb-3"
-        style={{ borderColor: 'var(--line)' }}
+        className="flex flex-none flex-col justify-center gap-2.5 overflow-hidden border-b px-6"
+        style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
       >
-        <span className="squelette block h-5 w-3/5" />
-        <div className="mt-2.5 flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5">
           <span className="squelette h-[30px] w-[30px] flex-none rounded-full" />
-          <span className="flex flex-1 flex-col gap-1.5">
-            <span className="squelette h-3 w-40" />
-            <span className="squelette h-3 w-60" />
-          </span>
+          <span className="squelette h-4 w-3/5" />
         </div>
+        <span className="squelette ml-[40px] h-3 w-60" />
       </div>
       <div className="flex flex-1 flex-col gap-3 px-9 py-6">
         {[92, 78, 85, 60, 70].map((largeur, i) => (
@@ -450,30 +461,57 @@ export function Progression({ faits, total }: { faits: number; total: number }) 
   const part = total > 0 ? Math.min(100, Math.round((faits / total) * 100)) : 0
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10">
-      <div className="text-sm font-semibold">Préparation de votre boîte…</div>
-      <div
-        role="progressbar"
-        aria-valuenow={faits}
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-label="Chargement des messages"
-        className="h-1.5 w-64 overflow-hidden rounded-full"
-        style={{ background: 'var(--faint)' }}
-      >
-        <div
-          className="h-full rounded-full"
-          style={{
-            width: `${part}%`,
-            background: 'var(--accent)',
-            transition: 'width 200ms ease',
-          }}
+    <div className="flex flex-1 flex-col items-center justify-center gap-5 p-10">
+      {/* Le halo occupe la place d'un carré vide, pour que rien ne bouge quand
+          l'onde s'étend. */}
+      <div className="relative flex h-20 w-20 items-center justify-center">
+        <span
+          className="onde absolute inset-0 rounded-full"
+          style={{ background: 'var(--accent)' }}
         />
+        <span
+          className="relative flex h-20 w-20 items-center justify-center rounded-full"
+          style={{ background: 'var(--accent-soft)' }}
+        >
+          <Icone nom="inbox" taille={34} style={{ color: 'var(--accent-fg)' }} />
+        </span>
       </div>
-      <div className="font-mono text-[12px]" style={{ color: 'var(--sub)' }}>
-        {faits} sur {total}
+
+      <div className="text-[20px] font-semibold tracking-tight">
+        Préparation de votre boîte…
       </div>
-      <p className="max-w-sm text-center text-[12.5px]" style={{ color: 'var(--sub)' }}>
+
+      <div className="flex w-80 max-w-full flex-col gap-2">
+        <div
+          role="progressbar"
+          aria-valuenow={faits}
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-label="Chargement des messages"
+          className="h-2 w-full overflow-hidden rounded-full"
+          style={{ background: 'var(--faint)' }}
+        >
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${part}%`,
+              background: 'var(--accent)',
+              transition: 'width 200ms ease',
+            }}
+          />
+        </div>
+        <div
+          className="flex items-baseline justify-between font-mono text-[12.5px]"
+          style={{ color: 'var(--sub)' }}
+        >
+          <span>
+            {faits} sur {total}
+          </span>
+          <span>{part} %</span>
+        </div>
+      </div>
+
+      <p className="max-w-md text-center text-[13.5px]" style={{ color: 'var(--sub)' }}>
         Les messages sont chargés une fois pour toutes. Ils resteront
         instantanés jusqu'au prochain redémarrage de l'ordinateur.
       </p>
@@ -481,23 +519,44 @@ export function Progression({ faits, total }: { faits: number; total: number }) 
   )
 }
 
-/** État vide : ce n'est pas une erreur, c'est une boîte en ordre. */
+/**
+ * État vide : ce n'est pas une erreur, c'est une boîte en ordre.
+ *
+ * Occupe une page entière, et se dessine en conséquence : à 34 pixels, l'icône
+ * se perdait au milieu du vide qu'elle est censée expliquer.
+ *
+ * `action` sert aux vides qui appellent un geste — « Rappels de formations » ne
+ * se remplit que si on l'a demandé, et une page qui l'explique sans offrir le
+ * moyen de le faire renvoie l'utilisateur chercher tout seul.
+ */
 export function Vide({
   icone,
   titre,
   detail,
+  action,
 }: {
   icone: NomIcone
   titre: string
   detail: string
+  action?: { libelle: string; icone?: NomIcone; onClick: () => void }
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-10 text-center">
-      <Icone nom={icone} taille={34} style={{ color: 'var(--sub)', opacity: 0.5 }} />
-      <div className="text-sm font-semibold">{titre}</div>
-      <div className="max-w-sm text-[13px]" style={{ color: 'var(--sub)' }}>
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
+      <Icone nom={icone} taille={52} style={{ color: 'var(--sub)', opacity: 0.45 }} />
+      <div className="text-[19px] font-semibold tracking-tight">{titre}</div>
+      <div
+        className="max-w-md text-[14.5px] leading-relaxed"
+        style={{ color: 'var(--sub)' }}
+      >
         {detail}
       </div>
+      {action && (
+        <div className="pt-2">
+          <Bouton variante="principal" icone={action.icone} onClick={action.onClick}>
+            {action.libelle}
+          </Bouton>
+        </div>
+      )}
     </div>
   )
 }
@@ -511,6 +570,7 @@ export function Bouton({
   disabled = false,
   titre,
   enAttente = false,
+  compact = false,
   className = '',
 }: {
   children: ReactNode
@@ -521,6 +581,8 @@ export function Bouton({
   titre?: string
   /** Fait tourner l'icône tant que l'action n'a pas rendu la main. */
   enAttente?: boolean
+  /** Un cran plus bas, pour les barres d'action logées dans un en-tête. */
+  compact?: boolean
   /** Pour s'accorder à la hauteur d'un champ voisin. */
   className?: string
 }) {
@@ -537,7 +599,9 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className={`bouton ${teintes[variante]} inline-flex h-9 flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs leading-none font-semibold whitespace-nowrap ${className}`}
+      className={`bouton ${teintes[variante]} inline-flex ${
+        compact ? 'h-8 px-3' : 'h-9 px-3.5'
+      } flex-none items-center justify-center gap-1.5 rounded-lg text-xs leading-none font-semibold whitespace-nowrap ${className}`}
     >
       {icone && <Icone nom={icone} taille={14} compenser tourne={enAttente} />}
       {children}

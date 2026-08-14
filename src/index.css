@@ -267,8 +267,16 @@ button:not(:disabled),
   background: color-mix(in oklab, #c2410c 12%, transparent);
 }
 
-/* Bouton réduit à son icône : il gagne un fond et son icône s'assombrit. */
+/* Bouton réduit à son icône : il gagne un fond et son icône s'assombrit.
+
+   `inline-flex` n'est pas cosmétique. Sans lui, l'icône reste une image en
+   ligne posée sur une ligne de texte : le bouton hérite de la hauteur de cette
+   ligne, jambages compris, et se retrouve plus haut que large. Un carré de
+   trente pixels devenait un rectangle de trente sur trente-quatre. */
 .bouton-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--sub);
 }
 
@@ -328,6 +336,48 @@ button:not(:disabled),
   }
 }
 
+/* Halo de l'écran de chargement.
+
+   Une onde qui part du disque et se dissipe : elle dit qu'un travail est en
+   cours même aux instants où la barre n'avance pas — et le préchargement d'un
+   gros message peut tenir plusieurs secondes sans faire bouger le compteur. */
+@keyframes onde {
+  from {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.onde {
+  animation: onde 1800ms ease-out infinite;
+}
+
+/* Apparition et disparition du menu de compte.
+
+   La disparition impose de retarder le démontage du composant : sans ce délai,
+   React l'ôte de la page à l'instant du clic et l'animation n'a rien à jouer. */
+@keyframes menu-entre {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.menu-apparait {
+  animation: menu-entre 140ms ease-out;
+  transform-origin: bottom left;
+}
+
+.menu-disparait {
+  animation: menu-entre 120ms ease-in reverse forwards;
+  transform-origin: bottom left;
+  pointer-events: none;
+}
+
 /* Apparition douce d'un bloc dont le contenu vient de changer.
 
    Employée sur la carte de compte : basculer d'un compte à l'autre remplace
@@ -354,7 +404,10 @@ button:not(:disabled),
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .apparait {
+  .apparait,
+  .onde,
+  .menu-apparait,
+  .menu-disparait {
     animation: none;
   }
 }

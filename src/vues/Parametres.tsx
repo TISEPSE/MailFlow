@@ -242,61 +242,67 @@ function CarteCompte({
   const autres = comptes.filter((c) => !c.actif)
 
   return (
+    // Une colonne, et non une seule rangée qui se replie : le bloc dépliant y
+    // était un enfant du même `flex`, et même réduit à rien il consommait
+    // l'espacement — d'où seize pixels de trop sous la ligne, et un avatar qui
+    // ne tombait pas au milieu de la carte.
     <div
-      className="flex flex-wrap items-center gap-4 rounded-2xl p-4"
+      className="rounded-2xl p-4"
       style={{
         background: connecte ? 'var(--accent-soft)' : 'var(--sunk)',
         border: '1px solid var(--line)',
       }}
     >
-      <Avatar profil={profil} connecte={connecte} accent={accent} />
+      <div className="flex flex-wrap items-center gap-4">
+        <Avatar profil={profil} connecte={connecte} accent={accent} />
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[16px] font-semibold">
-            {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
-          </span>
-          {connecte && profil?.photo && <LogoGoogle taille={17} />}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[16px] font-semibold">
+              {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
+            </span>
+            {connecte && profil?.photo && <LogoGoogle taille={17} />}
+          </div>
+          <div
+            className="selectionnable truncate pt-0.5 text-[13px]"
+            style={{ color: 'var(--sub)' }}
+          >
+            {connecte
+              ? (profil?.adresse ?? 'autorisation conservée dans le trousseau')
+              : bloque
+                ? 'configuration incomplète, voir le diagnostic ci-dessous'
+                : 'MailFlow ne peut rien trier tant qu’aucun compte n’est autorisé'}
+          </div>
         </div>
-        <div
-          className="selectionnable truncate pt-0.5 text-[13px]"
-          style={{ color: 'var(--sub)' }}
-        >
-          {connecte
-            ? (profil?.adresse ?? 'autorisation conservée dans le trousseau')
-            : bloque
-              ? 'configuration incomplète, voir le diagnostic ci-dessous'
-              : 'MailFlow ne peut rien trier tant qu’aucun compte n’est autorisé'}
-        </div>
-      </div>
 
-      <div className="flex flex-none items-center gap-3">
-        {connecte ? (
-          <>
-            <BoutonCarte onClick={onDeconnecter} disabled={enCours} icone="logout">
-              Déconnecter
-            </BoutonCarte>
-            {/* L'accent va sur l'action qui construit, pas sur celle qui
-                défait. */}
+        <div className="flex flex-none items-center gap-3">
+          {connecte ? (
+            <>
+              <BoutonCarte onClick={onDeconnecter} disabled={enCours} icone="logout">
+                Déconnecter
+              </BoutonCarte>
+              {/* L'accent va sur l'action qui construit, pas sur celle qui
+                  défait. */}
+              <BoutonCarte
+                principal
+                onClick={() => setListeOuverte((o) => !o)}
+                disabled={enCours || bloque}
+                icone={listeOuverte ? 'close' : 'person'}
+              >
+                {listeOuverte ? 'Fermer' : 'Changer de compte'}
+              </BoutonCarte>
+            </>
+          ) : (
             <BoutonCarte
               principal
-              onClick={() => setListeOuverte((o) => !o)}
+              onClick={onConnecter}
               disabled={enCours || bloque}
-              icone={listeOuverte ? 'close' : 'person'}
+              icone="login"
             >
-              {listeOuverte ? 'Fermer' : 'Changer de compte'}
+              Connecter mon compte Gmail
             </BoutonCarte>
-          </>
-        ) : (
-          <BoutonCarte
-            principal
-            onClick={onConnecter}
-            disabled={enCours || bloque}
-            icone="login"
-          >
-            Connecter mon compte Gmail
-          </BoutonCarte>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Toujours monté, replié par la grille : c'est ce qui permet à la
@@ -351,7 +357,9 @@ function ChoixDeCompte({
 
   return (
     <div
-      className="mt-1 w-full rounded-xl border p-2"
+      // La marge est ici, à l'intérieur du bloc qui se replie : posée sur la
+      // carte, elle subsisterait une fois la liste fermée.
+      className="mt-4 w-full rounded-xl border p-2"
       style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
     >
       {autres.length === 0 ? (

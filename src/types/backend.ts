@@ -80,6 +80,8 @@ export type ActionRegle =
   | 'supprimer_toujours'
   | 'archiver_automatique'
   | 'generer_resume_et_archiver'
+  /** Ne touche pas à Gmail : la règle ne fait que ranger l'expéditeur. */
+  | 'classer_seulement'
 
 /** Miroir de `rules::model::Rule`. Les noms de champs suivent `regles.json`. */
 export interface Regle {

@@ -6,7 +6,13 @@
  * date. Pas de corps de message — c'est du HTML écrit par un inconnu, et il ne
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
-import { Icone, Pastille, SqueletteLecture } from './base'
+import {
+  HAUTEUR_LIGNE,
+  Icone,
+  LARGEUR_LISTE,
+  Pastille,
+  SqueletteLecture,
+} from './base'
 import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
 import type { CorpsMessage, MessageAffiche } from '../types/backend'
 
@@ -23,11 +29,15 @@ export function ListeMessages({
 }) {
   return (
     <div
-      className="flex w-[352px] flex-none flex-col overflow-y-auto border-r"
+      className="flex flex-none flex-col overflow-y-auto border-r"
       // `--sunk` plutôt que `--side` : c'est ce fond qui fait le gris des
       // messages lus, et il doit se distinguer du blanc d'un message non lu
       // autant que de la barre latérale, qui le jouxte.
-      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+      style={{
+        width: LARGEUR_LISTE,
+        background: 'var(--sunk)',
+        borderColor: 'var(--line)',
+      }}
     >
       {messages.map((m, i) => {
         const [fond, encre] = palette(i)
@@ -40,10 +50,15 @@ export function ListeMessages({
             onClick={() => onSelect(m.id)}
             aria-current={choisi}
             data-neuf={neuf}
-            className="tuile relative flex items-center gap-2.5 border-b py-2.5 pr-3 pl-3 text-left"
+            className="tuile relative flex flex-none items-center gap-2.5 overflow-hidden border-b px-3 text-left"
             // Aucun fond en style en ligne : il l'emporterait sur les règles de
             // survol et de sélection, qui sont dans la feuille de styles.
-            style={{ borderColor: 'var(--line)' }}
+            //
+            // La hauteur est fixe et partagée avec l'en-tête de lecture : un
+            // sujet court et un sujet long donnaient sinon des tuiles de
+            // hauteurs différentes, et le trait de la première ne tombait sur
+            // rien.
+            style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
           >
             {/* La pastille de non-lu passe en repère absolu : en colonne, elle
                 coûtait une vingtaine de pixels à toutes les tuiles, y compris
@@ -126,8 +141,10 @@ export function Lecture({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div
-        className="selectionnable min-w-0 flex-none border-b px-6 py-2.5"
-        style={{ borderColor: 'var(--line)' }}
+        className="selectionnable flex min-w-0 flex-none flex-col justify-center overflow-hidden border-b px-6"
+        // Même hauteur qu'une tuile : les deux traits se répondent alors d'un
+        // panneau à l'autre, au lieu de se manquer de quelques pixels.
+        style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
       >
         {/* Deux lignes plutôt que trois blocs empilés : chaque ligne gagnée en
             hauteur est une ligne de message affichée en plus. */}
@@ -147,20 +164,27 @@ export function Lecture({
           </span>
         </div>
 
-        {/* Sans retour à la ligne : c'est l'adresse qui se tronque, pas le
-            bouton qui descend d'un cran. Elle figure de toute façon aussi dans
-            la tuile de gauche. */}
+        {/* Sans retour à la ligne : c'est l'identité qui se tronque, pas le
+            bouton qui descend d'un cran. Le nom se réduit lui aussi — laissé
+            entier, un expéditeur bavard poussait les actions hors du cadre, et
+            le message se recadrait autrement que ses voisins. */}
         <div className="mt-1.5 flex items-center gap-2 pl-[40px]">
-          <span className="flex-none text-[12.5px] font-semibold">
-            {message.nom}
+          <span className="flex min-w-0 flex-1 items-baseline gap-2">
+            {/* Plafonné à la moitié : sans cela, un nom à rallonge prenait
+                toute la ligne et ne laissait à l'adresse que trois lettres. */}
+            <span className="min-w-0 max-w-[50%] truncate text-[12.5px] font-semibold">
+              {message.nom}
+            </span>
+            <span
+              className="min-w-0 flex-1 truncate font-mono text-[11px]"
+              style={{ color: 'var(--sub)' }}
+            >
+              {message.adresse}
+            </span>
           </span>
-          <span
-            className="min-w-0 flex-1 truncate font-mono text-[11px]"
-            style={{ color: 'var(--sub)' }}
-          >
-            {message.adresse}
-          </span>
-          {actions}
+          {actions && (
+            <span className="flex flex-none items-center gap-2">{actions}</span>
+          )}
         </div>
       </div>
 

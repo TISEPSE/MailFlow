@@ -59,7 +59,13 @@ export function Courrier({
   chargement,
 }: {
   messages: MessageAffiche[]
-  vide: { icone: NomIcone; titre: string; detail: string }
+  vide: {
+    icone: NomIcone
+    titre: string
+    detail: string
+    /** Geste proposé quand la vue ne se remplit pas d'elle-même. */
+    action?: { libelle: string; icone?: NomIcone; onClick: () => void }
+  }
   proposition?: Proposition
   regles: Regle[]
   onCreerRegle: (regle: Regle) => Promise<void>
@@ -175,6 +181,7 @@ export function Courrier({
 
             {onSignalerSpam ? (
               <Bouton
+                compact
                 variante="principal"
                 icone="report"
                 onClick={() => onSignalerSpam(choisi.id)}
@@ -187,6 +194,7 @@ export function Courrier({
               choisi.adresse &&
               !regleExistante && (
                 <Bouton
+                  compact
                   variante="principal"
                   icone={proposition.icone}
                   onClick={() => void poser()}
@@ -245,6 +253,7 @@ function BarreDeReponse({
   return (
     <>
       <Bouton
+        compact
         variante="principal"
         icone="reply"
         onClick={() => onRepondre(message)}
@@ -253,7 +262,12 @@ function BarreDeReponse({
         Répondre
       </Bouton>
 
-      <Bouton icone="archive" onClick={() => setRangement(true)} disabled={enCours}>
+      <Bouton
+        compact
+        icone="archive"
+        onClick={() => setRangement(true)}
+        disabled={enCours}
+      >
         Archiver
       </Bouton>
 
