@@ -5,6 +5,7 @@
  * des couleurs littérales : c'est ce qui permet au thème et à la couleur
  * d'accent de basculer sans que chaque vue ait à s'en occuper.
  */
+import { useEffect, useRef } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { BOITE, GLYPHES, GLYPHES_PLEINS, MARGE_ENCRE, type NomIcone } from './glyphes'
 
@@ -307,6 +308,98 @@ export function Bloc({
   )
 }
 
+/**
+ * Fenêtre modale.
+ *
+ * Un formulaire glissé dans la page pousse tout ce qui suit vers le bas : les
+ * règles qu'on voulait consulter disparaissent au moment même où l'on en ajoute
+ * une. La fenêtre modale garde la page en place et dit clairement qu'une seule
+ * chose est en cours.
+ *
+ * Trois manières d'en sortir — `Échap`, le fond, le bouton — parce qu'une
+ * fenêtre dont on ne sait pas sortir est pire que pas de fenêtre du tout.
+ */
+export function Modale({
+  titre,
+  sous,
+  onFermer,
+  children,
+}: {
+  titre: string
+  sous?: string
+  onFermer: () => void
+  children: ReactNode
+}) {
+  const cadre = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const auClavier = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onFermer()
+    }
+    document.addEventListener('keydown', auClavier)
+
+    // Le focus entre dans la fenêtre : sans cela, la tabulation continuerait de
+    // parcourir la page qui est derrière, invisible et inatteignable.
+    const rendre = document.activeElement as HTMLElement | null
+    cadre.current?.querySelector<HTMLElement>('input, button')?.focus()
+
+    return () => {
+      document.removeEventListener('keydown', auClavier)
+      rendre?.focus()
+    }
+  }, [onFermer])
+
+  return (
+    <div
+      role="presentation"
+      onMouseDown={(e) => {
+        // `mousedown` sur le fond seulement : un glissement commencé dans le
+        // formulaire et relâché dehors ne doit pas fermer la fenêtre.
+        if (e.target === e.currentTarget) onFermer()
+      }}
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-8"
+      style={{ background: 'rgb(0 0 0 / 45%)' }}
+    >
+      <div
+        ref={cadre}
+        role="dialog"
+        aria-modal="true"
+        aria-label={titre}
+        className="mt-[8vh] w-full max-w-lg rounded-2xl border"
+        style={{
+          background: 'var(--card)',
+          borderColor: 'var(--line)',
+          boxShadow: '0 24px 64px rgb(0 0 0 / 28%)',
+        }}
+      >
+        <div
+          className="flex items-start gap-4 border-b px-6 py-5"
+          style={{ borderColor: 'var(--line)' }}
+        >
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[17px] font-semibold tracking-tight">{titre}</h2>
+            {sous && (
+              <p className="pt-1 text-[13px]" style={{ color: 'var(--sub)' }}>
+                {sous}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onFermer}
+            aria-label="Fermer"
+            className="bouton bouton-icone flex-none rounded-lg p-2"
+          >
+            <Icone nom="close" taille={17} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 /** État vide : ce n'est pas une erreur, c'est une boîte en ordre. */
 export function Vide({
   icone,
@@ -365,7 +458,13 @@ export function Bouton({
   )
 }
 
-/** Étiquette de catégorie. */
+/**
+ * Étiquette de catégorie.
+ *
+ * Même géométrie que `Bouton` — interligne, rembourrage vertical, arrondi —
+ * parce qu'elle se tient juste à côté de lui dans le panneau de lecture. Deux
+ * hauteurs différentes se voient immédiatement sur une même ligne.
+ */
 export function Etiquette({
   texte,
   fond,
@@ -377,7 +476,7 @@ export function Etiquette({
 }) {
   return (
     <span
-      className="inline-flex flex-none items-center rounded-md px-2 py-1 text-[10.5px] leading-none font-semibold"
+      className="inline-flex flex-none items-center rounded-lg px-3 py-2 text-xs leading-none font-semibold"
       style={{ background: fond, color: couleur }}
     >
       {texte}

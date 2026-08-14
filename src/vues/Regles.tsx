@@ -13,6 +13,7 @@ import { useState } from 'react'
 import {
   Bouton,
   EnTete,
+  Modale,
   Etiquette,
   Icone,
   Interrupteur,
@@ -81,31 +82,22 @@ export function Regles({
       <EnTete titre="Règles automatiques" sous={decompte(regles.length)}>
         <button
           type="button"
-          onClick={() => setFormulaireOuvert((o) => !o)}
-          aria-expanded={formulaireOuvert}
+          onClick={() => setFormulaireOuvert(true)}
+          aria-haspopup="dialog"
           className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold"
         >
-          <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={17} rempli compenser />
-          {formulaireOuvert ? 'Fermer' : 'Ajouter une règle'}
+          <Icone nom="playlist_add_check" taille={17} rempli compenser />
+          Ajouter une règle
         </button>
       </EnTete>
 
-      {formulaireOuvert && (
-        <FormulaireAjout
-          onAnnuler={() => setFormulaireOuvert(false)}
-          onValider={async (regle) => {
-            await onCreerRegle(regle)
-            setFormulaireOuvert(false)
-          }}
-        />
-      )}
 
       <div
         className="flex flex-none items-center gap-4 border-b px-8 py-4"
         style={{ borderColor: 'var(--line)' }}
       >
         <div
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-4 py-3"
+          className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-4"
           style={{ background: 'var(--sunk)' }}
         >
           <Icone nom="search" taille={17} compenser style={{ color: 'var(--sub)' }} />
@@ -123,7 +115,7 @@ export function Regles({
         <div
           role="tablist"
           aria-label="Filtrer par catégorie"
-          className="flex flex-none gap-1 rounded-xl p-1.5"
+          className="flex h-11 flex-none items-center gap-1 rounded-xl px-1.5"
           style={{ background: 'var(--sunk)' }}
         >
           {ONGLETS.map((o) => {
@@ -135,7 +127,7 @@ export function Regles({
                 role="tab"
                 aria-selected={actif}
                 onClick={() => setOnglet(o)}
-                className="rounded-lg px-5 py-2.5 text-[13.5px] leading-none font-semibold whitespace-nowrap transition-colors"
+                className="flex h-8 items-center rounded-lg px-5 text-[13.5px] leading-none font-semibold whitespace-nowrap transition-colors"
                 style={{
                   background: actif ? 'var(--card)' : 'transparent',
                   color: actif ? 'var(--fg)' : 'var(--sub)',
@@ -235,6 +227,22 @@ export function Regles({
           </div>
         </div>
       )}
+
+      {formulaireOuvert && (
+        <Modale
+          titre="Ajouter une règle"
+          sous="Elle vaudra pour tous les messages à venir de cet expéditeur."
+          onFermer={() => setFormulaireOuvert(false)}
+        >
+          <FormulaireAjout
+            onAnnuler={() => setFormulaireOuvert(false)}
+            onValider={async (regle) => {
+              await onCreerRegle(regle)
+              setFormulaireOuvert(false)
+            }}
+          />
+        </Modale>
+      )}
     </div>
   )
 }
@@ -287,8 +295,7 @@ function FormulaireAjout({
         e.preventDefault()
         void enregistrer()
       }}
-      className="flex flex-none flex-col gap-4 border-b px-8 py-5"
-      style={{ borderColor: 'var(--line)', background: 'var(--sunk)' }}
+      className="flex flex-col gap-4"
     >
       <label className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
