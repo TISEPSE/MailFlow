@@ -51,7 +51,7 @@ const ENTETES: Record<Vue, [string, string]> = {
   newsletter: ['Newsletters', 'Ce que vous recevez en nombre, et ce que vous voulez en faire.'],
   formation: ['Rappels de formations', 'Les rappels que vous avez rangés là par une règle.'],
   regles: ['Règles automatiques', 'Tout ce que MailFlow fait en votre nom, en une phrase par règle.'],
-  parametres: ['Paramètres', 'Compte, apparence et état du backend.'],
+  parametres: ['Paramètres', 'Compte, apparence, synchronisation et automatisations.'],
 }
 
 /** Ce que chaque vue de courrier propose de faire d'un expéditeur. */
@@ -365,6 +365,20 @@ export default function App() {
                   setBoite([])
                   setProfil(null)
                   return 'Compte déconnecté et autorisation révoquée.'
+                })
+              }
+              onChangerDeCompte={() =>
+                // Les deux étapes dans une seule opération : enchaîner deux
+                // appels à `agir` les ferait courir l'un contre l'autre, et
+                // l'utilisateur pourrait se retrouver révoqué sans être
+                // reconnecté.
+                void agir(async () => {
+                  await googleDeconnecter()
+                  setBoite([])
+                  setProfil(null)
+                  await googleConnecter()
+                  setProfil(await compteProfil().catch(() => null))
+                  return 'Compte changé.'
                 })
               }
             />

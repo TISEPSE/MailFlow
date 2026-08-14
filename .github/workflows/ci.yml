@@ -38,6 +38,18 @@ jobs:
   backend:
     name: Backend Rust
     runs-on: ubuntu-22.04
+
+    # `rustsec/audit-check` publie son rapport sous forme de « check run ».
+    # Sans `checks: write`, l'API le refuse et l'étape échoue alors même que
+    # l'audit s'est déroulé sans rien trouver — un échec qui ne dit rien de la
+    # sécurité des dépendances finirait par être ignoré.
+    #
+    # Déclarer un bloc `permissions` remet toutes les autres à zéro :
+    # `contents: read` doit donc y figurer, sans quoi `actions/checkout` ne peut
+    # plus lire le dépôt.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v5
 

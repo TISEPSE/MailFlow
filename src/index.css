@@ -161,3 +161,13 @@ button:not(:disabled),
 .tuile:hover:not([aria-current='true']) {
   background: var(--card);
 }
+
+/* Séparateurs internes d'une carte de réglages.
+
+   `divide-y` de Tailwind fait hériter la couleur du texte : les traits
+   ressortaient presque noirs au milieu d'une carte claire, là où la bordure
+   extérieure, elle, suivait bien `--line`. Écrit à la main, le trait suit le
+   thème comme le reste. */
+.cloisonne > * + * {
+  border-top: 1px solid var(--line);
+}

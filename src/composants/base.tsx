@@ -111,12 +111,18 @@ export function Interrupteur({
   onChange,
   libelle,
   disabled = false,
+  grand = false,
 }: {
   actif: boolean
   onChange: () => void
   libelle: string
   disabled?: boolean
+  /** Taille des pages de réglages, où l'interrupteur est le sujet de la ligne. */
+  grand?: boolean
 }) {
+  const [large, haut, bille] = grand ? [52, 30, 24] : [40, 23, 17]
+  const marge = (haut - bille) / 2
+
   return (
     <button
       type="button"
@@ -127,18 +133,18 @@ export function Interrupteur({
       onClick={onChange}
       className="relative flex-none rounded-full transition-colors disabled:opacity-40"
       style={{
-        width: 40,
-        height: 23,
+        width: large,
+        height: haut,
         background: actif ? 'var(--accent)' : 'var(--piste)',
       }}
     >
       <span
         className="absolute rounded-full bg-white transition-all"
         style={{
-          width: 17,
-          height: 17,
-          top: 3,
-          left: actif ? 20 : 3,
+          width: bille,
+          height: bille,
+          top: marge,
+          left: actif ? large - bille - marge : marge,
           boxShadow: '0 1px 2px rgba(0,0,0,.25)',
         }}
       />
@@ -162,7 +168,7 @@ export function Segments<T extends string>({
     <div
       role="radiogroup"
       aria-label={libelle}
-      className="flex flex-none gap-1 rounded-lg p-1"
+      className="flex flex-none gap-1 rounded-xl p-1.5"
       style={{ background: 'var(--sunk)' }}
     >
       {valeurs.map((v) => {
@@ -174,7 +180,7 @@ export function Segments<T extends string>({
             role="radio"
             aria-checked={actif}
             onClick={() => onChange(v)}
-            className="rounded-md px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors"
+            className="rounded-lg px-4 py-1.5 text-[13.5px] font-semibold whitespace-nowrap transition-colors"
             style={{
               background: actif ? 'var(--card)' : 'transparent',
               color: actif ? 'var(--fg)' : 'var(--sub)',
@@ -258,21 +264,18 @@ export function Bloc({
     <>
       {titre && (
         <div
-          className="px-1 pt-6 pb-2 text-[11px] font-semibold tracking-wider uppercase"
+          className="px-1 pt-7 pb-2.5 text-[11px] font-semibold tracking-wider uppercase"
           style={{ color: 'var(--sub)' }}
         >
           {titre}
         </div>
       )}
       <div
-        className="divide-y overflow-hidden rounded-xl border"
+        className="cloisonne overflow-hidden rounded-2xl border"
         style={{
           background: 'var(--card)',
           borderColor: 'var(--line)',
           boxShadow: 'var(--shadow)',
-          // Tailwind ne connaît pas nos jetons : la couleur des séparateurs
-          // internes passe par une variable CSS native.
-          ['--tw-divide-opacity' as string]: '1',
         }}
       >
         {children}
