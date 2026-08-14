@@ -15,11 +15,15 @@ export function ListeMessages({
   selection,
   onSelect,
   logos,
+  consultes,
 }: {
   messages: MessageAffiche[]
   selection: string | null
   onSelect: (id: string) => void
   logos: Record<string, string>
+  /** Messages ouverts pendant cette session. Gmail les croit encore non lus :
+   *  MailFlow ne lit que des métadonnées et ne retire jamais le libellé. */
+  consultes: ReadonlySet<string>
 }) {
   return (
     <div
@@ -32,25 +36,22 @@ export function ListeMessages({
       {messages.map((m, i) => {
         const [fond, encre] = palette(i)
         const choisi = m.id === selection
+        const neuf = m.nonLu && !consultes.has(m.id)
         return (
           <button
             key={m.id}
             type="button"
             onClick={() => onSelect(m.id)}
             aria-current={choisi}
+            data-neuf={neuf}
             className="tuile flex items-start gap-3 border-b px-4 py-3 text-left"
-            style={
-              // Un fond en style en ligne l'emporterait sur la règle de survol :
-              // il n'est donc posé que pour les tuiles qui doivent rester
-              // blanches quoi qu'il arrive.
-              choisi || m.nonLu
-                ? { background: 'var(--card)', borderColor: 'var(--line)' }
-                : { borderColor: 'var(--line)' }
-            }
+            // Aucun fond en style en ligne : il l'emporterait sur les règles de
+            // survol et de sélection, qui sont dans la feuille de styles.
+            style={{ borderColor: 'var(--line)' }}
           >
             <span
               className="mt-2 h-1.5 w-1.5 flex-none rounded-full"
-              style={{ background: m.nonLu ? 'var(--accent)' : 'transparent' }}
+              style={{ background: neuf ? 'var(--accent)' : 'transparent' }}
             />
             <Pastille
               texte={initiales(m.nom)}
@@ -62,7 +63,7 @@ export function ListeMessages({
               <span className="flex items-baseline gap-2">
                 <span
                   className="min-w-0 flex-1 truncate text-[13.5px]"
-                  style={{ fontWeight: m.nonLu ? 600 : 500 }}
+                  style={{ fontWeight: neuf ? 600 : 500 }}
                 >
                   {m.nom}
                 </span>

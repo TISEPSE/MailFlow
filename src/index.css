@@ -144,22 +144,39 @@ button:not(:disabled),
   outline-offset: 2px;
 }
 
-/* Tuiles de la liste de messages.
+/* Tuiles de la liste de messages, à la manière de Gmail.
 
-   Le fond gris de la colonne transparaît pour un message déjà lu ; un message
-   non lu est posé en blanc et ressort donc du lot. C'est le second signal après
-   la pastille et la graisse du nom : à distance, un aplat se voit avant un
-   point de 6 pixels.
+   Un message déjà lu — ou qu'on vient d'ouvrir ici — prend le gris du fond de
+   colonne ; un message neuf reste blanc et ressort du lot. C'est le second
+   signal après la pastille et la graisse du nom : à distance, un aplat se voit
+   avant un point de six pixels.
 
-   Au survol, une tuile lue passe au blanc. Une tuile déjà blanche — non lue ou
-   sélectionnée — ne bouge pas : elle n'a nulle part où aller, et la voir
-   changer donnerait l'impression qu'autre chose se produit. */
+   Le survol se joue uniquement en nuances de gris. Faire passer une tuile au
+   blanc la ferait ressembler à un message non lu, c'est-à-dire mentir sur la
+   seule information que cette couleur porte. */
 .tuile {
+  background: var(--sunk);
   transition: background-color 120ms ease;
 }
 
-.tuile:hover:not([aria-current='true']) {
+.tuile[data-neuf='true'] {
   background: var(--card);
+}
+
+.tuile:hover {
+  background: var(--faint);
+}
+
+/* Le survol d'un message neuf reste plus clair que celui d'un message lu :
+   sans cet écart, la souris effacerait la distinction qu'on vient d'établir. */
+.tuile[data-neuf='true']:hover {
+  background: color-mix(in oklab, var(--card) 55%, var(--faint));
+}
+
+/* La tuile ouverte se repère à un liseré plutôt qu'à un fond : le fond porte
+   déjà l'information « lu / non lu », et ne peut pas dire deux choses. */
+.tuile[aria-current='true'] {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* Séparateurs internes d'une carte de réglages.
