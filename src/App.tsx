@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bouton, Icone, Vide } from './composants/base'
+import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
@@ -26,7 +27,7 @@ import type {
 
 type Vue = CategorieMessage | 'regles' | 'parametres'
 
-const NAV: { vue: Vue; libelle: string; glyphe: string }[] = [
+const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'humain', libelle: 'Mails directs', glyphe: 'person' },
   { vue: 'publicite', libelle: 'Triage & publicités', glyphe: 'sell' },
   { vue: 'newsletter', libelle: 'Newsletters', glyphe: 'newspaper' },
@@ -381,7 +382,10 @@ export default function App() {
   )
 }
 
-const VIDES: Record<CategorieMessage, { icone: string; titre: string; detail: string }> = {
+const VIDES: Record<
+  CategorieMessage,
+  { icone: NomIcone; titre: string; detail: string }
+> = {
   humain: {
     icone: 'inbox',
     titre: 'Aucun message direct',

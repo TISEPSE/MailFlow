@@ -8,6 +8,7 @@
  */
 import { useState } from 'react'
 import { Bouton, Etiquette, Icone, Vide } from '../composants/base'
+import type { NomIcone } from '../composants/glyphes'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
 import type {
@@ -20,7 +21,7 @@ import type {
 /** Ce qu'une vue propose de faire d'un expéditeur. */
 export interface Proposition {
   libelle: string
-  icone: string
+  icone: NomIcone
   action: ActionRegle
   /** Catégorie donnée à la règle créée. */
   categorie: Exclude<CategorieMessage, 'humain'>
@@ -37,7 +38,7 @@ export function Courrier({
   sombre,
 }: {
   messages: MessageAffiche[]
-  vide: { icone: string; titre: string; detail: string }
+  vide: { icone: NomIcone; titre: string; detail: string }
   proposition?: Proposition
   regles: Regle[]
   onCreerRegle: (regle: Regle) => Promise<void>

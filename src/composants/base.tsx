@@ -6,9 +6,16 @@
  * d'accent de basculer sans que chaque vue ait à s'en occuper.
  */
 import type { CSSProperties, ReactNode } from 'react'
+import { GLYPHES, type NomIcone } from './glyphes'
 
-/** Glyphe Material Symbols. Le `aria-hidden` évite que le lecteur d'écran
- *  prononce le nom de la ligature. */
+/**
+ * Glyphe Material Symbols, rendu par son point de code.
+ *
+ * Pas par son nom : la police accepte les ligatures, mais celles-ci échouent
+ * en silence si la table ne survit pas au découpage — l'application affiche
+ * alors « settings » au lieu de l'icône. Le type `NomIcone` fait en plus qu'une
+ * icône absente du sous-ensemble soit une erreur de compilation.
+ */
 export function Icone({
   nom,
   taille = 18,
@@ -16,7 +23,7 @@ export function Icone({
   style,
   rempli = false,
 }: {
-  nom: string
+  nom: NomIcone
   taille?: number
   className?: string
   style?: CSSProperties
@@ -32,7 +39,7 @@ export function Icone({
         ...style,
       }}
     >
-      {nom}
+      {GLYPHES[nom]}
     </span>
   )
 }
@@ -162,7 +169,7 @@ export function LigneReglage({
   detail,
   children,
 }: {
-  icone: string
+  icone: NomIcone
   titre: string
   detail: string
   children: ReactNode
@@ -222,7 +229,7 @@ export function Vide({
   titre,
   detail,
 }: {
-  icone: string
+  icone: NomIcone
   titre: string
   detail: string
 }) {
@@ -249,7 +256,7 @@ export function Bouton({
   children: ReactNode
   onClick: () => void
   variante?: 'principal' | 'secondaire' | 'discret' | 'danger'
-  icone?: string
+  icone?: NomIcone
   disabled?: boolean
   titre?: string
 }) {
