@@ -293,6 +293,30 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
             .map(|_| ())
     }
 
+    /// Signale des messages comme indésirables.
+    ///
+    /// Reproduit exactement ce que fait Gmail : le libellé `SPAM` est posé, et
+    /// le message quitte la boîte de réception. Google apprend de ce geste et
+    /// filtrera de lui-même les suivants — c'est pourquoi aucune règle locale
+    /// n'est créée en plus, qui ferait double emploi et se contredirait le jour
+    /// où l'utilisateur retirerait le message des indésirables.
+    pub async fn marquer_spam(&self, ids: &[String]) -> Resultat<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let corps = serde_json::json!({
+            "ids": ids,
+            "addLabelIds": [libelles::SPAM],
+            "removeLabelIds": [libelles::INBOX],
+        })
+        .to_string();
+
+        self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
+            .await
+            .map(|_| ())
+    }
+
     /// Message complet, corps compris.
     ///
     /// Bien plus coûteux que `format=metadata` — on télécharge le HTML entier —
@@ -694,6 +718,20 @@ mod tests {
 
         assert_eq!(c.client.adresse_du_compte().await.unwrap(), "moi@gmail.com");
         assert!(c.urls()[0].ends_with("/users/me/profile"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn signaler_un_spam_le_sort_de_la_boite_de_reception() {
+        // Poser `SPAM` sans retirer `INBOX` laisserait le message sous les yeux
+        // de l'utilisateur, qui croirait le geste sans effet.
+        let c = client(vec![ok("{}")]);
+
+        c.client.marquer_spam(&["m1".to_string()]).await.unwrap();
+
+        let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
+
+        assert_eq!(envoye["addLabelIds"], serde_json::json!(["SPAM"]));
+        assert_eq!(envoye["removeLabelIds"], serde_json::json!(["INBOX"]));
     }
 
     #[tokio::test(start_paused = true)]

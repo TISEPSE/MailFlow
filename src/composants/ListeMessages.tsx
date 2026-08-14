@@ -121,23 +121,23 @@ export function Lecture({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className="selectionnable flex-none border-b px-9 pt-8 pb-5"
+        className="selectionnable flex-none border-b px-7 pt-4 pb-3"
         style={{ borderColor: 'var(--line)' }}
       >
-        <h2 className="text-[19px] font-semibold tracking-tight">
+        <h2 className="text-[16px] font-semibold tracking-tight">
           {message.sujet || '(sans objet)'}
         </h2>
 
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-2.5 flex items-center gap-2.5">
           <Pastille
             texte={initiales(message.nom)}
-            taille={36}
+            taille={30}
             fond={fond}
             couleur={encre}
             logo={logos[domaineDe(message.adresse)]}
           />
           <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold">{message.nom}</div>
+            <div className="text-[13px] font-semibold">{message.nom}</div>
             <div className="font-mono text-[11px]" style={{ color: 'var(--sub)' }}>
               {message.adresse}
             </div>
@@ -147,7 +147,7 @@ export function Lecture({
           </div>
         </div>
 
-        {actions && <div className="mt-5 flex flex-wrap gap-2">{actions}</div>}
+        {actions && <div className="mt-3 flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
       <Corps message={message} corps={corps} chargement={chargement} />
@@ -185,16 +185,16 @@ function Corps({
 
   if (corps?.html) {
     return (
-      <>
-        <iframe
-          title="Contenu du message"
-          sandbox=""
-          srcDoc={documentIsole(corps.html)}
-          className="min-h-0 w-full flex-1"
-          style={{ border: 0, background: '#FFFFFF' }}
-        />
-        <Avertissement />
-      </>
+      <iframe
+        title="Contenu du message"
+        // `allow-popups` sans `allow-scripts` : le cadre peut demander
+        // l'ouverture d'un lien, jamais exécuter de code. C'est le backend qui
+        // décide ensuite d'ouvrir l'adresse dans le navigateur du système.
+        sandbox="allow-popups allow-popups-to-escape-sandbox"
+        srcDoc={documentIsole(corps.html)}
+        className="min-h-0 w-full flex-1"
+        style={{ border: 0, background: '#FFFFFF' }}
+      />
     )
   }
 
@@ -207,13 +207,13 @@ function Corps({
           {texte}
         </pre>
       </div>
-      {!corps?.texte && <Avertissement extraitSeul />}
+      {!corps?.texte && <Avertissement />}
     </div>
   )
 }
 
-/** Ce que l'utilisateur doit savoir de ce qu'il regarde. */
-function Avertissement({ extraitSeul = false }: { extraitSeul?: boolean }) {
+/** Dit pourquoi le message paraît tronqué, plutôt que de laisser croire à un bug. */
+function Avertissement() {
   return (
     <div
       className="flex flex-none items-start gap-2.5 border-t px-9 py-3"
@@ -221,9 +221,7 @@ function Avertissement({ extraitSeul = false }: { extraitSeul?: boolean }) {
     >
       <Icone nom="shield" taille={16} style={{ color: 'var(--sub)' }} />
       <p className="text-[12px] leading-relaxed" style={{ color: 'var(--sub)' }}>
-        {extraitSeul
-          ? "Seul l'extrait fourni par Gmail est disponible pour ce message."
-          : "Message affiché dans un cadre isolé : aucun script ne peut s'exécuter, et les images distantes ne sont pas chargées — elles signaleraient à l'expéditeur l'heure à laquelle vous l'avez ouvert. Les liens ne sont pas cliquables pour l'instant."}
+        Seul l'extrait fourni par Gmail est disponible pour ce message.
       </p>
     </div>
   )
@@ -243,6 +241,7 @@ function Avertissement({ extraitSeul = false }: { extraitSeul?: boolean }) {
 function documentIsole(html: string): string {
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+<base target="_blank">
 <style>
   html { background: #ffffff; }
   body {

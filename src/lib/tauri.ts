@@ -112,6 +112,17 @@ export function messageCorps(id: string): Promise<CorpsMessage> {
 }
 
 /**
+ * Signale un message comme indesirable.
+ *
+ * Meme geste que dans Gmail : le message rejoint les indesirables et quitte la
+ * boite de reception. Aucune regle locale n'est creee — Google apprend du
+ * signalement.
+ */
+export function messageSignalerSpam(id: string): Promise<void> {
+  return invoke<void>('message_signaler_spam', { id })
+}
+
+/**
  * Marque un message comme lu chez Gmail.
  *
  * Modifie reellement la boite : le libelle `UNREAD` est retire. Gmail sait

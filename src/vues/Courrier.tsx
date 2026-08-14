@@ -41,6 +41,7 @@ export function Courrier({
   sombre,
   logos,
   onOuvrir,
+  onSignalerSpam,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -51,6 +52,8 @@ export function Courrier({
   logos: Record<string, string>
   /** Ouvrir un message le marque comme lu chez Gmail. */
   onOuvrir: (id: string) => void
+  /** Absent pour les vues où le signalement n'a pas de sens. */
+  onSignalerSpam?: (id: string) => void
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
@@ -127,15 +130,28 @@ export function Courrier({
               couleur={encre}
             />
 
-            {proposition && choisi.adresse && !regleExistante && (
+            {onSignalerSpam ? (
               <Bouton
                 variante="principal"
-                icone={proposition.icone}
-                onClick={() => void poser()}
+                icone="report"
+                onClick={() => onSignalerSpam(choisi.id)}
                 disabled={enCours}
               >
-                {enCours ? 'Enregistrement…' : proposition.libelle}
+                Signaler comme spam
               </Bouton>
+            ) : (
+              proposition &&
+              choisi.adresse &&
+              !regleExistante && (
+                <Bouton
+                  variante="principal"
+                  icone={proposition.icone}
+                  onClick={() => void poser()}
+                  disabled={enCours}
+                >
+                  {enCours ? 'Enregistrement…' : proposition.libelle}
+                </Bouton>
+              )
             )}
 
             {regleExistante && (

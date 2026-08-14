@@ -39,11 +39,18 @@ export function Icone({
 }) {
   const trace = (rempli ? GLYPHES_PLEINS[nom] : undefined) ?? GLYPHES[nom]
 
-  // Mesuré : dans un bouton, la croix « close » laissait quatre pixels de plus
-  // à gauche que le libellé n'en laissait à droite. Les boîtes étaient pourtant
-  // symétriques — c'est le blanc *dans* le dessin qui décalait l'ensemble. Le
-  // rendu ne change pas de taille : seule la place réservée se resserre.
+  // Deux corrections, toutes deux mesurées.
+  //
+  // À l'horizontale : la croix « close » laissait quatre pixels de plus à
+  // gauche que le libellé n'en laissait à droite. Les boîtes étaient pourtant
+  // symétriques — c'est le blanc *dans* le dessin qui décalait l'ensemble.
+  //
+  // À la verticale : une icône est plus haute que les capitales du texte
+  // qu'elle accompagne, et déborde donc sous la ligne de base. Centrer les
+  // boîtes ne suffit pas ; l'œil lit un décalage vers le bas. Un léger
+  // relèvement la ramène dans la bande des capitales.
   const marge = compenser ? -Math.round(taille * MARGE_ENCRE[nom]) : 0
+  const releve = compenser ? Math.max(1, Math.round(taille * 0.07)) : 0
 
   return (
     <svg
@@ -53,7 +60,14 @@ export function Icone({
       width={taille}
       height={taille}
       className={`inline-block flex-none ${className}`}
-      style={{ fill: 'currentColor', marginInline: marge || undefined, ...style }}
+      style={{
+        fill: 'currentColor',
+        marginInline: marge || undefined,
+        // Une translation ne déplace rien dans la mise en page, contrairement
+        // à une marge : les libellés restent où ils sont.
+        transform: releve ? `translateY(-${releve}px)` : undefined,
+        ...style,
+      }}
     >
       <path d={trace} />
     </svg>
@@ -345,7 +359,7 @@ export function Bouton({
       title={titre}
       className={`bouton ${teintes[variante]} inline-flex flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs leading-none font-semibold whitespace-nowrap`}
     >
-      {icone && <Icone nom={icone} taille={15} compenser />}
+      {icone && <Icone nom={icone} taille={14} compenser />}
       {children}
     </button>
   )
@@ -363,7 +377,7 @@ export function Etiquette({
 }) {
   return (
     <span
-      className="flex-none rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
+      className="inline-flex flex-none items-center rounded-md px-2 py-1 text-[10.5px] leading-none font-semibold"
       style={{ background: fond, color: couleur }}
     >
       {texte}

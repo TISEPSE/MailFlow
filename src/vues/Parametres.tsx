@@ -492,7 +492,7 @@ function BoutonCarte({
       disabled={disabled}
       className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex flex-none items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold`}
     >
-      {icone && <Icone nom={icone} taille={17} compenser />}
+      {icone && <Icone nom={icone} taille={15} compenser />}
       {children}
     </button>
   )

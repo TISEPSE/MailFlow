@@ -85,7 +85,7 @@ export function Regles({
           aria-expanded={formulaireOuvert}
           className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold"
         >
-          <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={19} rempli compenser />
+          <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={17} rempli compenser />
           {formulaireOuvert ? 'Fermer' : 'Ajouter une règle'}
         </button>
       </EnTete>
@@ -108,7 +108,7 @@ export function Regles({
           className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-4 py-3"
           style={{ background: 'var(--sunk)' }}
         >
-          <Icone nom="search" taille={18} style={{ color: 'var(--sub)' }} />
+          <Icone nom="search" taille={17} compenser style={{ color: 'var(--sub)' }} />
           <input
             type="text"
             value={recherche}

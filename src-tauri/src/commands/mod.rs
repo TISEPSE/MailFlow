@@ -374,6 +374,21 @@ pub async fn message_corps(
     Ok(trouve)
 }
 
+/// Signale un message comme indésirable.
+///
+/// Même geste que dans Gmail : le message rejoint les indésirables et quitte la
+/// boîte de réception. Aucune règle locale n'est créée — Google apprend du
+/// signalement, et deux mécanismes qui filtrent le même expéditeur finiraient
+/// par se contredire.
+#[tauri::command]
+pub async fn message_signaler_spam(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    client.marquer_spam(&[id]).await?;
+
+    log::info!("message signalé comme indésirable");
+    Ok(())
+}
+
 /// Marque un message comme lu chez Gmail.
 ///
 /// C'est la seule commande qui modifie la boîte sans passer par une règle. Le

@@ -46,6 +46,7 @@ pub const ENTETES_TRI: &[&str] = &["From", "Subject", "Date", "List-Unsubscribe"
 pub mod libelles {
     pub const INBOX: &str = "INBOX";
     pub const TRASH: &str = "TRASH";
+    pub const SPAM: &str = "SPAM";
     pub const UNREAD: &str = "UNREAD";
     pub const CATEGORIE_PROMOTIONS: &str = "CATEGORY_PROMOTIONS";
     pub const CATEGORIE_SOCIAL: &str = "CATEGORY_SOCIAL";

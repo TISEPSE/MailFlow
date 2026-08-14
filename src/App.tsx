@@ -27,6 +27,7 @@ import {
   googleDeconnecter,
   messageDErreur,
   messageMarquerLu,
+  messageSignalerSpam,
   regleAjouter,
   regleBasculer,
   regleSupprimer,
@@ -62,13 +63,6 @@ const ENTETES: Record<Vue, [string, string]> = {
 
 /** Ce que chaque vue de courrier propose de faire d'un expéditeur. */
 const PROPOSITIONS: Partial<Record<Vue, Proposition>> = {
-  publicite: {
-    libelle: 'Ne plus jamais recevoir ça',
-    icone: 'auto_delete',
-    action: 'supprimer_toujours',
-    categorie: 'publicite',
-    effet: (nom) => `Les prochains messages de ${nom} iront directement à la corbeille.`,
-  },
   newsletter: {
     libelle: 'Archiver automatiquement',
     icone: 'archive',
@@ -452,6 +446,15 @@ export default function App() {
               proposition={PROPOSITIONS[vue]}
               logos={logos}
               onOuvrir={(id) => void marquerLu(id)}
+              onSignalerSpam={
+                vue === 'publicite'
+                  ? (id) =>
+                      void agir(async () => {
+                        await messageSignalerSpam(id)
+                        return 'Message signalé comme indésirable.'
+                      })
+                  : undefined
+              }
               onCreerRegle={(r) =>
                 agir(async () => {
                   setRegles(await regleAjouter(r))
