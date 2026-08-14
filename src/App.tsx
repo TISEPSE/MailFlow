@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { Bouton, Icone, Progression, Vide } from './composants/base'
+import {
+  Bouton,
+  Icone,
+  Progression,
+  Toasts,
+  Vide,
+  type Toast,
+} from './composants/base'
 import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
@@ -15,6 +22,7 @@ import {
   type Frequence,
 } from './lib/preferences'
 import { LogoGoogle } from './composants/LogoGoogle'
+import { ModaleFormation } from './composants/ModaleFormation'
 import {
   appHealth,
   boiteLister,
@@ -43,7 +51,6 @@ import {
   reglesLister,
 } from './lib/tauri'
 import type {
-  Categorie,
   CategorieMessage,
   EtatApplication,
   JeuDeRegles,
@@ -116,9 +123,8 @@ export default function App() {
   /** Avancement du préchargement, `null` quand il n'est pas en cours. */
   const [avancement, setAvancement] = useState<Avancement | null>(null)
 
-  /** Catégorie sur laquelle ouvrir la fenêtre d'ajout de règle, quand on
-   *  arrive sur la page Règles depuis une vue vide. */
-  const [regleAOuvrir, setRegleAOuvrir] = useState<Categorie | null>(null)
+  /** Fenêtre d'ajout d'un expéditeur aux rappels de formation. */
+  const [ajoutFormation, setAjoutFormation] = useState(false)
   const boutonProfil = useRef<HTMLButtonElement>(null)
   const [logos, setLogos] = useState<Record<string, string>>({})
 
@@ -137,12 +143,28 @@ export default function App() {
     })
   }, [])
   const [enCours, setEnCours] = useState(false)
-  const [message, setMessage] = useState<{ texte: string; erreur: boolean } | null>(null)
 
-  const annoncer = useCallback((texte: string, erreur = false) => {
-    setMessage({ texte, erreur })
-    window.setTimeout(() => setMessage(null), 5000)
+  /** Messages passagers, empilés en haut à gauche.
+   *
+   *  Une liste et non un seul : deux actions rapprochées doivent se voir
+   *  toutes les deux, au lieu que la seconde efface la première. */
+  const [toasts, setToasts] = useState<Toast[]>([])
+
+  const retirerToast = useCallback((id: number) => {
+    setToasts((liste) => liste.filter((t) => t.id !== id))
   }, [])
+
+  const annoncer = useCallback(
+    (texte: string, erreur = false) => {
+      const id = Date.now() + Math.random()
+      setToasts((liste) => [...liste, { id, texte, erreur }])
+      // La barre de décompte prévient la sortie et déclenche le retrait ; ce
+      // minuteur n'est qu'un filet, pour le cas où l'animation ne se joue pas
+      // — fenêtre en arrière-plan, animations coupées par le système.
+      window.setTimeout(() => retirerToast(id), 3400)
+    },
+    [retirerToast],
+  )
 
   const rafraichir = useCallback(async () => {
     try {
@@ -194,6 +216,10 @@ export default function App() {
    * se paierait message par message, sans que rien ne l'annonce.
    */
   const chargerLaBoite = useCallback(async () => {
+    // Total inconnu, mais l'écran doit être là avant le relevé : sans cela, la
+    // bascule de compte montrait d'abord un squelette, puis la barre — deux
+    // attentes différentes pour un seul clic.
+    setAvancement((en) => en ?? { faits: 0, total: 0 })
     const messages = await relever()
     if (!messages?.length) {
       setAvancement(null)
@@ -280,7 +306,6 @@ export default function App() {
     { rechargerTout = false }: { rechargerTout?: boolean } = {},
   ) {
     setEnCours(true)
-    setMessage(null)
     try {
       const dit = await travail()
       if (dit) annoncer(dit)
@@ -295,6 +320,9 @@ export default function App() {
         if (rechargerTout) await chargerLaBoite()
         else await relever()
       }
+      // Toujours, même en cas d'échec : une action qui a posé l'écran de
+      // chargement avant d'échouer le laisserait sinon en place, sans fin.
+      setAvancement(null)
       setEnCours(false)
     }
   }
@@ -303,6 +331,9 @@ export default function App() {
   const basculerVers = (adresse: string) =>
     agir(
       async () => {
+        // Dès le clic, et non après le relevé : la boîte de l'autre compte
+        // n'a rien en cache, l'attente est réelle et doit s'annoncer.
+        setAvancement({ faits: 0, total: 0 })
         await compteBasculer(adresse)
         // La boîte affichée est celle du compte précédent : la vider avant le
         // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
@@ -330,6 +361,7 @@ export default function App() {
   const ajouterUnCompte = () =>
     agir(
       async () => {
+        setAvancement({ faits: 0, total: 0 })
         await compteAjouter()
         setBoite([])
         setPremierReleve(true)
@@ -376,11 +408,32 @@ export default function App() {
       }}
       className="flex h-full flex-col"
     >
+      <Toasts toasts={toasts} onFermer={retirerToast} />
+
+      {ajoutFormation && (
+        <ModaleFormation
+          expediteurs={boite}
+          sombre={sombre}
+          onFermer={() => setAjoutFormation(false)}
+          onValider={async (r) => {
+            setAjoutFormation(false)
+            await agir(async () => {
+              setRegles(await regleAjouter(r))
+              return `${r.nom_affichage || r.expediteur} rejoint les rappels de formation.`
+            })
+          }}
+        />
+      )}
+
       <div className="flex min-h-0 flex-1">
         <nav
           className="flex flex-none flex-col gap-0.5 border-r p-3 transition-[width] duration-150"
           style={{
-            width: repliee ? 68 : 248,
+            // 72 et non 68 : ôtez les 12 pixels de rembourrage de chaque côté
+            // et les 10 de l'entrée, il ne restait que 24 pixels pour une
+            // icône qui en fait 28 — elle débordait, et la pastille active le
+            // montrait sans détour.
+            width: repliee ? 72 : 248,
             background: 'var(--side)',
             borderColor: 'var(--line)',
           }}
@@ -418,7 +471,9 @@ export default function App() {
                 // Repliée, la barre garde le libellé en infobulle : une icône
                 // seule ne dit pas ce qu'elle range.
                 title={repliee ? `${libelle} (${compte(v)})` : undefined}
-                className="survolable flex items-center gap-3 rounded-lg px-2.5 py-2 text-left"
+                className={`survolable flex items-center gap-3 rounded-lg py-2 ${
+                  repliee ? 'justify-center px-0' : 'px-2.5 text-left'
+                }`}
                 style={actif ? { background: 'var(--card)' } : undefined}
               >
                 <span
@@ -469,8 +524,8 @@ export default function App() {
                 title={repliee ? 'Actualiser la boîte' : undefined}
                 // Replié, il prend la forme des entrées de navigation : un pavé
                 // large au milieu de carrés se lisait comme un élément étranger.
-                className={`bouton bouton-doux flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[13px] font-semibold ${
-                  repliee ? 'justify-center' : 'text-left'
+                className={`bouton bouton-doux flex w-full items-center gap-3 rounded-lg py-2 text-[13px] font-semibold ${
+                  repliee ? 'justify-center px-0' : 'px-2.5 text-left'
                 }`}
               >
                 <span className="flex h-7 w-7 flex-none items-center justify-center">
@@ -529,7 +584,9 @@ export default function App() {
               onClick={() => setMenuCompte((o) => !o)}
               aria-haspopup="menu"
               aria-expanded={menuCompte}
-              className="survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left"
+              className={`survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1.5 ${
+                repliee ? 'justify-center px-0' : 'px-1.5 text-left'
+              }`}
               title={profil?.adresse ?? undefined}
             >
               <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
@@ -565,20 +622,6 @@ export default function App() {
         </nav>
 
         <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
-          {message && (
-            <div
-              role="status"
-              className="mx-6 mt-4 flex items-start gap-2.5 rounded-xl px-4 py-3 text-[13px]"
-              style={{
-                background: message.erreur ? '#FDE3DC' : 'var(--accent-soft)',
-                color: message.erreur ? '#8A2E12' : 'var(--accent-fg)',
-              }}
-            >
-              <Icone nom={message.erreur ? 'error' : 'check_circle'} taille={17} rempli />
-              <span className="flex-1">{message.texte}</span>
-            </div>
-          )}
-
           {avancement ? (
             <Progression faits={avancement.faits} total={avancement.total} />
           ) : !etat ? (
@@ -622,8 +665,6 @@ export default function App() {
               expediteurs={boite}
               libelles={libelles}
               sombre={sombre}
-              ouvrirPour={regleAOuvrir}
-              onOuverture={() => setRegleAOuvrir(null)}
               onBasculer={(id) => agir(async () => (setRegles(await regleBasculer(id)), null))}
               onSupprimer={(id) => agir(async () => (setRegles(await regleSupprimer(id)), 'Règle supprimée.'))}
               onCreerRegle={(r) =>
@@ -687,19 +728,17 @@ export default function App() {
                 })
               }
               // Les formations ne se devinent pas : la page vide doit donc
-              // offrir le geste qui la remplit, au lieu de renvoyer chercher
-              // la page des règles de son propre chef.
+              // offrir le geste qui la remplit, sur place. La renvoyer vers la
+              // page des règles imposait un détour et trois réglages là où une
+              // adresse suffit.
               vide={
                 vue === 'formation'
                   ? {
                       ...VIDES.formation,
                       action: {
-                        libelle: 'Ranger un expéditeur ici',
+                        libelle: 'Ajouter un expéditeur',
                         icone: 'playlist_add_check' as NomIcone,
-                        onClick: () => {
-                          setRegleAOuvrir('formation')
-                          setVue('regles')
-                        },
+                        onClick: () => setAjoutFormation(true),
                       },
                     }
                   : VIDES[vue]

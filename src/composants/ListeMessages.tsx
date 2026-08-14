@@ -116,12 +116,16 @@ export function Lecture({
   message,
   corps,
   chargement,
+  attente = false,
   actions,
   logos,
 }: {
   message: MessageAffiche | null
   corps: CorpsMessage | null
+  /** Vrai quand l'attente dure assez pour mériter un squelette. */
   chargement: boolean
+  /** Vrai dès qu'une lecture est en cours, squelette ou non. */
+  attente?: boolean
   actions?: React.ReactNode
   logos: Record<string, string>
 }) {
@@ -188,7 +192,12 @@ export function Lecture({
         </div>
       </div>
 
-      <Corps message={message} corps={corps} chargement={chargement} />
+      <Corps
+        message={message}
+        corps={corps}
+        chargement={chargement}
+        attente={attente}
+      />
     </div>
   )
 }
@@ -205,13 +214,22 @@ function Corps({
   message,
   corps,
   chargement,
+  attente,
 }: {
   message: MessageAffiche
   corps: CorpsMessage | null
   chargement: boolean
+  attente: boolean
 }) {
   if (chargement) {
     return <SqueletteLecture />
+  }
+
+  // Lecture en cours, mais trop brève pour qu'on l'annonce : un fond vide le
+  // temps de quelques images. Afficher l'extrait ici le ferait apparaître puis
+  // remplacer aussitôt par le vrai corps — un clignotement de plus.
+  if (attente) {
+    return <div className="min-h-0 flex-1" />
   }
 
   if (corps?.html) {

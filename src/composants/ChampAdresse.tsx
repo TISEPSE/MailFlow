@@ -1,0 +1,190 @@
+/**
+ * Saisie d'une adresse d'expéditeur, avec suggestions.
+ *
+ * Partagée par la fenêtre d'ajout de règle et celle des rappels de formation :
+ * c'est le même geste, et il doit se faire de la même façon.
+ *
+ * Taper une adresse de mémoire est le moyen le plus sûr de se tromper d'une
+ * lettre — et une règle qui vise une adresse inexistante ne se déclenche jamais
+ * sans rien dire. Les propositions viennent des messages réellement reçus.
+ */
+import { useState } from 'react'
+import { Etiquette, Icone } from './base'
+import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
+import { adresseValide } from '../lib/regles'
+import type { Categorie, MessageAffiche } from '../types/backend'
+
+export function ChampAdresse({
+  adresse,
+  onChange,
+  expediteurs,
+  categorie,
+  sombre,
+  titre = "Adresse de l'expéditeur",
+}: {
+  adresse: string
+  /** Le second argument porte la catégorie devinée, quand elle se déduit. */
+  onChange: (v: string, categorie?: Categorie) => void
+  expediteurs: MessageAffiche[]
+  categorie: Categorie
+  sombre: boolean
+  titre?: string
+}) {
+  const choisi = expediteurs.find((m) => m.adresse === adresse)
+
+  // Une fois l'adresse retenue, elle devient une étiquette : on ne risque plus
+  // de la modifier d'une frappe, et la croix dit comment revenir en arrière.
+  if (adresseValide(adresse)) {
+    const [encre, fond] = ton(categorie, sombre)
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-semibold">{titre}</span>
+        {/* Hauteur libre plutôt que fixe : c'est l'adresse qui fait la règle,
+            elle doit se relire en entier. Une adresse longue passe donc à la
+            ligne au lieu d'être coupée. */}
+        <div
+          className="flex min-h-11 items-center rounded-xl border px-3 py-2"
+          style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+        >
+          <span
+            className="inline-flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-1.5"
+            style={{ background: fond, color: encre }}
+          >
+            <span className="font-mono text-[12.5px] leading-5 font-semibold break-all">
+              {adresse}
+            </span>
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              aria-label="Changer d'adresse"
+              className="mt-0.5 flex-none rounded-md transition-opacity hover:opacity-70"
+              style={{ color: encre }}
+            >
+              <Icone nom="close" taille={14} />
+            </button>
+          </span>
+        </div>
+        {choisi && (
+          <span className="truncate text-[12px]" style={{ color: 'var(--sub)' }}>
+            {choisi.nom}
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <Saisie
+      adresse={adresse}
+      onChange={onChange}
+      expediteurs={expediteurs}
+      sombre={sombre}
+      titre={titre}
+    />
+  )
+}
+
+/**
+ * Le champ vide, et sa liste de propositions.
+ *
+ * Rien ne s'affiche tant qu'on n'a pas tapé : dérouler d'emblée tous les
+ * expéditeurs connus recouvrait le reste du formulaire avant même qu'on ait
+ * commencé.
+ */
+function Saisie({
+  adresse,
+  onChange,
+  expediteurs,
+  sombre,
+  titre,
+}: {
+  adresse: string
+  onChange: (v: string, categorie?: Categorie) => void
+  expediteurs: MessageAffiche[]
+  sombre: boolean
+  titre: string
+}) {
+  const [ouvert, setOuvert] = useState(false)
+  const q = adresse.trim().toLowerCase()
+
+  // Tous les expéditeurs connus, pas les six premiers : la règle qu'on vient
+  // ajouter ici vise justement quelqu'un dont le message n'est pas sous les
+  // yeux. La liste est bornée en hauteur, pas en nombre.
+  const propositions = q
+    ? Array.from(
+        new Map(
+          expediteurs
+            .filter((m) => m.adresse)
+            .filter(
+              (m) =>
+                m.adresse.toLowerCase().includes(q) ||
+                m.nom.toLowerCase().includes(q),
+            )
+            .map((m) => [m.adresse, m] as const),
+        ).values(),
+      ).sort((a, b) => (a.nom || a.adresse).localeCompare(b.nom || b.adresse, 'fr'))
+    : []
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[12.5px] font-semibold">{titre}</span>
+      <input
+        type="text"
+        value={adresse}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setOuvert(true)
+        }}
+        onFocus={() => setOuvert(true)}
+        placeholder="promo@offres-tech.fr"
+        autoFocus
+        autoComplete="off"
+        className="selectionnable h-11 rounded-xl border px-4 font-mono text-[13px] outline-none"
+        style={{ background: 'var(--sunk)', borderColor: 'var(--line)', color: 'var(--fg)' }}
+      />
+
+      {ouvert && propositions.length > 0 && (
+        <div
+          className="mt-1 flex max-h-60 flex-col gap-0.5 overflow-y-auto rounded-xl border p-1"
+          style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+        >
+          {propositions.map((m) => {
+            const [encre, fond] = ton(m.categorie, sombre)
+            return (
+              <button
+                key={m.adresse}
+                type="button"
+                onClick={() => {
+                  // La catégorie du message porte déjà le classement : la
+                  // reprendre évite à l'utilisateur de la redonner.
+                  onChange(m.adresse, m.categorie === 'humain' ? undefined : m.categorie)
+                  setOuvert(false)
+                }}
+                className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] font-semibold">
+                    {m.nom}
+                  </span>
+                  <span
+                    className="block truncate font-mono text-[11px]"
+                    style={{ color: 'var(--sub)' }}
+                  >
+                    {m.adresse}
+                  </span>
+                </span>
+                {m.categorie !== 'humain' && (
+                  <Etiquette
+                    texte={LIBELLE_CATEGORIE[m.categorie]}
+                    fond={fond}
+                    couleur={encre}
+                  />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

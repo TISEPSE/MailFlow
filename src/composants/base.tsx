@@ -180,23 +180,33 @@ export function Interrupteur({
   )
 }
 
-/** Sélecteur segmenté, pour les choix courts et mutuellement exclusifs. */
+/**
+ * Sélecteur segmenté, pour les choix courts et mutuellement exclusifs.
+ *
+ * Hauteur explicite et contenu centré par la mise en page : le rembourrage
+ * seul laissait le texte flotter au-dessus du milieu, jambages compris. Le
+ * survol distingue le segment visé — trois libellés côte à côte qui ne
+ * réagissent à rien ne disent pas où l'on est.
+ */
 export function Segments<T extends string>({
   valeurs,
   valeur,
   onChange,
   libelle,
+  pleineLargeur = false,
 }: {
   valeurs: readonly T[]
   valeur: T
   onChange: (v: T) => void
   libelle: string
+  /** Occupe toute la ligne, chaque segment se partageant la largeur. */
+  pleineLargeur?: boolean
 }) {
   return (
     <div
       role="radiogroup"
       aria-label={libelle}
-      className="flex flex-none gap-1 rounded-xl p-1.5"
+      className={`flex gap-1 rounded-xl p-1.5 ${pleineLargeur ? 'w-full' : 'flex-none'}`}
       style={{ background: 'var(--sunk)' }}
     >
       {valeurs.map((v) => {
@@ -208,7 +218,9 @@ export function Segments<T extends string>({
             role="radio"
             aria-checked={actif}
             onClick={() => onChange(v)}
-            className="rounded-lg px-4 py-2 text-[13.5px] leading-none font-semibold whitespace-nowrap transition-colors"
+            className={`segment inline-flex h-9 items-center justify-center rounded-lg px-4 text-[13.5px] font-semibold whitespace-nowrap ${
+              pleineLargeur ? 'flex-1' : ''
+            }`}
             style={{
               background: actif ? 'var(--card)' : 'transparent',
               color: actif ? 'var(--fg)' : 'var(--sub)',
@@ -219,6 +231,81 @@ export function Segments<T extends string>({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+/** Un message passager, tel que l'interface le montre. */
+export interface Toast {
+  id: number
+  texte: string
+  erreur: boolean
+}
+
+/**
+ * Pile de messages passagers, en haut à gauche.
+ *
+ * Ils se superposent à l'interface au lieu de s'y insérer : le bandeau qu'ils
+ * remplacent poussait la boîte vers le bas à chaque action, si bien que le
+ * message déplaçait ce qu'on était en train de lire.
+ *
+ * Chacun porte sa barre de décompte. Une disparition annoncée se lit comme une
+ * disparition voulue ; sans elle, le message s'évanouit sans prévenir.
+ */
+export function Toasts({
+  toasts,
+  onFermer,
+}: {
+  toasts: readonly Toast[]
+  onFermer: (id: number) => void
+}) {
+  return (
+    <div
+      // `pointer-events-none` sur la pile, rétabli sur chaque toast : sans
+      // cela, la colonne invisible interceptait les clics de la barre latérale
+      // qu'elle recouvre.
+      className="pointer-events-none fixed top-4 left-4 z-50 flex w-80 flex-col gap-2"
+      role="status"
+      aria-live="polite"
+    >
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className="toast pointer-events-auto overflow-hidden rounded-xl border"
+          style={{
+            background: 'var(--card)',
+            borderColor: 'var(--line)',
+            boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
+          }}
+        >
+          <div className="flex items-start gap-2.5 px-3.5 py-3">
+            <Icone
+              nom={t.erreur ? 'error' : 'check_circle'}
+              taille={17}
+              rempli
+              style={{ color: t.erreur ? '#C2410C' : 'var(--accent-fg)' }}
+            />
+            <span className="min-w-0 flex-1 text-[13px] leading-5">{t.texte}</span>
+            <button
+              type="button"
+              onClick={() => onFermer(t.id)}
+              aria-label="Fermer le message"
+              className="bouton bouton-icone -mt-0.5 flex-none rounded-md p-1"
+            >
+              <Icone nom="close" taille={14} />
+            </button>
+          </div>
+          <div className="h-[3px]" style={{ background: 'var(--faint)' }}>
+            <div
+              className="toast-decompte h-full"
+              style={{ background: t.erreur ? '#C2410C' : 'var(--accent)' }}
+              // L'animation est le minuteur : c'est elle qui prévient la fin,
+              // et le retrait suit dans `App`.
+              onAnimationEnd={() => onFermer(t.id)}
+            />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -458,7 +545,11 @@ export function SqueletteLecture() {
  * de trois secondes ou d'une minute, alors que « 12 sur 48 » le laisse estimer.
  */
 export function Progression({ faits, total }: { faits: number; total: number }) {
-  const part = total > 0 ? Math.min(100, Math.round((faits / total) * 100)) : 0
+  // Total inconnu : la bascule de compte affiche cet écran dès le clic, avant
+  // même de savoir combien de messages seront à charger. Une barre à zéro
+  // laisserait croire que rien ne se passe.
+  const indetermine = total <= 0
+  const part = indetermine ? 0 : Math.min(100, Math.round((faits / total) * 100))
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 p-10">
@@ -478,25 +569,25 @@ export function Progression({ faits, total }: { faits: number; total: number }) 
       </div>
 
       <div className="text-[20px] font-semibold tracking-tight">
-        Préparation de votre boîte…
+        {indetermine ? 'Ouverture de votre boîte…' : 'Préparation de votre boîte…'}
       </div>
 
       <div className="flex w-80 max-w-full flex-col gap-2">
         <div
           role="progressbar"
-          aria-valuenow={faits}
+          aria-valuenow={indetermine ? undefined : faits}
           aria-valuemin={0}
-          aria-valuemax={total}
+          aria-valuemax={indetermine ? undefined : total}
           aria-label="Chargement des messages"
           className="h-2 w-full overflow-hidden rounded-full"
           style={{ background: 'var(--faint)' }}
         >
           <div
-            className="h-full rounded-full"
+            className={`h-full rounded-full ${indetermine ? 'barre-indeterminee' : ''}`}
             style={{
-              width: `${part}%`,
+              width: indetermine ? undefined : `${part}%`,
               background: 'var(--accent)',
-              transition: 'width 200ms ease',
+              transition: indetermine ? undefined : 'width 200ms ease',
             }}
           />
         </div>
@@ -505,9 +596,9 @@ export function Progression({ faits, total }: { faits: number; total: number }) 
           style={{ color: 'var(--sub)' }}
         >
           <span>
-            {faits} sur {total}
+            {indetermine ? 'relevé des messages' : `${faits} sur ${total}`}
           </span>
-          <span>{part} %</span>
+          <span>{indetermine ? '' : `${part} %`}</span>
         </div>
       </div>
 

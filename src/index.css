@@ -336,6 +336,64 @@ button:not(:disabled),
   }
 }
 
+/* Segment d'un groupe de choix : le survol dit lequel on vise.
+
+   Sans lui, trois libellés côte à côte ne réagissaient à rien tant qu'on
+   n'avait pas cliqué — on ne savait pas si l'on visait « 5 min » ou « 15 min ».
+   Le segment actif garde son fond de carte : le survol ne doit pas laisser
+   croire qu'on peut le désélectionner. */
+.segment {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.segment:not([aria-checked='true']):hover,
+.segment:not([aria-selected='true']):hover {
+  background: var(--faint);
+  color: var(--fg);
+}
+
+/* Toasts.
+
+   Le bandeau qu'ils remplacent s'insérait dans la page et poussait la boîte
+   vers le bas à chaque action. Un toast se superpose : il dit ce qui vient de
+   se passer sans rien déplacer. Sa barre se vide en trois secondes, ce qui
+   annonce sa sortie au lieu de la subir. */
+@keyframes toast-entre {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+@keyframes toast-sort {
+  to {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+@keyframes decompte {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.toast {
+  animation: toast-entre 160ms ease-out;
+}
+
+.toast[data-sortant='true'] {
+  animation: toast-sort 180ms ease-in forwards;
+}
+
+.toast-decompte {
+  transform-origin: left;
+  animation: decompte 3000ms linear forwards;
+}
+
 /* Halo de l'écran de chargement.
 
    Une onde qui part du disque et se dissipe : elle dit qu'un travail est en
@@ -354,6 +412,25 @@ button:not(:disabled),
 
 .onde {
   animation: onde 1800ms ease-out infinite;
+}
+
+/* Barre de progression sans total connu.
+
+   La bascule de compte affiche l'écran de chargement dès le clic, avant même
+   de savoir combien de messages seront à charger : une barre figée à zéro
+   laisserait croire que rien ne se passe. */
+@keyframes va_et_vient {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(410%);
+  }
+}
+
+.barre-indeterminee {
+  width: 28%;
+  animation: va_et_vient 1300ms ease-in-out infinite;
 }
 
 /* Apparition et disparition du menu de compte.
@@ -407,8 +484,18 @@ button:not(:disabled),
   .apparait,
   .onde,
   .menu-apparait,
-  .menu-disparait {
+  .menu-disparait,
+  .toast,
+  .toast[data-sortant='true'] {
     animation: none;
+  }
+
+  /* Le décompte, lui, reste : ce n'est pas une décoration, c'est la seule
+     indication du temps qu'il reste avant que le toast ne parte. La règle
+     générale ci-dessus ramène toute animation à rien ; il faut donc reprendre
+     la main avec la même force. */
+  .toast-decompte {
+    animation-duration: 3000ms !important;
   }
 }
 

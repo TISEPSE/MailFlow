@@ -30,6 +30,13 @@ import type {
   Regle,
 } from '../types/backend'
 
+/**
+ * Délai avant d'afficher le squelette de lecture, en millisecondes.
+ *
+ * En deçà, l'attente ne se voit pas : elle ne mérite donc pas d'être annoncée.
+ */
+const DELAI_SQUELETTE = 220
+
 /** Ce qu'une vue propose de faire d'un expéditeur. */
 export interface Proposition {
   libelle: string
@@ -89,6 +96,10 @@ export function Courrier({
   const [enCours, setEnCours] = useState(false)
 
   const choisi = messages.find((m) => m.id === selection) ?? messages[0]
+
+  /** Deux états distincts : une lecture est en cours, et il faut le montrer.
+   *  Le second suit le premier de `DELAI_SQUELETTE`. */
+  const [attenteCorps, setAttenteCorps] = useState(false)
   const [chargementCorps, setChargementCorps] = useState(false)
 
   const idAffiche = choisi?.id
@@ -98,6 +109,7 @@ export function Courrier({
     // Déjà en mémoire : ni appel réseau, ni squelette. C'est tout l'objet du
     // cache — revenir sur un message retéléchargeait ses images à chaque fois.
     if (!idAffiche || corpsConnus.has(idAffiche)) {
+      setAttenteCorps(false)
       setChargementCorps(false)
       return
     }
@@ -106,15 +118,30 @@ export function Courrier({
     // réponse d'une lecture abandonnée ne doit pas s'afficher sous un autre
     // en-tête.
     let courant = true
-    setChargementCorps(true)
+    setAttenteCorps(true)
+
+    // Le squelette attend. Les corps étant préchargés au démarrage, la lecture
+    // dure quelques dizaines de millisecondes : le squelette n'avait que le
+    // temps d'apparaître et de disparaître, ce qui se lit comme un
+    // clignotement, pas comme une attente. Passé ce délai, l'attente est réelle
+    // et mérite d'être montrée.
+    const minuteur = window.setTimeout(() => {
+      if (courant) setChargementCorps(true)
+    }, DELAI_SQUELETTE)
 
     messageCorps(idAffiche)
       .then((c) => courant && onCorpsCharge(idAffiche, c))
       .catch(() => undefined)
-      .finally(() => courant && setChargementCorps(false))
+      .finally(() => {
+        window.clearTimeout(minuteur)
+        if (!courant) return
+        setAttenteCorps(false)
+        setChargementCorps(false)
+      })
 
     return () => {
       courant = false
+      window.clearTimeout(minuteur)
     }
     // `corpsConnus` volontairement absent : son changement vient de cet effet
     // même, et le relancer dessus le ferait tourner en boucle.
@@ -165,6 +192,7 @@ export function Courrier({
         message={choisi}
         corps={corps}
         chargement={chargementCorps}
+        attente={attenteCorps}
         logos={logos}
         actions={
           <>

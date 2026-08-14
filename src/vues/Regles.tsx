@@ -20,6 +20,7 @@ import {
   Segments,
   Vide,
 } from '../composants/base'
+import { ChampAdresse } from '../composants/ChampAdresse'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
 import { adresseValide, nouvelleRegle, phrase } from '../lib/regles'
 import type {
@@ -78,8 +79,6 @@ export function Regles({
   expediteurs,
   libelles,
   sombre,
-  ouvrirPour,
-  onOuverture,
 }: {
   regles: Regle[]
   onBasculer: (id: string) => Promise<void>
@@ -89,21 +88,13 @@ export function Regles({
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
   sombre: boolean
-  /** Ouvre la fenêtre d'ajout sur cette catégorie, à l'arrivée sur la page. */
-  ouvrirPour?: Categorie | null
-  /** Signale que la demande d'ouverture a été honorée, pour qu'elle ne se
-   *  rejoue pas au prochain passage sur la page. */
-  onOuverture?: () => void
 }) {
   const [onglet, setOnglet] = useState<Onglet>('Toutes')
   const [recherche, setRecherche] = useState('')
   const [aConfirmer, setAConfirmer] = useState<string | null>(null)
-  const [formulaireOuvert, setFormulaireOuvert] = useState(Boolean(ouvrirPour))
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false)
 
-  const fermer = () => {
-    setFormulaireOuvert(false)
-    onOuverture?.()
-  }
+  const fermer = () => setFormulaireOuvert(false)
 
   const q = recherche.trim().toLowerCase()
   const visibles = regles
@@ -275,7 +266,6 @@ export function Regles({
             expediteurs={expediteurs}
             libelles={libelles}
             sombre={sombre}
-            categorieInitiale={ouvrirPour ?? undefined}
             onAnnuler={fermer}
             onValider={async (regle) => {
               await onCreerRegle(regle)
@@ -301,20 +291,14 @@ function FormulaireAjout({
   expediteurs,
   libelles,
   sombre,
-  categorieInitiale,
 }: {
   onValider: (regle: Regle) => Promise<void>
   onAnnuler: () => void
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
   sombre: boolean
-  /** Catégorie posée d'avance, quand la fenêtre est ouverte depuis une vue. */
-  categorieInitiale?: Categorie
 }) {
-  const depart =
-    (Object.entries(CATEGORIE_ONGLET) as [(typeof CATEGORIES)[number], Categorie][]).find(
-      ([, c]) => c === categorieInitiale,
-    )?.[0] ?? 'Publicités'
+  const depart = 'Publicités' as const
 
   const [adresse, setAdresse] = useState('')
   const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>(depart)
@@ -382,31 +366,31 @@ function FormulaireAjout({
         }}
       />
 
-      <div className="flex flex-wrap items-center gap-6">
-        <Champ titre="Catégorie">
-          <Segments
-            valeurs={CATEGORIES}
-            valeur={categorie}
-            onChange={(v) => {
-              changerCategorie(v)
-              setChoisiParDefaut(false)
-            }}
-            libelle="Catégorie de la règle"
-          />
-        </Champ>
+      <Champ titre="Catégorie">
+        <Segments
+          pleineLargeur
+          valeurs={CATEGORIES}
+          valeur={categorie}
+          onChange={(v) => {
+            changerCategorie(v)
+            setChoisiParDefaut(false)
+          }}
+          libelle="Catégorie de la règle"
+        />
+      </Champ>
 
-        <Champ titre="Action">
-          <Segments
-            valeurs={ACTIONS}
-            valeur={libelleAction}
-            onChange={(v) => {
-              setLibelleAction(v)
-              setActionChoisie(true)
-            }}
-            libelle="Action de la règle"
-          />
-        </Champ>
-      </div>
+      <Champ titre="Action">
+        <Segments
+          pleineLargeur
+          valeurs={ACTIONS}
+          valeur={libelleAction}
+          onChange={(v) => {
+            setLibelleAction(v)
+            setActionChoisie(true)
+          }}
+          libelle="Action de la règle"
+        />
+      </Champ>
 
       {archive && (
         <Champ titre="Ranger sous">
@@ -423,171 +407,30 @@ function FormulaireAjout({
         </Champ>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div
-          className="min-w-0 flex-1 text-[13px]"
+      {/* La phrase sur sa propre ligne : coincée à côté des boutons, elle se
+          brisait en quatre lignes étroites alors que c'est elle qui dit ce que
+          la règle fera. */}
+      <div className="flex flex-col gap-3 pt-1">
+        <p
+          className="text-[13px] leading-relaxed"
           style={{ color: valide ? 'var(--fg)' : 'var(--sub)' }}
         >
           {valide
             ? phrase(regle)
             : 'Saisissez une adresse complète pour voir ce que la règle fera.'}
+        </p>
+        <div className="flex items-center justify-end gap-2">
+          <Bouton onClick={onAnnuler}>Annuler</Bouton>
+          <button
+            type="submit"
+            disabled={!valide || enCours}
+            className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[13px] leading-none font-semibold"
+          >
+            {enCours ? 'Enregistrement…' : 'Enregistrer la règle'}
+          </button>
         </div>
-        <button
-          type="submit"
-          disabled={!valide || enCours}
-          className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[13px] leading-none font-semibold"
-        >
-          Enregistrer la règle
-        </button>
-        <Bouton onClick={onAnnuler}>Annuler</Bouton>
       </div>
     </form>
-  )
-}
-
-/**
- * Saisie de l'adresse, avec les expéditeurs de la boîte en suggestion.
- *
- * Taper une adresse de mémoire est le moyen le plus sûr de se tromper d'une
- * lettre — et une règle qui vise une adresse inexistante ne se déclenche jamais
- * sans rien dire. Les propositions viennent des messages réellement reçus.
- */
-function ChampAdresse({
-  adresse,
-  onChange,
-  expediteurs,
-  categorie,
-  sombre,
-}: {
-  adresse: string
-  onChange: (v: string, categorie?: Categorie) => void
-  expediteurs: MessageAffiche[]
-  categorie: Categorie
-  sombre: boolean
-}) {
-  const [ouvert, setOuvert] = useState(false)
-  const choisi = expediteurs.find((m) => m.adresse === adresse)
-
-  // Une fois l'adresse retenue, elle devient une étiquette : on ne risque plus
-  // de la modifier d'une frappe, et la croix dit comment revenir en arrière.
-  if (adresseValide(adresse)) {
-    const [encre, fond] = ton(categorie, sombre)
-    return (
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
-        {/* Hauteur libre plutôt que fixe : c'est l'adresse qui fait la règle,
-            elle doit se relire en entier. Une adresse longue passe donc à la
-            ligne au lieu d'être coupée. */}
-        <div
-          className="flex min-h-11 items-center rounded-xl border px-3 py-2"
-          style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
-        >
-          <span
-            className="inline-flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-1.5"
-            style={{ background: fond, color: encre }}
-          >
-            <span className="font-mono text-[12.5px] leading-5 font-semibold break-all">
-              {adresse}
-            </span>
-            <button
-              type="button"
-              onClick={() => onChange('')}
-              aria-label="Changer d'adresse"
-              className="mt-0.5 flex-none rounded-md transition-opacity hover:opacity-70"
-              style={{ color: encre }}
-            >
-              <Icone nom="close" taille={14} />
-            </button>
-          </span>
-        </div>
-        {choisi && (
-          <span className="truncate text-[12px]" style={{ color: 'var(--sub)' }}>
-            {choisi.nom}
-          </span>
-        )}
-      </div>
-    )
-  }
-
-  const q = adresse.trim().toLowerCase()
-  // Tous les expéditeurs connus, pas les six premiers : la règle qu'on vient
-  // ajouter ici vise justement quelqu'un dont le message n'est pas sous les
-  // yeux. La liste est bornée en hauteur, pas en nombre.
-  const propositions = Array.from(
-    new Map(
-      expediteurs
-        .filter((m) => m.adresse)
-        .filter(
-          (m) =>
-            !q ||
-            m.adresse.toLowerCase().includes(q) ||
-            m.nom.toLowerCase().includes(q),
-        )
-        .map((m) => [m.adresse, m] as const),
-    ).values(),
-  ).sort((a, b) => (a.nom || a.adresse).localeCompare(b.nom || b.adresse, 'fr'))
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
-      <input
-        type="text"
-        value={adresse}
-        onChange={(e) => {
-          onChange(e.target.value)
-          setOuvert(true)
-        }}
-        onFocus={() => setOuvert(true)}
-        placeholder="promo@offres-tech.fr"
-        autoFocus
-        autoComplete="off"
-        className="selectionnable h-11 rounded-xl border px-4 font-mono text-[13px] outline-none"
-        style={{ background: 'var(--sunk)', borderColor: 'var(--line)', color: 'var(--fg)' }}
-      />
-
-      {ouvert && propositions.length > 0 && (
-        <div
-          className="mt-1 flex max-h-60 flex-col gap-0.5 overflow-y-auto rounded-xl border p-1"
-          style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
-        >
-          {propositions.map((m) => {
-            const [encre, fond] = ton(m.categorie, sombre)
-            return (
-              <button
-                key={m.adresse}
-                type="button"
-                onClick={() => {
-                  // La catégorie du message porte déjà le classement : la
-                  // reprendre évite à l'utilisateur de la redonner.
-                  onChange(m.adresse, m.categorie === 'humain' ? undefined : m.categorie)
-                  setOuvert(false)
-                }}
-                className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-semibold">
-                    {m.nom}
-                  </span>
-                  <span
-                    className="block truncate font-mono text-[11px]"
-                    style={{ color: 'var(--sub)' }}
-                  >
-                    {m.adresse}
-                  </span>
-                </span>
-                {m.categorie !== 'humain' && (
-                  <Etiquette
-                    texte={LIBELLE_CATEGORIE[m.categorie]}
-                    fond={fond}
-                    couleur={encre}
-                  />
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
   )
 }
 
