@@ -20,8 +20,7 @@ Pour connecter votre compte, une étape se fait de votre côté, chez Google : v
 
 Voir [`Cahier-des-Charges-MailFlow.md`](Cahier-des-Charges-MailFlow.md) pour la
 spécification fonctionnelle, et
-[`docs/superpowers/specs/`](docs/superpowers/specs/) pour les décisions
-d'architecture.
+[`docs/specs/`](docs/specs/) pour les décisions d'architecture.
 
 ## Architecture
 
