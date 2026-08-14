@@ -16,6 +16,15 @@ use super::execution::{OperationGmail, RapportExecution};
 use super::modele::{MessageMetadata, RefMessage, ReponseErreur, ReponseListe};
 use super::reessai::{Suite, suite_apres};
 use super::{BASE_API, ENTETES_TRI};
+use crate::auth::URL_USERINFO;
+
+/// Ce que Google veut bien dire d'un compte : de quoi le reconnaître, rien de
+/// plus. Les deux champs sont facultatifs côté Google, donc ici aussi.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct Renseignements {
+    pub name: Option<String>,
+    pub picture: Option<String>,
+}
 use crate::error::{AppError, Resultat};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,6 +249,18 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         serde_json::from_str::<Profil>(&corps)
             .map(|p| p.email_address)
             .map_err(|e| AppError::Reseau(format!("profil illisible : {e}")))
+    }
+
+    /// Nom affiché et adresse de la photo du compte.
+    ///
+    /// Lu sur le point d'entrée OpenID de Google plutôt que sur l'API Gmail,
+    /// qui ne connaît ni l'un ni l'autre. Rendu sans erreur quand les champs
+    /// manquent : un compte sans photo est un cas ordinaire, pas une panne.
+    pub async fn renseignements_du_compte(&self) -> Resultat<Renseignements> {
+        let corps = self.appeler(Methode::Get, URL_USERINFO, None).await?;
+
+        serde_json::from_str::<Renseignements>(&corps)
+            .map_err(|e| AppError::Reseau(format!("renseignements illisibles : {e}")))
     }
 
     pub async fn metadonnees(&self, id: &str) -> Resultat<MessageMetadata> {
@@ -631,6 +652,33 @@ mod tests {
 
         assert_eq!(c.client.adresse_du_compte().await.unwrap(), "moi@gmail.com");
         assert!(c.urls()[0].ends_with("/users/me/profile"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn le_nom_et_la_photo_sont_lus_sur_le_point_d_entree_openid() {
+        // L'API Gmail ne connaît ni l'un ni l'autre : c'est bien un autre hôte
+        // qu'il faut interroger, avec le même jeton.
+        let c = client(vec![ok(
+            r#"{"name":"Lucie Marchand","picture":"https://lh3.googleusercontent.com/a/x=s96"}"#,
+        )]);
+
+        let r = c.client.renseignements_du_compte().await.unwrap();
+
+        assert_eq!(r.name.as_deref(), Some("Lucie Marchand"));
+        assert!(r.picture.unwrap().starts_with("https://"));
+        assert_eq!(c.urls()[0], URL_USERINFO);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_compte_sans_photo_n_est_pas_une_panne() {
+        // Beaucoup de comptes n'en ont pas ; l'interface doit alors retomber
+        // sur le logo Google, pas afficher une erreur.
+        let c = client(vec![ok(r#"{"email":"moi@gmail.com"}"#)]);
+
+        let r = c.client.renseignements_du_compte().await.unwrap();
+
+        assert!(r.picture.is_none());
+        assert!(r.name.is_none());
     }
 
     #[tokio::test(start_paused = true)]

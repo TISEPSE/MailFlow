@@ -9,13 +9,13 @@
 import { Bloc, Bouton, Icone, Interrupteur, Segments } from '../composants/base'
 import { LogoGoogle } from '../composants/LogoGoogle'
 import { FREQUENCES, type Frequence } from '../lib/preferences'
-import type { EtatApplication } from '../types/backend'
+import type { EtatApplication, ProfilCompte } from '../types/backend'
 
 const ACCENTS = ['#2F6BFF', '#1F7A5A', '#4C3BCF', '#C2410C'] as const
 
 export function Parametres({
   etat,
-  compte,
+  profil,
   sombre,
   onBasculerTheme,
   accent,
@@ -29,7 +29,7 @@ export function Parametres({
   enCours,
 }: {
   etat: EtatApplication
-  compte: string | null
+  profil: ProfilCompte | null
   sombre: boolean
   onBasculerTheme: () => void
   accent: string
@@ -47,7 +47,7 @@ export function Parametres({
       <div className="mx-auto w-full max-w-3xl px-8 py-7">
         <CarteCompte
           connecte={etat.compteConnecte}
-          compte={compte}
+          profil={profil}
           bloque={!etat.clientGoogleConfigure || !etat.trousseauDisponible}
           enCours={enCours}
           onConnecter={onConnecter}
@@ -179,14 +179,14 @@ export function Parametres({
  */
 function CarteCompte({
   connecte,
-  compte,
+  profil,
   bloque,
   enCours,
   onConnecter,
   onDeconnecter,
 }: {
   connecte: boolean
-  compte: string | null
+  profil: ProfilCompte | null
   bloque: boolean
   enCours: boolean
   onConnecter: () => void
@@ -194,33 +194,45 @@ function CarteCompte({
 }) {
   return (
     <div
-      className="flex items-center gap-4 rounded-2xl p-4"
+      className="carte-survolable flex items-center gap-4 rounded-2xl p-4"
       style={{
         background: connecte ? 'var(--accent-soft)' : 'var(--sunk)',
         border: '1px solid var(--line)',
       }}
     >
-      <div
-        className="flex h-12 w-12 flex-none items-center justify-center rounded-full"
-        style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
-      >
-        {connecte ? (
-          <LogoGoogle taille={24} />
-        ) : (
-          <Icone nom="person_off" taille={22} style={{ color: 'var(--sub)' }} />
-        )}
-      </div>
+      {profil?.photo ? (
+        <img
+          src={profil.photo}
+          alt=""
+          className="h-12 w-12 flex-none rounded-full object-cover"
+          style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
+        />
+      ) : (
+        <div
+          className="flex h-12 w-12 flex-none items-center justify-center rounded-full"
+          style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
+        >
+          {connecte ? (
+            <LogoGoogle taille={24} />
+          ) : (
+            <Icone nom="person_off" taille={22} style={{ color: 'var(--sub)' }} />
+          )}
+        </div>
+      )}
 
       <div className="min-w-0 flex-1">
-        <div className="text-[15px] font-semibold">
-          {connecte ? 'Compte Google relié' : 'Aucun compte relié'}
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[15px] font-semibold">
+            {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
+          </span>
+          {connecte && profil?.photo && <LogoGoogle taille={16} />}
         </div>
         <div
           className="selectionnable truncate pt-0.5 font-mono text-[12px]"
           style={{ color: 'var(--sub)' }}
         >
           {connecte
-            ? (compte ?? 'autorisation conservée dans le trousseau')
+            ? (profil?.adresse ?? 'autorisation conservée dans le trousseau')
             : bloque
               ? 'configuration incomplète, voir le diagnostic ci-dessous'
               : 'MailFlow ne peut rien trier tant qu’aucun compte n’est autorisé'}

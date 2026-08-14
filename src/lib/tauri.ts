@@ -11,6 +11,7 @@ import type {
   EtatApplication,
   JeuDeRegles,
   MessageAffiche,
+  ProfilCompte,
   RapportExecution,
   Regle,
 } from '../types/backend'
@@ -101,6 +102,16 @@ export function boiteLister(): Promise<MessageAffiche[]> {
 /** Adresse du compte relié, ou `null` si aucun ne l'est. */
 export function compteAdresse(): Promise<string | null> {
   return invoke<string | null>('compte_adresse')
+}
+
+/**
+ * Profil du compte relié : adresse, nom affiché, photo.
+ *
+ * La photo arrive en URI de données parce que la politique de sécurité de
+ * l'interface interdit les images d'origine externe.
+ */
+export function compteProfil(): Promise<ProfilCompte | null> {
+  return invoke<ProfilCompte | null>('compte_profil')
 }
 
 /**

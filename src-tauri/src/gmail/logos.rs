@@ -407,6 +407,15 @@ async fn icones_de_la_page(http: &reqwest::Client, domaine: &str) -> Vec<String>
     icones_declarees(&String::from_utf8_lossy(&html), domaine)
 }
 
+/// Rapatrie une image et la rend sous forme d'URI de données.
+///
+/// L'interface tourne sous une politique de sécurité qui interdit les origines
+/// externes : une `<img src="https://…">` serait bloquée. Toute image affichée
+/// doit donc passer par ici, y compris la photo du compte Google.
+pub async fn image_distante(http: &reqwest::Client, url: &str) -> Option<String> {
+    telecharger_image(http, url).await
+}
+
 async fn telecharger_image(http: &reqwest::Client, url: &str) -> Option<String> {
     let octets = telecharger(http, url, TAILLE_MAX, Trop::Refuser).await?;
     en_data_uri(&octets)

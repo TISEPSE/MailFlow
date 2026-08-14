@@ -24,6 +24,14 @@ export interface EtatApplication {
   clientGoogleConfigure: boolean
 }
 
+/** Miroir de `commands::ProfilCompte`. */
+export interface ProfilCompte {
+  adresse: string
+  nom: string | null
+  /** URI de données : la politique de sécurité interdit les images distantes. */
+  photo: string | null
+}
+
 /** Miroir de `gmail::classement::CategorieMessage`. */
 export type CategorieMessage = 'humain' | 'publicite' | 'newsletter' | 'formation'
 

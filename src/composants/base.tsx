@@ -6,7 +6,7 @@
  * d'accent de basculer sans que chaque vue ait à s'en occuper.
  */
 import type { CSSProperties, ReactNode } from 'react'
-import { BOITE, GLYPHES, type NomIcone } from './glyphes'
+import { BOITE, GLYPHES, GLYPHES_PLEINS, type NomIcone } from './glyphes'
 
 /**
  * Icône, dessinée en SVG.
@@ -15,15 +15,18 @@ import { BOITE, GLYPHES, type NomIcone } from './glyphes'
  * cesse d'afficher ses glyphes sans lever la moindre erreur — d'abord des noms
  * en toutes lettres, puis des espaces vides. Un tracé ne dépend de rien.
  *
- * `rempli` n'a plus d'effet : les variantes pleines demandaient l'axe variable
- * `FILL` de la police. Le paramètre est conservé pour ne pas toucher tous les
- * appels, mais il ne change rien au dessin.
+ * `rempli` demande la variante pleine, extraite de l'axe variable `FILL`. Elle
+ * sert à marquer l'élément actif : une icône qui se remplit se distingue même
+ * quand la couleur ne suffit pas. Neuf icônes sur trente et une sont identiques
+ * dans les deux variantes ; pour celles-là, `rempli` ne change rien, faute de
+ * dessin plein dans la police.
  */
 export function Icone({
   nom,
   taille = 18,
   className = '',
   style,
+  rempli = false,
 }: {
   nom: NomIcone
   taille?: number
@@ -31,6 +34,8 @@ export function Icone({
   style?: CSSProperties
   rempli?: boolean
 }) {
+  const trace = (rempli ? GLYPHES_PLEINS[nom] : undefined) ?? GLYPHES[nom]
+
   return (
     <svg
       aria-hidden
@@ -41,7 +46,7 @@ export function Icone({
       className={`inline-block flex-none ${className}`}
       style={{ fill: 'currentColor', ...style }}
     >
-      <path d={GLYPHES[nom]} />
+      <path d={trace} />
     </svg>
   )
 }
@@ -180,6 +185,37 @@ export function Segments<T extends string>({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * En-tête de page : titre, phrase d'explication, actions à droite.
+ *
+ * Partagé par toutes les vues, pour qu'une page ne puisse pas se retrouver avec
+ * deux titres empilés ni avec une typographie qui lui soit propre.
+ */
+export function EnTete({
+  titre,
+  sous,
+  children,
+}: {
+  titre: string
+  sous: string
+  children?: ReactNode
+}) {
+  return (
+    <div
+      className="flex flex-none items-start gap-4 border-b px-8 py-6"
+      style={{ borderColor: 'var(--line)' }}
+    >
+      <div className="min-w-0 flex-1">
+        <h1 className="text-[26px] font-bold tracking-tight">{titre}</h1>
+        <p className="pt-1 text-[14px]" style={{ color: 'var(--sub)' }}>
+          {sous}
+        </p>
+      </div>
+      {children}
     </div>
   )
 }

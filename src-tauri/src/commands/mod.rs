@@ -339,6 +339,71 @@ pub async fn compte_adresse(etat: State<'_, EtatAuth>) -> Resultat<Option<String
     client.adresse_du_compte().await.map(Some)
 }
 
+/// Qui est relié : adresse, nom affiché, photo.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct ProfilCompte {
+    pub adresse: String,
+    pub nom: Option<String>,
+    /// URI de données, jamais une adresse distante : la politique de sécurité
+    /// de l'interface interdit les origines externes dans une balise `<img>`.
+    pub photo: Option<String>,
+}
+
+/// Profil du compte relié, ou `None` si aucun ne l'est.
+///
+/// Le nom et la photo ne sont pas indispensables : s'ils manquent — compte sans
+/// photo, autorisation accordée avant l'ajout de la portée `profile`, réseau
+/// capricieux — l'adresse est rendue seule et l'interface retombe sur le logo
+/// Google. Échouer ici priverait l'utilisateur de l'information principale pour
+/// une décoration.
+#[tauri::command]
+pub async fn compte_profil(etat: State<'_, EtatAuth>) -> Resultat<Option<ProfilCompte>> {
+    if !etat.session.lock().await.est_connecte()? {
+        return Ok(None);
+    }
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let adresse = client.adresse_du_compte().await?;
+
+    let Ok(infos) = client.renseignements_du_compte().await else {
+        log::info!("renseignements du compte indisponibles, adresse seule");
+        return Ok(Some(ProfilCompte {
+            adresse,
+            ..Default::default()
+        }));
+    };
+
+    let photo = match infos.picture.as_deref() {
+        Some(url) => {
+            let http = client_http()?;
+            crate::gmail::logos::image_distante(&http, url).await
+        }
+        None => None,
+    };
+
+    log::info!(
+        "profil du compte lu, photo {}",
+        if photo.is_some() {
+            "comprise"
+        } else {
+            "absente"
+        }
+    );
+    Ok(Some(ProfilCompte {
+        adresse,
+        nom: infos.name,
+        photo,
+    }))
+}
+
+/// Client HTTP pour les images : hors API, sans jeton, HTTPS obligatoire.
+fn client_http() -> Resultat<reqwest::Client> {
+    reqwest::Client::builder()
+        .https_only(true)
+        .build()
+        .map_err(|e| AppError::Config(format!("client HTTP inutilisable : {e}")))
+}
+
 /// Logos des expéditeurs, un par domaine.
 ///
 /// Chaque logo est demandé au domaine de l'expéditeur, jamais à un service
@@ -361,10 +426,7 @@ pub async fn logos_expediteurs(
         .map_err(|e| AppError::Config(format!("dossier de cache introuvable : {e}")))?
         .join("logos");
 
-    let http = reqwest::Client::builder()
-        .https_only(true)
-        .build()
-        .map_err(|e| AppError::Config(format!("client HTTP inutilisable : {e}")))?;
+    let http = client_http()?;
 
     let trouves =
         crate::gmail::logos::logos(&http, &dossier, &domaines.into_iter().collect::<Vec<_>>())

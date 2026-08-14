@@ -35,11 +35,12 @@ export function ListeMessages({
             type="button"
             onClick={() => onSelect(m.id)}
             aria-current={choisi}
-            className="flex items-start gap-3 border-b px-4 py-3 text-left transition-colors"
-            style={{
-              background: choisi ? 'var(--card)' : 'transparent',
-              borderColor: 'var(--line)',
-            }}
+            className="survolable flex items-start gap-3 border-b px-4 py-3 text-left"
+            style={
+              choisi
+                ? { background: 'var(--card)', borderColor: 'var(--line)' }
+                : { borderColor: 'var(--line)' }
+            }
           >
             <span
               className="mt-2 h-1.5 w-1.5 flex-none rounded-full"

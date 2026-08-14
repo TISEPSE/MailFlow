@@ -11,7 +11,7 @@ use serde::Deserialize;
 use url::Url;
 
 use super::jetons::ReponseJeton;
-use super::{SCOPE_EMAIL, SCOPE_GMAIL, URL_AUTORISATION, URL_JETON, URL_REVOCATION};
+use super::{SCOPE_EMAIL, SCOPE_GMAIL, SCOPE_PROFIL, URL_AUTORISATION, URL_JETON, URL_REVOCATION};
 use crate::error::{AppError, Resultat};
 
 /// Erreur renvoyée par les endpoints OAuth2 de Google.
@@ -93,7 +93,10 @@ fn url_autorisation(
         .append_pair("response_type", "code")
         .append_pair("client_id", client_id)
         .append_pair("redirect_uri", redirect_uri)
-        .append_pair("scope", &format!("{SCOPE_GMAIL} {SCOPE_EMAIL}"))
+        .append_pair(
+            "scope",
+            &format!("{SCOPE_GMAIL} {SCOPE_EMAIL} {SCOPE_PROFIL}"),
+        )
         .append_pair("code_challenge", code_challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", state)
@@ -340,6 +343,7 @@ mod tests {
 
         assert!(p["scope"].contains(SCOPE_GMAIL));
         assert!(p["scope"].contains(SCOPE_EMAIL));
+        assert!(p["scope"].contains(SCOPE_PROFIL));
         assert!(!p["scope"].contains("gmail.send"));
         assert!(!p["scope"].contains("gmail.compose"));
     }

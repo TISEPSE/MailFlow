@@ -62,6 +62,17 @@ pub const SCOPE_GMAIL: &str = "https://www.googleapis.com/auth/gmail.modify";
 /// Adresse du compte connecté, pour l'afficher dans l'interface.
 pub const SCOPE_EMAIL: &str = "https://www.googleapis.com/auth/userinfo.email";
 
+/// Nom et photo du compte, pour que l'utilisateur reconnaisse d'un coup d'œil
+/// lequel de ses comptes est relié.
+///
+/// Portée non sensible : elle ne donne accès qu'à ce que l'utilisateur montre
+/// déjà à toute application Google. On ne demande rien de l'annuaire de
+/// contacts, qui exigerait la People API et une portée restreinte.
+pub const SCOPE_PROFIL: &str = "https://www.googleapis.com/auth/userinfo.profile";
+
+/// Renseignements publics du compte : `name`, `picture`, `email`.
+pub const URL_USERINFO: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
+
 pub const URL_AUTORISATION: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub const URL_JETON: &str = "https://oauth2.googleapis.com/token";
 pub const URL_REVOCATION: &str = "https://oauth2.googleapis.com/revoke";

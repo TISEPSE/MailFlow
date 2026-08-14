@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bouton, Icone, Vide } from './composants/base'
+import { Bouton, EnTete, Icone, Vide } from './composants/base'
 import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
@@ -17,7 +17,7 @@ import { LogoGoogle } from './composants/LogoGoogle'
 import {
   appHealth,
   boiteLister,
-  compteAdresse,
+  compteProfil,
   logosExpediteurs,
   gmailSynchroniser,
   googleConnecter,
@@ -33,6 +33,7 @@ import type {
   EtatApplication,
   JeuDeRegles,
   MessageAffiche,
+  ProfilCompte,
 } from './types/backend'
 
 type Vue = CategorieMessage | 'regles' | 'parametres'
@@ -85,7 +86,7 @@ export default function App() {
   const [boite, setBoite] = useState<MessageAffiche[]>([])
   const [vue, setVue] = useState<Vue>('humain')
   const [prefs, setPrefs] = useState(DEFAUTS)
-  const [adresse, setAdresse] = useState<string | null>(null)
+  const [profil, setProfil] = useState<ProfilCompte | null>(null)
   const [logos, setLogos] = useState<Record<string, string>>({})
   const { sombre, accent } = prefs
 
@@ -114,7 +115,7 @@ export default function App() {
       const [sante, jeu] = await Promise.all([appHealth(), reglesLister()])
       setEtat(sante)
       setRegles(jeu)
-      if (!sante.compteConnecte) setAdresse(null)
+      if (!sante.compteConnecte) setProfil(null)
       return sante
     } catch (e) {
       annoncer(messageDErreur(e), true)
@@ -141,7 +142,7 @@ export default function App() {
   useEffect(() => {
     void rafraichir().then(async (sante) => {
       if (!sante?.compteConnecte) return
-      setAdresse(await compteAdresse().catch(() => null))
+      setProfil(await compteProfil().catch(() => null))
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)
       }
@@ -234,14 +235,19 @@ export default function App() {
                 type="button"
                 onClick={() => setVue(v)}
                 aria-current={actif ? 'page' : undefined}
-                className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-left"
-                style={{ background: actif ? 'var(--card)' : 'transparent' }}
+                className="survolable flex items-center gap-3 rounded-lg px-2.5 py-2 text-left"
+                style={actif ? { background: 'var(--card)' } : undefined}
               >
                 <span
                   className="flex h-7 w-7 flex-none items-center justify-center rounded-[9px]"
                   style={{ background: actif ? solide : doux }}
                 >
-                  <Icone nom={glyphe} taille={16} rempli style={{ color: actif ? '#FFFFFF' : solide }} />
+                  <Icone
+                    nom={glyphe}
+                    taille={16}
+                    rempli={actif}
+                    style={{ color: actif ? '#FFFFFF' : solide }}
+                  />
                 </span>
                 <span
                   className="min-w-0 flex-1 truncate text-[13px] font-medium"
@@ -261,72 +267,26 @@ export default function App() {
 
           <div className="flex-1" />
 
-          {etat?.compteConnecte && (
-            <div
-              className="rounded-xl border p-3"
-              style={{
-                background: 'var(--card)',
-                borderColor: 'var(--line)',
-                boxShadow: 'var(--shadow)',
-              }}
-            >
-              <div className="flex items-center gap-2 pb-1.5">
-                <Icone nom="bolt" taille={16} rempli style={{ color: '#28A745' }} />
-                <span className="text-[12px] font-semibold">Règles actives</span>
-              </div>
-              <p className="text-[12px] leading-relaxed" style={{ color: 'var(--sub)' }}>
-                {regles?.automations.filter((r) => r.active).length ?? 0} règle(s) prêtes à
-                s'appliquer à votre boîte.
-              </p>
-              <div className="pt-2.5">
-                <Bouton
-                  variante="discret"
-                  icone="sync"
-                  disabled={enCours}
-                  onClick={() =>
-                    void agir(async () => resumerRapport(await gmailSynchroniser()))
-                  }
-                >
-                  {enCours ? 'En cours…' : 'Appliquer mes règles'}
-                </Bouton>
-              </div>
-            </div>
-          )}
-
           <div
             className="mt-3 flex items-center gap-2.5 border-t pt-3"
             style={{ borderColor: 'var(--line)' }}
           >
-            {etat?.compteConnecte ? (
-              <div
-                className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
-                style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
-              >
-                <LogoGoogle taille={17} />
-              </div>
-            ) : (
-              <div
-                className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11px] font-semibold"
-                style={{ background: 'var(--faint)', color: 'var(--sub)' }}
-              >
-                {initiales(adresse ?? '?')}
-              </div>
-            )}
+            <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
 
             <button
               type="button"
               onClick={() => setVue('parametres')}
-              className="min-w-0 flex-1 text-left"
-              title={adresse ?? undefined}
+              className="survolable min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left"
+              title={profil?.adresse ?? undefined}
             >
               <div className="truncate text-[12px] font-semibold">
-                {etat?.compteConnecte ? 'Compte Google' : 'Non connecté'}
+                {profil?.nom ?? (etat?.compteConnecte ? 'Compte Google' : 'Non connecté')}
               </div>
               <div
                 className="truncate font-mono text-[10px]"
                 style={{ color: 'var(--sub)' }}
               >
-                {adresse ?? 'aucun compte relié'}
+                {profil?.adresse ?? 'aucun compte relié'}
               </div>
             </button>
 
@@ -335,34 +295,34 @@ export default function App() {
               onClick={() => setVue('parametres')}
               aria-label="Paramètres"
               aria-current={vue === 'parametres' ? 'page' : undefined}
-              className="flex h-8 w-8 flex-none items-center justify-center rounded-lg"
-              style={{
-                background: vue === 'parametres' ? 'var(--card)' : 'transparent',
-                color: vue === 'parametres' ? 'var(--accent-fg)' : 'var(--sub)',
-              }}
+              className="survolable flex h-8 w-8 flex-none items-center justify-center rounded-lg"
+              style={
+                vue === 'parametres'
+                  ? { background: 'var(--card)', color: 'var(--accent-fg)' }
+                  : { color: 'var(--sub)' }
+              }
             >
-              <Icone nom="settings" taille={17} />
+              <Icone nom="settings" taille={17} rempli={vue === 'parametres'} />
             </button>
           </div>
         </nav>
 
         <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
-          <div
-            className="flex flex-none items-end gap-4 border-b px-6 py-5"
-            style={{ borderColor: 'var(--line)' }}
-          >
-            <div className="min-w-0 flex-1">
-              <h1 className="text-[21px] font-semibold tracking-tight">{titre}</h1>
-              <p className="pt-1 text-[13px]" style={{ color: 'var(--sub)' }}>
-                {sous}
-              </p>
-            </div>
-            {etat?.compteConnecte && vue !== 'parametres' && vue !== 'regles' && (
-              <Bouton icone="refresh" onClick={() => void agir(async () => (await relever(), null))} disabled={enCours}>
-                Actualiser
-              </Bouton>
-            )}
-          </div>
+          {/* La vue Règles porte son propre en-tête, avec son bouton d'ajout :
+              le répéter ici afficherait deux fois le même titre. */}
+          {vue !== 'regles' && (
+            <EnTete titre={titre} sous={sous}>
+              {etat?.compteConnecte && vue !== 'parametres' && (
+                <Bouton
+                  icone="refresh"
+                  onClick={() => void agir(async () => (await relever(), null))}
+                  disabled={enCours}
+                >
+                  Actualiser
+                </Bouton>
+              )}
+            </EnTete>
+          )}
 
           {message && (
             <div
@@ -383,7 +343,7 @@ export default function App() {
           ) : vue === 'parametres' ? (
             <Parametres
               etat={etat}
-              compte={adresse}
+              profil={profil}
               sombre={sombre}
               onBasculerTheme={() => regler({ sombre: !sombre })}
               accent={accent}
@@ -396,7 +356,7 @@ export default function App() {
               onConnecter={() =>
                 void agir(async () => {
                   await googleConnecter()
-                  setAdresse(await compteAdresse().catch(() => null))
+                  setProfil(await compteProfil().catch(() => null))
                   return 'Compte Gmail connecté.'
                 })
               }
@@ -404,7 +364,7 @@ export default function App() {
                 void agir(async () => {
                   await googleDeconnecter()
                   setBoite([])
-                  setAdresse(null)
+                  setProfil(null)
                   return 'Compte déconnecté et autorisation révoquée.'
                 })
               }
@@ -415,6 +375,10 @@ export default function App() {
             <Regles
               regles={regles?.automations ?? []}
               sombre={sombre}
+              enCours={enCours}
+              onAppliquer={() =>
+                agir(async () => resumerRapport(await gmailSynchroniser()))
+              }
               onBasculer={(id) => agir(async () => (setRegles(await regleBasculer(id)), null))}
               onSupprimer={(id) => agir(async () => (setRegles(await regleSupprimer(id)), 'Règle supprimée.'))}
               onCreerRegle={(r) =>
@@ -442,6 +406,52 @@ export default function App() {
           )}
         </main>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Avatar du compte relié.
+ *
+ * Trois cas, du plus au moins renseigné : la photo du compte Google, le logo
+ * Google quand le compte est relié sans photo, les initiales sinon. Le dernier
+ * n'est pas un pis-aller : beaucoup de comptes n'ont pas de photo.
+ */
+function AvatarCompte({
+  profil,
+  connecte,
+}: {
+  profil: ProfilCompte | null
+  connecte: boolean
+}) {
+  if (profil?.photo) {
+    return (
+      <img
+        src={profil.photo}
+        alt=""
+        className="h-8 w-8 flex-none rounded-full object-cover"
+        style={{ background: 'var(--faint)' }}
+      />
+    )
+  }
+
+  if (connecte) {
+    return (
+      <div
+        className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
+        style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
+      >
+        <LogoGoogle taille={17} />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11px] font-semibold"
+      style={{ background: 'var(--faint)', color: 'var(--sub)' }}
+    >
+      {initiales(profil?.nom ?? profil?.adresse ?? '?')}
     </div>
   )
 }

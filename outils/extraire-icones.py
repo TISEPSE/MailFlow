@@ -114,19 +114,25 @@ def main() -> int:
 
     em = police["head"].unitsPerEm
 
-    traces: dict[str, str] = {}
-    for nom in noms:
-        pen = SVGPathPen(glyphes)
-        glyphes[nom].draw(TransformPen(pen, retournement))
+    def tracer(jeu, nom: str) -> str:
+        pen = SVGPathPen(jeu)
+        jeu[nom].draw(TransformPen(pen, retournement))
         trace = pen.getCommands()
 
         # Un tracé vide passerait inaperçu jusqu'à l'écran.
         if not trace:
             raise SystemExit(f"tracé vide pour l'icône : {nom}")
 
-        verifier_cadrage(nom, glyphes, retournement, em)
-        traces[nom] = trace
+        verifier_cadrage(nom, jeu, retournement, em)
+        return trace
+
+    traces = {nom: tracer(glyphes, nom) for nom in noms}
+    pleins = traces_pleins(traces, tracer)
+
     lignes = "\n".join(f"  {nom}: '{trace}'," for nom, trace in sorted(traces.items()))
+    lignes_pleines = "\n".join(
+        f"  {nom}: '{trace}'," for nom, trace in sorted(pleins.items())
+    )
 
     TABLE.write_text(
         "// Généré par outils/extraire-icones.py — ne pas modifier à la main.\n"
@@ -139,13 +145,52 @@ def main() -> int:
         "export const GLYPHES = {\n"
         f"{lignes}\n"
         "} as const\n\n"
-        "export type NomIcone = keyof typeof GLYPHES\n",
+        "export type NomIcone = keyof typeof GLYPHES\n\n"
+        "/**\n"
+        " * Variantes pleines, prises sur l'axe `FILL` de la police variable.\n"
+        " *\n"
+        " * Elles servent à marquer l'élément actif : une icône qui se remplit se\n"
+        " * distingue même quand la couleur ne suffit pas — écran peu contrasté,\n"
+        " * daltonisme, thème sombre.\n"
+        " *\n"
+        " * Certaines icônes sont identiques dans les deux variantes ; elles ne\n"
+        " * sont alors pas répétées ici, et `Icone` retombe sur le tracé normal.\n"
+        " */\n"
+        "export const GLYPHES_PLEINS: Partial<Record<NomIcone, string>> = {\n"
+        f"{lignes_pleines}\n"
+        "}\n",
         encoding="utf-8",
     )
 
     poids = TABLE.stat().st_size / 1024
-    print(f"{len(noms)} icônes extraites — {poids:.0f} Kio de tracés")
+    print(
+        f"{len(noms)} icônes extraites, dont {len(pleins)} avec variante pleine"
+        f" — {poids:.0f} Kio de tracés"
+    )
     return 0
+
+
+def traces_pleins(traces: dict[str, str], tracer) -> dict[str, str]:
+    """Tracés de la même police figée sur `FILL=1`.
+
+    Sans cette passe, le paramètre `rempli` de `Icone` ne changeait rien : les
+    variantes pleines n'existent que sur l'axe variable, jamais dans le fichier
+    par défaut. Une icône dont le remplissage ne modifie pas le dessin n'est pas
+    reprise, pour ne pas doubler le poids du fichier sans raison.
+    """
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib.instancer import instantiateVariableFont
+
+    pleine = instantiateVariableFont(
+        TTFont(SOURCE), {"FILL": 1.0}, updateFontNames=False, inplace=False
+    )
+    jeu = pleine.getGlyphSet()
+
+    return {
+        nom: plein
+        for nom, normal in traces.items()
+        if (plein := tracer(jeu, nom)) != normal
+    }
 
 
 if __name__ == "__main__":

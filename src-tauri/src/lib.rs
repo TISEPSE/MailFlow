@@ -64,6 +64,7 @@ pub fn run() {
             commands::regle_basculer,
             commands::boite_lister,
             commands::compte_adresse,
+            commands::compte_profil,
             commands::logos_expediteurs,
         ])
         .run(tauri::generate_context!())
