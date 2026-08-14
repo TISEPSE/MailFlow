@@ -209,3 +209,80 @@ button:not(:disabled),
 .cloisonne > * + * {
   border-top: 1px solid var(--line);
 }
+
+/* Boutons : le survol change la couleur, jamais la géométrie.
+
+   Une transparence au survol fait pâlir le libellé et l'icône en même temps que
+   le fond — ça se lit comme un bouton qui se désactive, pas comme un bouton
+   qu'on s'apprête à cliquer. Et rien ne doit bouger : un agrandissement, même
+   léger, déplace la cible au moment précis où on la vise.
+
+   Les couleurs sont ici et non en style en ligne, sans quoi elles
+   l'emporteraient sur les règles de survol. */
+.bouton {
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.bouton:disabled {
+  opacity: 0.4;
+}
+
+.bouton-principal {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.bouton-principal:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 85%, #000000);
+}
+
+.bouton-neutre {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+.bouton-neutre:hover:not(:disabled) {
+  background: var(--faint);
+}
+
+.bouton-doux {
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+}
+
+.bouton-doux:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 22%, var(--card));
+}
+
+.bouton-danger {
+  background: transparent;
+  color: #c2410c;
+}
+
+.bouton-danger:hover:not(:disabled) {
+  background: color-mix(in oklab, #c2410c 12%, transparent);
+}
+
+/* Bouton réduit à son icône : il gagne un fond et son icône s'assombrit. */
+.bouton-icone {
+  color: var(--sub);
+}
+
+.bouton-icone:hover:not(:disabled) {
+  background: var(--faint);
+  color: var(--fg);
+}
+
+/* Pastille de couleur d'accent. Le halo ne prend pas de place dans la mise en
+   page, contrairement à un agrandissement. */
+.pastille-accent {
+  transition: box-shadow 120ms ease;
+}
+
+.pastille-accent:hover {
+  box-shadow: 0 0 0 3px var(--faint);
+}

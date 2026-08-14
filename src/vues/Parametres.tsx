@@ -103,7 +103,7 @@ export function Parametres({
                   onClick={() => onAccent(c)}
                   aria-label={`Couleur d'accent ${c}`}
                   aria-pressed={c === accent}
-                  className="h-7 w-7 rounded-full transition-transform hover:scale-110"
+                  className="pastille-accent h-7 w-7 rounded-full"
                   style={{
                     background: c,
                     outline: c === accent ? '2px solid var(--fg)' : 'none',
@@ -396,8 +396,7 @@ function ChoixDeCompte({
                 type="button"
                 onClick={() => setARetirer(c.adresse)}
                 aria-label={`Retirer le compte ${c.adresse}`}
-                className="survolable flex-none rounded-lg p-2"
-                style={{ color: 'var(--sub)' }}
+                className="bouton bouton-icone flex-none rounded-lg p-2"
               >
                 <Icone nom="delete" taille={17} />
               </button>
@@ -464,7 +463,7 @@ function BoutonTexte({
     <button
       type="button"
       onClick={onClick}
-      className="flex-none rounded-md px-2 py-1 text-[12px] leading-none font-semibold transition-opacity hover:opacity-70"
+      className="bouton flex-none rounded-md px-2 py-1 text-[12px] leading-none font-semibold"
       style={{ color: couleur ?? 'var(--fg)' }}
     >
       {children}
@@ -491,16 +490,7 @@ function BoutonCarte({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex flex-none items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-      style={
-        principal
-          ? { background: 'var(--accent)', color: '#FFFFFF' }
-          : {
-              background: 'var(--card)',
-              color: 'var(--fg)',
-              border: '1px solid var(--line)',
-            }
-      }
+      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex flex-none items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold`}
     >
       {icone && <Icone nom={icone} taille={17} compenser />}
       {children}

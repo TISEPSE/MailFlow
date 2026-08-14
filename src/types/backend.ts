@@ -32,6 +32,13 @@ export interface ProfilCompte {
   photo: string | null
 }
 
+/** Miroir de `gmail::corps::CorpsMessage`. */
+export interface CorpsMessage {
+  /** HTML de l'expéditeur, désinfecté. À n'afficher qu'en bac à sable. */
+  html: string | null
+  texte: string | null
+}
+
 /** Miroir de `commands::CompteConnu`. */
 export interface CompteConnu {
   adresse: string

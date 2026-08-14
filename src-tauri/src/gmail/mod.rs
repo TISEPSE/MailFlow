@@ -29,6 +29,7 @@
 pub mod boite;
 pub mod classement;
 pub mod client;
+pub mod corps;
 pub mod execution;
 pub mod logos;
 pub mod modele;

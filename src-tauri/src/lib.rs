@@ -64,6 +64,7 @@ pub fn run() {
             commands::regle_supprimer,
             commands::regle_basculer,
             commands::boite_lister,
+            commands::message_corps,
             commands::message_marquer_lu,
             commands::compte_adresse,
             commands::compte_profil,

@@ -56,10 +56,34 @@ pub struct MessageMetadata {
     pub payload: Option<Charge>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Charge {
     #[serde(default)]
     pub headers: Vec<Entete>,
+
+    /// Absents en `format=metadata`, présents en `format=full`. Le tri n'en a
+    /// pas besoin ; l'affichage du corps, si.
+    #[serde(default)]
+    pub mime_type: Option<String>,
+
+    /// Non vide pour une pièce jointe. C'est ce qui la distingue du corps.
+    #[serde(default)]
+    pub filename: Option<String>,
+
+    #[serde(default)]
+    pub body: Option<CorpsPartie>,
+
+    #[serde(default)]
+    pub parts: Vec<Charge>,
+}
+
+/// Contenu d'une partie MIME, encodé en `base64url`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpsPartie {
+    #[serde(default)]
+    pub data: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -12,6 +12,7 @@ import type {
   JeuDeRegles,
   MessageAffiche,
   CompteConnu,
+  CorpsMessage,
   ProfilCompte,
   RapportExecution,
   Regle,
@@ -98,6 +99,16 @@ export function regleBasculer(id: string): Promise<JeuDeRegles> {
 /** Releve la boite de reception, deja classee par vue. */
 export function boiteLister(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('boite_lister')
+}
+
+/**
+ * Corps d'un message.
+ *
+ * Le HTML rendu est desinfecte cote Rust, mais ce n'est pas ce qui protege : il
+ * doit etre affiche dans une `iframe` en bac a sable. Voir `gmail::corps`.
+ */
+export function messageCorps(id: string): Promise<CorpsMessage> {
+  return invoke<CorpsMessage>('message_corps', { id })
 }
 
 /**

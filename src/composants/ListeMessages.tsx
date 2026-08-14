@@ -8,7 +8,7 @@
  */
 import { Icone, Pastille } from './base'
 import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
-import type { MessageAffiche } from '../types/backend'
+import type { CorpsMessage, MessageAffiche } from '../types/backend'
 
 export function ListeMessages({
   messages,
@@ -90,15 +90,18 @@ export function ListeMessages({
 /**
  * Panneau de lecture.
  *
- * Il montre l'en-tête et l'extrait, et dit explicitement pourquoi le corps
- * manque. Un panneau vide sans explication passerait pour un défaut.
+ * Il montre l'en-tête puis le corps du message, affiché dans un cadre isolé.
  */
 export function Lecture({
   message,
+  corps,
+  chargement,
   actions,
   logos,
 }: {
   message: MessageAffiche | null
+  corps: CorpsMessage | null
+  chargement: boolean
   actions?: React.ReactNode
   logos: Record<string, string>
 }) {
@@ -116,8 +119,11 @@ export function Lecture({
   const [fond, encre] = palette(0)
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="selectionnable mx-auto w-full max-w-2xl px-9 py-8">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className="selectionnable flex-none border-b px-9 pt-8 pb-5"
+        style={{ borderColor: 'var(--line)' }}
+      >
         <h2 className="text-[19px] font-semibold tracking-tight">
           {message.sujet || '(sans objet)'}
         </h2>
@@ -141,22 +147,111 @@ export function Lecture({
           </div>
         </div>
 
-        <p className="mt-6 text-[13.5px] leading-relaxed">{message.extrait}</p>
-
-        <div
-          className="mt-5 flex items-start gap-2.5 rounded-xl border p-3.5"
-          style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
-        >
-          <Icone nom="shield" taille={17} style={{ color: 'var(--sub)' }} />
-          <p className="text-[12px] leading-relaxed" style={{ color: 'var(--sub)' }}>
-            Seul l'extrait fourni par Gmail est affiché. Le corps d'un e-mail est
-            du HTML écrit par un tiers : il ne sera affiché que dans un cadre
-            isolé, qui reste à construire.
-          </p>
-        </div>
-
-        {actions && <div className="mt-6 flex flex-wrap gap-2">{actions}</div>}
+        {actions && <div className="mt-5 flex flex-wrap gap-2">{actions}</div>}
       </div>
+
+      <Corps message={message} corps={corps} chargement={chargement} />
     </div>
   )
+}
+
+/**
+ * Corps du message.
+ *
+ * Le HTML de l'expéditeur va dans une `iframe` déclarée `sandbox` sans
+ * `allow-scripts` : le navigateur refuse alors d'exécuter le moindre script,
+ * quoi que contienne le document. C'est une garantie du moteur, pas une
+ * promesse de notre part — c'est ce qui rend l'affichage acceptable.
+ */
+function Corps({
+  message,
+  corps,
+  chargement,
+}: {
+  message: MessageAffiche
+  corps: CorpsMessage | null
+  chargement: boolean
+}) {
+  if (chargement) {
+    return (
+      <div
+        className="flex flex-1 items-center justify-center text-[13px]"
+        style={{ color: 'var(--sub)' }}
+      >
+        Chargement du message…
+      </div>
+    )
+  }
+
+  if (corps?.html) {
+    return (
+      <>
+        <iframe
+          title="Contenu du message"
+          sandbox=""
+          srcDoc={documentIsole(corps.html)}
+          className="min-h-0 w-full flex-1"
+          style={{ border: 0, background: '#FFFFFF' }}
+        />
+        <Avertissement />
+      </>
+    )
+  }
+
+  const texte = corps?.texte ?? message.extrait
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto px-9 py-6">
+        <pre className="selectionnable font-sans text-[13.5px] leading-relaxed whitespace-pre-wrap">
+          {texte}
+        </pre>
+      </div>
+      {!corps?.texte && <Avertissement extraitSeul />}
+    </div>
+  )
+}
+
+/** Ce que l'utilisateur doit savoir de ce qu'il regarde. */
+function Avertissement({ extraitSeul = false }: { extraitSeul?: boolean }) {
+  return (
+    <div
+      className="flex flex-none items-start gap-2.5 border-t px-9 py-3"
+      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+    >
+      <Icone nom="shield" taille={16} style={{ color: 'var(--sub)' }} />
+      <p className="text-[12px] leading-relaxed" style={{ color: 'var(--sub)' }}>
+        {extraitSeul
+          ? "Seul l'extrait fourni par Gmail est disponible pour ce message."
+          : "Message affiché dans un cadre isolé : aucun script ne peut s'exécuter, et les images distantes ne sont pas chargées — elles signaleraient à l'expéditeur l'heure à laquelle vous l'avez ouvert. Les liens ne sont pas cliquables pour l'instant."}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Enveloppe le HTML de l'expéditeur dans un document minimal.
+ *
+ * La politique de sécurité déclarée ici s'ajoute à celle de l'application, dont
+ * le cadre hérite : `default-src 'none'` interdit toute requête sortante, ce qui
+ * neutralise au passage les pixels de suivi.
+ *
+ * Le fond reste blanc même en thème sombre : ces messages sont écrits pour du
+ * papier blanc, et les recolorer rendrait illisible tout ce qui fixe sa propre
+ * couleur de texte.
+ */
+function documentIsole(html: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+<style>
+  html { background: #ffffff; }
+  body {
+    margin: 0; padding: 20px 24px;
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    color: #1d1d1f; overflow-wrap: break-word;
+  }
+  img, table { max-width: 100%; }
+  img { height: auto; }
+  a { color: #2f6bff; }
+</style></head><body>${html}</body></html>`
 }

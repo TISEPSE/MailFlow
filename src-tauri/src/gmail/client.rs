@@ -115,6 +115,12 @@ fn url_metadonnees(id: &str) -> String {
     format!("{BASE_API}/users/me/messages/{id}?format=metadata{entetes}")
 }
 
+/// URL de `users.messages.get`, message entier.
+fn url_complet(id: &str) -> String {
+    let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
+    format!("{BASE_API}/users/me/messages/{id}?format=full")
+}
+
 fn url_batch_modify() -> String {
     format!("{BASE_API}/users/me/messages/batchModify")
 }
@@ -285,6 +291,18 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
             .await
             .map(|_| ())
+    }
+
+    /// Message complet, corps compris.
+    ///
+    /// Bien plus coûteux que `format=metadata` — on télécharge le HTML entier —
+    /// donc réservé au message que l'utilisateur vient d'ouvrir. Le tri, lui,
+    /// continue de ne lire que des en-têtes.
+    pub async fn message_complet(&self, id: &str) -> Resultat<MessageMetadata> {
+        let corps = self.appeler(Methode::Get, &url_complet(id), None).await?;
+
+        serde_json::from_str(&corps)
+            .map_err(|e| AppError::Reseau(format!("message illisible : {e}")))
     }
 
     pub async fn metadonnees(&self, id: &str) -> Resultat<MessageMetadata> {

@@ -337,6 +337,43 @@ pub async fn boite_lister(
     Ok(boite)
 }
 
+/// Corps d'un message, prêt à être affiché en bac à sable.
+///
+/// Le HTML est désinfecté ici, mais ce n'est pas ce qui protège : il est
+/// destiné à une `iframe` déclarée `sandbox`, où le navigateur refuse
+/// d'exécuter le moindre script. Voir [`crate::gmail::corps`].
+///
+/// N'est demandé que pour le message ouvert : `format=full` rapatrie le HTML
+/// entier, quand le tri se contente de quelques en-têtes.
+#[tauri::command]
+pub async fn message_corps(
+    etat: State<'_, EtatAuth>,
+    id: String,
+) -> Resultat<crate::gmail::corps::CorpsMessage> {
+    use crate::gmail::corps;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let message = client.message_complet(&id).await?;
+
+    let mut trouve = message
+        .payload
+        .as_ref()
+        .map(corps::extraire)
+        .unwrap_or_default();
+
+    trouve.html = trouve.html.as_deref().map(corps::assainir);
+
+    log::info!(
+        "corps lu : {}",
+        match (&trouve.html, &trouve.texte) {
+            (Some(_), _) => "html",
+            (None, Some(_)) => "texte seul",
+            _ => "aucun",
+        }
+    );
+    Ok(trouve)
+}
+
 /// Marque un message comme lu chez Gmail.
 ///
 /// C'est la seule commande qui modifie la boîte sans passer par une règle. Le

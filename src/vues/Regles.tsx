@@ -83,8 +83,7 @@ export function Regles({
           type="button"
           onClick={() => setFormulaireOuvert((o) => !o)}
           aria-expanded={formulaireOuvert}
-          className="inline-flex flex-none items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold transition-opacity hover:opacity-90"
-          style={{ background: 'var(--accent)', color: '#FFFFFF' }}
+          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold"
         >
           <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={19} rempli compenser />
           {formulaireOuvert ? 'Fermer' : 'Ajouter une règle'}
@@ -225,8 +224,7 @@ export function Regles({
                       type="button"
                       onClick={() => setAConfirmer(r.id)}
                       aria-label={`Supprimer la règle : ${phrase(r)}`}
-                      className="flex-none rounded-lg p-1.5 transition-opacity hover:opacity-70"
-                      style={{ color: 'var(--sub)' }}
+                      className="bouton bouton-icone flex-none rounded-lg p-1.5"
                     >
                       <Icone nom="delete" taille={18} />
                     </button>
@@ -337,8 +335,7 @@ function FormulaireAjout({
         <button
           type="submit"
           disabled={!valide || enCours}
-          className="inline-flex flex-none items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] leading-none font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{ background: 'var(--accent)', color: '#FFFFFF' }}
+          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] leading-none font-semibold"
         >
           Enregistrer la règle
         </button>

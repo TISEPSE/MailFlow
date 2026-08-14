@@ -6,14 +6,16 @@
  * d'un expéditeur. Le geste central du produit est là : depuis un message, poser
  * une règle qui vaudra pour tous les suivants.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bouton, Etiquette, Icone, Vide } from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
 import { nouvelleRegle } from '../lib/regles'
+import { messageCorps } from '../lib/tauri'
 import type {
   ActionRegle,
+  CorpsMessage,
   CategorieMessage,
   MessageAffiche,
   Regle,
@@ -54,6 +56,29 @@ export function Courrier({
   const [enCours, setEnCours] = useState(false)
 
   const choisi = messages.find((m) => m.id === selection) ?? messages[0]
+  const [corps, setCorps] = useState<CorpsMessage | null>(null)
+  const [chargementCorps, setChargementCorps] = useState(false)
+
+  const idAffiche = choisi?.id
+  useEffect(() => {
+    if (!idAffiche) return
+
+    // Un identifiant témoin : quand l'utilisateur enchaîne les messages, la
+    // réponse d'une lecture abandonnée ne doit pas s'afficher sous un autre
+    // en-tête.
+    let courant = true
+    setCorps(null)
+    setChargementCorps(true)
+
+    messageCorps(idAffiche)
+      .then((c) => courant && setCorps(c))
+      .catch(() => courant && setCorps(null))
+      .finally(() => courant && setChargementCorps(false))
+
+    return () => {
+      courant = false
+    }
+  }, [idAffiche])
   if (!choisi) return <Vide {...vide} />
   const regleExistante = regles.find(
     (r) => r.expediteur.toLowerCase() === choisi.adresse,
@@ -91,6 +116,8 @@ export function Courrier({
       />
       <Lecture
         message={choisi}
+        corps={corps}
+        chargement={chargementCorps}
         logos={logos}
         actions={
           <>

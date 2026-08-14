@@ -330,15 +330,11 @@ export function Bouton({
   disabled?: boolean
   titre?: string
 }) {
-  const styles: Record<string, CSSProperties> = {
-    principal: { background: 'var(--accent)', color: '#FFFFFF' },
-    secondaire: {
-      background: 'var(--card)',
-      color: 'var(--fg)',
-      border: '1px solid var(--line)',
-    },
-    discret: { background: 'var(--accent-soft)', color: 'var(--accent-fg)' },
-    danger: { background: 'transparent', color: '#C2410C' },
+  const teintes: Record<string, string> = {
+    principal: 'bouton-principal',
+    secondaire: 'bouton-neutre',
+    discret: 'bouton-doux',
+    danger: 'bouton-danger',
   }
 
   return (
@@ -347,8 +343,7 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className="inline-flex flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs leading-none font-semibold whitespace-nowrap transition-opacity hover:opacity-85 disabled:opacity-40"
-      style={styles[variante]}
+      className={`bouton ${teintes[variante]} inline-flex flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs leading-none font-semibold whitespace-nowrap`}
     >
       {icone && <Icone nom={icone} taille={15} compenser />}
       {children}
