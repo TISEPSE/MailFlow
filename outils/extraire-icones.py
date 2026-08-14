@@ -52,6 +52,34 @@ def icones_utilisees() -> list[str]:
     return sorted(trouvees)
 
 
+def etendue(glyphes, nom: str, transformation):
+    """Bornes de l'encre d'un glyphe, une fois la transformation appliquée."""
+    from fontTools.pens.boundsPen import BoundsPen
+    from fontTools.pens.transformPen import TransformPen
+
+    mesure = BoundsPen(glyphes)
+    glyphes[nom].draw(TransformPen(mesure, transformation))
+    return mesure.bounds
+
+
+def centrer(glyphes, nom: str, retournement, em: int):
+    """Transformation qui centre l'encre du glyphe dans la boîte de l'em.
+
+    Le décalage est mesuré sur le tracé retourné, pas déduit des métriques de la
+    police : c'est le dessin qui compte, pas ce que la police en déclare.
+    """
+    bornes = etendue(glyphes, nom, retournement)
+    if bornes is None:
+        raise SystemExit(f"tracé sans étendue : {nom}")
+
+    xmin, ymin, xmax, ymax = bornes
+    dx = (em - (xmin + xmax)) / 2
+    dy = (-em - (ymin + ymax)) / 2
+
+    a, b, c, d, e, f = retournement
+    return (a, b, c, d, e + dx, f + dy)
+
+
 def verifier_cadrage(nom: str, glyphes, transformation, em: int) -> None:
     """Vérifie que le tracé tient dans la boîte SVG, tel qu'il sera écrit.
 
@@ -115,21 +143,34 @@ def main() -> int:
     em = police["head"].unitsPerEm
 
     def tracer(jeu, nom: str) -> str:
+        # L'encre de chaque glyphe est recentrée dans sa boîte. Material dessine
+        # ses icônes sur une grille commune, mais leur marge interne varie d'un
+        # dessin à l'autre : mesuré, la croix « close » commence quatre pixels
+        # plus à droite que la flèche « logout ». Dans un bouton, ces quatre
+        # pixels se voient — le libellé paraît décentré alors que les boîtes,
+        # elles, sont parfaitement symétriques.
+        transformation = centrer(jeu, nom, retournement, em)
+
         pen = SVGPathPen(jeu)
-        jeu[nom].draw(TransformPen(pen, retournement))
+        jeu[nom].draw(TransformPen(pen, transformation))
         trace = pen.getCommands()
 
         # Un tracé vide passerait inaperçu jusqu'à l'écran.
         if not trace:
             raise SystemExit(f"tracé vide pour l'icône : {nom}")
 
-        verifier_cadrage(nom, jeu, retournement, em)
+        verifier_cadrage(nom, jeu, transformation, em)
+        marges[nom] = etendue(jeu, nom, transformation)[0] / em
         return trace
 
+    marges: dict[str, float] = {}
     traces = {nom: tracer(glyphes, nom) for nom in noms}
     pleins = traces_pleins(traces, tracer)
 
     lignes = "\n".join(f"  {nom}: '{trace}'," for nom, trace in sorted(traces.items()))
+    lignes_marges = "\n".join(
+        f"  {nom}: {marge:.4f}," for nom, marge in sorted(marges.items())
+    )
     lignes_pleines = "\n".join(
         f"  {nom}: '{trace}'," for nom, trace in sorted(pleins.items())
     )
@@ -146,6 +187,17 @@ def main() -> int:
         f"{lignes}\n"
         "} as const\n\n"
         "export type NomIcone = keyof typeof GLYPHES\n\n"
+        "/**\n"
+        " * Blanc laissé de chaque côté de l'encre, en fraction de la boîte.\n"
+        " *\n"
+        " * Une icône ne remplit pas son carré ; un libellé, lui, commence à sa\n"
+        " * première lettre. Placés côte à côte dans un bouton, l'icône paraît donc\n"
+        " * plus enfoncée que le texte. `Icone` retranche cette marge pour que le\n"
+        " * centrage porte sur ce qui se voit plutôt que sur des boîtes.\n"
+        " */\n"
+        "export const MARGE_ENCRE: Record<NomIcone, number> = {\n"
+        f"{lignes_marges}\n"
+        "}\n\n"
         "/**\n"
         " * Variantes pleines, prises sur l'axe `FILL` de la police variable.\n"
         " *\n"

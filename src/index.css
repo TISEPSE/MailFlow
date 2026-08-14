@@ -25,6 +25,7 @@
   --fg: #1d1d1f;
   --sub: #6e6e76;
   --faint: #ededf1;
+  --selection: #dfdfe6;
   --accent: #2f6bff;
   --accent-soft: #e8eeff;
   --accent-fg: #2455cc;
@@ -42,6 +43,7 @@
   --fg: #f3f3f5;
   --sub: #9c9ca5;
   --faint: #2e2e34;
+  --selection: #3a3a43;
   --accent: #4e82ff;
   --accent-soft: #23304f;
   --accent-fg: #9ebbff;
@@ -53,6 +55,19 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/* La couleur du texte est posée sur le conteneur qui porte `data-mf`, pas sur
+   `body`.
+
+   `body` est au-dessus de lui : `color: var(--fg)` s'y résout donc avec les
+   jetons clairs, et tout le contenu hérite de cette valeur *déjà calculée*.
+   Redéfinir `--fg` plus bas ne la change pas. En thème sombre, les libellés qui
+   n'ont pas de couleur explicite restaient noirs sur fond noir — invisibles,
+   sans qu'aucune règle ne paraisse fautive. */
+[data-mf] {
+  background: var(--bg);
+  color: var(--fg);
 }
 
 body {
@@ -173,16 +188,16 @@ button:not(:disabled),
   background: color-mix(in oklab, var(--card) 55%, var(--faint));
 }
 
-/* La tuile ouverte garde le gris du survol.
+/* La tuile ouverte prend son propre gris, plus soutenu que celui du survol.
 
-   Ouvrir un message le marque lu chez Gmail : il devient donc gris de toute
-   façon, et le gris un peu plus soutenu suffit à dire lequel on regarde. Un
-   liseré d'accent le disait aussi, mais ajoutait une couleur là où deux nuances
-   de gris se lisent sans rien apprendre. Les deux sélecteurs couvrent l'instant
-   où Gmail n'a pas encore confirmé la lecture. */
+   Avec la même nuance que le survol, on ne distinguait plus le message ouvert
+   d'un message simplement lu : cinq valeurs d'écart sur 255. Il lui faut donc
+   un jeton à lui, franchement plus foncé que le fond de colonne mais loin du
+   blanc. Les deux sélecteurs couvrent l'instant où Gmail n'a pas encore
+   confirmé la lecture. */
 .tuile[aria-current='true'],
 .tuile[data-neuf='true'][aria-current='true'] {
-  background: var(--faint);
+  background: var(--selection);
 }
 
 /* Séparateurs internes d'une carte de réglages.

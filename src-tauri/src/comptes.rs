@@ -42,6 +42,13 @@ pub struct Compte {
     pub adresse: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nom: Option<String>,
+    /// Photo du compte, en URI de données.
+    ///
+    /// Conservée ici, et non rechargée à la demande : la liste des comptes doit
+    /// s'afficher sans réseau, et un compte inactif n'a pas de jeton en cours
+    /// pour aller la rechercher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub photo: Option<String>,
 }
 
 /// Ce que l'application sait des comptes, hors secrets.
@@ -67,23 +74,27 @@ pub fn cle_compte(adresse: &str) -> String {
 
 impl Annuaire {
     /// Enregistre un compte, ou met à jour son nom, et le rend actif.
-    pub fn retenir(&mut self, adresse: &str, nom: Option<String>) {
+    pub fn retenir(&mut self, adresse: &str, nom: Option<String>, photo: Option<String>) {
         let adresse = adresse.trim().to_lowercase();
         if adresse.is_empty() {
             return;
         }
 
         match self.connus.iter_mut().find(|c| c.adresse == adresse) {
-            // Le nom peut avoir changé chez Google ; l'absence de nom ne doit
-            // pas effacer celui qu'on avait.
+            // Ce qu'on sait déjà n'est pas effacé par ce qu'on ignore : nom et
+            // photo viennent du réseau, qui peut n'avoir rien rendu cette fois.
             Some(connu) => {
                 if nom.is_some() {
                     connu.nom = nom;
+                }
+                if photo.is_some() {
+                    connu.photo = photo;
                 }
             }
             None => self.connus.push(Compte {
                 adresse: adresse.clone(),
                 nom,
+                photo,
             }),
         }
 
@@ -203,7 +214,7 @@ mod tests {
     fn annuaire_avec(adresses: &[&str]) -> Annuaire {
         let mut a = Annuaire::default();
         for adresse in adresses {
-            a.retenir(adresse, None);
+            a.retenir(adresse, None, None);
         }
         a
     }
@@ -220,7 +231,7 @@ mod tests {
     fn la_meme_adresse_n_est_pas_ajoutee_deux_fois() {
         // Sinon se reconnecter au même compte remplirait la liste de doublons.
         let mut a = annuaire_avec(&["Moi@Gmail.com"]);
-        a.retenir("moi@gmail.com", Some("Moi".into()));
+        a.retenir("moi@gmail.com", Some("Moi".into()), None);
 
         assert_eq!(a.connus.len(), 1);
         assert_eq!(a.connus[0].nom.as_deref(), Some("Moi"));
@@ -231,10 +242,29 @@ mod tests {
         // `renseignements_du_compte` peut échouer : ce serait perdre le nom
         // affiché pour une panne réseau passagère.
         let mut a = Annuaire::default();
-        a.retenir("moi@gmail.com", Some("Lucie".into()));
-        a.retenir("moi@gmail.com", None);
+        a.retenir("moi@gmail.com", Some("Lucie".into()), None);
+        a.retenir("moi@gmail.com", None, None);
 
         assert_eq!(a.connus[0].nom.as_deref(), Some("Lucie"));
+    }
+
+    #[test]
+    fn une_photo_deja_connue_survit_a_un_profil_sans_photo() {
+        // Le compte garde son visage dans la liste même si l'appel qui la
+        // fournit a échoué : sinon la photo clignoterait d'un lancement à
+        // l'autre.
+        let mut a = Annuaire::default();
+        a.retenir(
+            "moi@gmail.com",
+            None,
+            Some("data:image/png;base64,AA".into()),
+        );
+        a.retenir("moi@gmail.com", None, None);
+
+        assert_eq!(
+            a.connus[0].photo.as_deref(),
+            Some("data:image/png;base64,AA")
+        );
     }
 
     #[test]
@@ -357,7 +387,7 @@ mod tests {
     fn l_annuaire_se_relit_tel_qu_il_a_ete_ecrit() {
         let dossier = tempfile::tempdir().unwrap();
         let mut a = Annuaire::default();
-        a.retenir("moi@gmail.com", Some("Lucie".into()));
+        a.retenir("moi@gmail.com", Some("Lucie".into()), None);
 
         ecrire(dossier.path(), &a).unwrap();
 

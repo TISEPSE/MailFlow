@@ -36,6 +36,8 @@ export interface ProfilCompte {
 export interface CompteConnu {
   adresse: string
   nom: string | null
+  /** URI de données : la politique de sécurité interdit les images distantes. */
+  photo: string | null
   actif: boolean
 }
 

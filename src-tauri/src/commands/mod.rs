@@ -371,6 +371,8 @@ pub async fn compte_adresse(etat: State<'_, EtatAuth>) -> Resultat<Option<String
 pub struct CompteConnu {
     pub adresse: String,
     pub nom: Option<String>,
+    /// URI de données, jamais une adresse distante.
+    pub photo: Option<String>,
     pub actif: bool,
 }
 
@@ -391,6 +393,7 @@ fn en_liste(annuaire: &Annuaire) -> Vec<CompteConnu> {
         .map(|c| CompteConnu {
             adresse: c.adresse.clone(),
             nom: c.nom.clone(),
+            photo: c.photo.clone(),
             actif: annuaire.actif.as_deref() == Some(c.adresse.as_str()),
         })
         .collect();
@@ -512,7 +515,7 @@ pub async fn compte_profil(
 
     let Ok(infos) = client.renseignements_du_compte().await else {
         log::info!("renseignements du compte indisponibles, adresse seule");
-        retenir_le_compte(&app, &adresse, None);
+        retenir_le_compte(&app, &adresse, None, None);
         return Ok(Some(ProfilCompte {
             adresse,
             ..Default::default()
@@ -521,9 +524,6 @@ pub async fn compte_profil(
 
     // C'est le seul endroit où l'adresse du compte relié est connue : c'est
     // donc ici que l'annuaire apprend qu'il existe, sans quoi la bascule ne
-    // pourrait jamais rien proposer.
-    retenir_le_compte(&app, &adresse, infos.name.clone());
-
     let photo = match infos.picture.as_deref() {
         Some(url) => {
             let http = client_http()?;
@@ -531,6 +531,11 @@ pub async fn compte_profil(
         }
         None => None,
     };
+
+    // C'est le seul endroit où l'on connaît à la fois l'adresse, le nom et la
+    // photo du compte relié : c'est donc ici que l'annuaire les apprend, sans
+    // quoi la liste des comptes n'aurait jamais rien à montrer.
+    retenir_le_compte(&app, &adresse, infos.name.clone(), photo.clone());
 
     log::info!(
         "profil du compte lu, photo {}",
@@ -552,17 +557,21 @@ pub async fn compte_profil(
 /// Sans conséquence en cas d'échec : l'annuaire est un confort, pas une
 /// condition d'accès à la boîte. Faire échouer l'affichage du profil parce que
 /// le disque est plein serait disproportionné.
-fn retenir_le_compte(app: &AppHandle, adresse: &str, nom: Option<String>) {
+fn retenir_le_compte(app: &AppHandle, adresse: &str, nom: Option<String>, photo: Option<String>) {
     let Ok(dossier) = dossier_config(app) else {
         return;
     };
 
     let mut annuaire = comptes::charger(&dossier);
-    if annuaire.actif.as_deref() == Some(adresse) && annuaire.est_connu(adresse) && nom.is_none() {
+    let deja_a_jour = annuaire.actif.as_deref() == Some(adresse)
+        && annuaire.est_connu(adresse)
+        && nom.is_none()
+        && photo.is_none();
+    if deja_a_jour {
         return;
     }
 
-    annuaire.retenir(adresse, nom);
+    annuaire.retenir(adresse, nom, photo);
     if let Err(e) = comptes::ecrire(&dossier, &annuaire) {
         log::warn!("annuaire des comptes non enregistré : {e}");
     }

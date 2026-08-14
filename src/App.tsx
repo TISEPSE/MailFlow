@@ -298,26 +298,30 @@ export default function App() {
           <div className="flex-1" />
 
           <div
-            className="mt-3 flex items-center gap-2.5 border-t pt-3"
+            className="mt-3 flex items-center gap-1.5 border-t pt-3"
             style={{ borderColor: 'var(--line)' }}
           >
-            <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
-
+            {/* L'avatar est dans le bouton, pas à côté : la zone survolée doit
+                couvrir tout ce qui désigne le compte, sans quoi le fond gris
+                s'arrête au bord de la photo. */}
             <button
               type="button"
               onClick={() => setVue('parametres')}
-              className="survolable min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left"
+              className="survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left"
               title={profil?.adresse ?? undefined}
             >
-              <div className="truncate text-[12px] font-semibold">
-                {profil?.nom ?? (etat?.compteConnecte ? 'Compte Google' : 'Non connecté')}
-              </div>
-              <div
-                className="truncate font-mono text-[10px]"
-                style={{ color: 'var(--sub)' }}
-              >
-                {profil?.adresse ?? 'aucun compte relié'}
-              </div>
+              <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-semibold">
+                  {profil?.nom ?? (etat?.compteConnecte ? 'Compte Google' : 'Non connecté')}
+                </span>
+                <span
+                  className="block truncate font-mono text-[10px]"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  {profil?.adresse ?? 'aucun compte relié'}
+                </span>
+              </span>
             </button>
 
             <button

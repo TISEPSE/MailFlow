@@ -6,7 +6,7 @@
  * d'accent de basculer sans que chaque vue ait à s'en occuper.
  */
 import type { CSSProperties, ReactNode } from 'react'
-import { BOITE, GLYPHES, GLYPHES_PLEINS, type NomIcone } from './glyphes'
+import { BOITE, GLYPHES, GLYPHES_PLEINS, MARGE_ENCRE, type NomIcone } from './glyphes'
 
 /**
  * Icône, dessinée en SVG.
@@ -27,14 +27,23 @@ export function Icone({
   className = '',
   style,
   rempli = false,
+  compenser = false,
 }: {
   nom: NomIcone
   taille?: number
   className?: string
   style?: CSSProperties
   rempli?: boolean
+  /** Retranche le blanc interne du dessin, pour un centrage optique. */
+  compenser?: boolean
 }) {
   const trace = (rempli ? GLYPHES_PLEINS[nom] : undefined) ?? GLYPHES[nom]
+
+  // Mesuré : dans un bouton, la croix « close » laissait quatre pixels de plus
+  // à gauche que le libellé n'en laissait à droite. Les boîtes étaient pourtant
+  // symétriques — c'est le blanc *dans* le dessin qui décalait l'ensemble. Le
+  // rendu ne change pas de taille : seule la place réservée se resserre.
+  const marge = compenser ? -Math.round(taille * MARGE_ENCRE[nom]) : 0
 
   return (
     <svg
@@ -44,7 +53,7 @@ export function Icone({
       width={taille}
       height={taille}
       className={`inline-block flex-none ${className}`}
-      style={{ fill: 'currentColor', ...style }}
+      style={{ fill: 'currentColor', marginInline: marge || undefined, ...style }}
     >
       <path d={trace} />
     </svg>
@@ -341,7 +350,7 @@ export function Bouton({
       className="inline-flex flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs leading-none font-semibold whitespace-nowrap transition-opacity hover:opacity-85 disabled:opacity-40"
       style={styles[variante]}
     >
-      {icone && <Icone nom={icone} taille={15} />}
+      {icone && <Icone nom={icone} taille={15} compenser />}
       {children}
     </button>
   )

@@ -86,7 +86,7 @@ export function Regles({
           className="inline-flex flex-none items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold transition-opacity hover:opacity-90"
           style={{ background: 'var(--accent)', color: '#FFFFFF' }}
         >
-          <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={19} rempli />
+          <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={19} rempli compenser />
           {formulaireOuvert ? 'Fermer' : 'Ajouter une règle'}
         </button>
       </EnTete>

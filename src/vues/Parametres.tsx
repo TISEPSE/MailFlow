@@ -357,19 +357,22 @@ function ChoixDeCompte({
               type="button"
               onClick={() => onBasculer(c.adresse)}
               disabled={enCours}
-              className="survolable min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left disabled:opacity-40"
+              className="survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left disabled:opacity-40"
             >
-              <div className="truncate text-[13.5px] font-semibold">
-                {c.nom ?? c.adresse}
-              </div>
-              {c.nom && (
-                <div
-                  className="truncate font-mono text-[11px]"
-                  style={{ color: 'var(--sub)' }}
-                >
-                  {c.adresse}
-                </div>
-              )}
+              <Vignette photo={c.photo} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px] font-semibold">
+                  {c.nom ?? c.adresse}
+                </span>
+                {c.nom && (
+                  <span
+                    className="block truncate font-mono text-[11px]"
+                    style={{ color: 'var(--sub)' }}
+                  >
+                    {c.adresse}
+                  </span>
+                )}
+              </span>
             </button>
 
             {aRetirer === c.adresse ? (
@@ -416,6 +419,35 @@ function ChoixDeCompte({
         </button>
       </div>
     </div>
+  )
+}
+
+/**
+ * Vignette d'un compte de la liste.
+ *
+ * La photo vient de l'annuaire, pas du réseau : un compte inactif n'a pas de
+ * jeton en cours, et la liste doit s'afficher instantanément. À défaut, le logo
+ * Google dit au moins de quel genre de compte il s'agit.
+ */
+function Vignette({ photo }: { photo: string | null }) {
+  if (photo) {
+    return (
+      <img
+        src={photo}
+        alt=""
+        className="h-8 w-8 flex-none rounded-full object-cover"
+        style={{ background: 'var(--faint)' }}
+      />
+    )
+  }
+
+  return (
+    <span
+      className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
+      style={{ background: 'var(--sunk)' }}
+    >
+      <LogoGoogle taille={16} />
+    </span>
   )
 }
 
@@ -470,7 +502,7 @@ function BoutonCarte({
             }
       }
     >
-      {icone && <Icone nom={icone} taille={17} />}
+      {icone && <Icone nom={icone} taille={17} compenser />}
       {children}
     </button>
   )
