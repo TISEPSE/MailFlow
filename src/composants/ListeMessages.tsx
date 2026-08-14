@@ -6,7 +6,7 @@
  * date. Pas de corps de message — c'est du HTML écrit par un inconnu, et il ne
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
-import { Icone, Pastille } from './base'
+import { Icone, Pastille, SqueletteLecture } from './base'
 import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
 import type { CorpsMessage, MessageAffiche } from '../types/backend'
 
@@ -173,14 +173,7 @@ function Corps({
   chargement: boolean
 }) {
   if (chargement) {
-    return (
-      <div
-        className="flex flex-1 items-center justify-center text-[13px]"
-        style={{ color: 'var(--sub)' }}
-      >
-        Chargement du message…
-      </div>
-    )
+    return <SqueletteLecture />
   }
 
   if (corps?.html) {

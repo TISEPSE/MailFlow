@@ -8,6 +8,8 @@
  */
 
 export interface Preferences {
+  /** Barre latérale repliée sur ses icônes. */
+  barreRepliee: boolean
   sombre: boolean
   accent: string
   /** Appliquer les règles dès l'ouverture de l'application. */
@@ -26,6 +28,7 @@ export const MINUTES: Record<Frequence, number> = {
 }
 
 export const DEFAUTS: Preferences = {
+  barreRepliee: false,
   sombre: false,
   accent: '#2F6BFF',
   syncAuLancement: false,
@@ -53,6 +56,8 @@ export function lirePreferences(depot: Storage = localStorage): Preferences {
   const p = brut as Partial<Record<keyof Preferences, unknown>>
 
   return {
+    barreRepliee:
+      typeof p.barreRepliee === 'boolean' ? p.barreRepliee : DEFAUTS.barreRepliee,
     sombre: typeof p.sombre === 'boolean' ? p.sombre : DEFAUTS.sombre,
     accent:
       typeof p.accent === 'string' && /^#[0-9a-f]{6}$/i.test(p.accent)

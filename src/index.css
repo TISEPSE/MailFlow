@@ -286,3 +286,44 @@ button:not(:disabled),
 .pastille-accent:hover {
   box-shadow: 0 0 0 3px var(--faint);
 }
+
+/* Rotation d'une icône pendant une attente.
+
+   Sur l'icône seule, jamais sur le bouton : faire tourner le libellé le rendrait
+   illisible, et c'est le libellé qui dit ce qui se passe. */
+@keyframes tourner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tourne {
+  animation: tourner 900ms linear infinite;
+  /* Écrase la translation d'alignement optique, qui ne veut plus rien dire une
+     fois l'icône en rotation. */
+  transform-origin: 50% 50%;
+}
+
+/* Squelettes d'attente.
+
+   Ils reprennent la géométrie réelle de ce qu'ils remplacent : un squelette de
+   la mauvaise taille fait sauter la page au moment où les données arrivent, ce
+   qui est plus désagréable qu'une attente franche. */
+@keyframes respirer {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.squelette {
+  background: var(--faint);
+  border-radius: 6px;
+  animation: respirer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tourne,
+  .squelette {
+    animation: none;
+  }
+}

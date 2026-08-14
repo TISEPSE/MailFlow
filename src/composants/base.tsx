@@ -29,6 +29,7 @@ export function Icone({
   style,
   rempli = false,
   compenser = false,
+  tourne = false,
 }: {
   nom: NomIcone
   taille?: number
@@ -37,6 +38,8 @@ export function Icone({
   rempli?: boolean
   /** Retranche le blanc interne du dessin, pour un centrage optique. */
   compenser?: boolean
+  /** Fait tourner l'icône : signale une attente en cours. */
+  tourne?: boolean
 }) {
   const trace = (rempli ? GLYPHES_PLEINS[nom] : undefined) ?? GLYPHES[nom]
 
@@ -60,13 +63,14 @@ export function Icone({
       viewBox={BOITE}
       width={taille}
       height={taille}
-      className={`inline-block flex-none ${className}`}
+      className={`inline-block flex-none ${tourne ? 'tourne ' : ''}${className}`}
       style={{
         fill: 'currentColor',
         marginInline: marge || undefined,
         // Une translation ne déplace rien dans la mise en page, contrairement
-        // à une marge : les libellés restent où ils sont.
-        transform: releve ? `translateY(-${releve}px)` : undefined,
+        // à une marge : les libellés restent où ils sont. Elle cède la place à
+        // la rotation, qui a besoin du même canal.
+        transform: !tourne && releve ? `translateY(-${releve}px)` : undefined,
         ...style,
       }}
     >
@@ -400,6 +404,65 @@ export function Modale({
   )
 }
 
+/**
+ * Squelette d'une liste de messages.
+ *
+ * Il reprend la géométrie des tuiles réelles — pastille, deux lignes de texte,
+ * mêmes marges. Un squelette approximatif ferait sauter la liste au moment où
+ * les messages arrivent, ce qui se remarque davantage qu'une attente franche.
+ */
+export function SqueletteListe({ lignes = 7 }: { lignes?: number }) {
+  return (
+    <div
+      className="flex w-[368px] flex-none flex-col overflow-hidden border-r"
+      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+      aria-hidden
+    >
+      {Array.from({ length: lignes }, (_, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-3 border-b px-4 py-3"
+          style={{ borderColor: 'var(--line)' }}
+        >
+          <span className="mt-2 h-1.5 w-1.5 flex-none" />
+          <span className="squelette h-[30px] w-[30px] flex-none rounded-full" />
+          <span className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
+            <span className="squelette h-3 w-1/2" />
+            <span className="squelette h-3 w-4/5" />
+            <span className="squelette h-3 w-2/3" />
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Squelette du panneau de lecture. */
+export function SqueletteLecture() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" aria-hidden>
+      <div
+        className="flex-none border-b px-7 pt-4 pb-3"
+        style={{ borderColor: 'var(--line)' }}
+      >
+        <span className="squelette block h-5 w-3/5" />
+        <div className="mt-2.5 flex items-center gap-2.5">
+          <span className="squelette h-[30px] w-[30px] flex-none rounded-full" />
+          <span className="flex flex-1 flex-col gap-1.5">
+            <span className="squelette h-3 w-40" />
+            <span className="squelette h-3 w-60" />
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col gap-3 px-9 py-6">
+        {[92, 78, 85, 60, 70].map((largeur, i) => (
+          <span key={i} className="squelette h-3.5" style={{ width: `${largeur}%` }} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** État vide : ce n'est pas une erreur, c'est une boîte en ordre. */
 export function Vide({
   icone,
@@ -429,6 +492,7 @@ export function Bouton({
   icone,
   disabled = false,
   titre,
+  enAttente = false,
 }: {
   children: ReactNode
   onClick: () => void
@@ -436,6 +500,8 @@ export function Bouton({
   icone?: NomIcone
   disabled?: boolean
   titre?: string
+  /** Fait tourner l'icône tant que l'action n'a pas rendu la main. */
+  enAttente?: boolean
 }) {
   const teintes: Record<string, string> = {
     principal: 'bouton-principal',
@@ -452,7 +518,7 @@ export function Bouton({
       title={titre}
       className={`bouton ${teintes[variante]} inline-flex flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs leading-none font-semibold whitespace-nowrap`}
     >
-      {icone && <Icone nom={icone} taille={14} compenser />}
+      {icone && <Icone nom={icone} taille={14} compenser tourne={enAttente} />}
       {children}
     </button>
   )

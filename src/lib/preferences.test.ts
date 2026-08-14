@@ -38,6 +38,15 @@ describe('preferences', () => {
     expect(lirePreferences(d)).toEqual(DEFAUTS)
   })
 
+  it('retient le repli de la barre latérale', () => {
+    // Sans persistance, la barre se rouvrirait à chaque lancement et il
+    // faudrait la replier tous les jours.
+    const d = depot()
+    ecrirePreferences({ ...DEFAUTS, barreRepliee: true }, d)
+
+    expect(lirePreferences(d).barreRepliee).toBe(true)
+  })
+
   it('valide chaque champ séparément', () => {
     // Une version antérieure a pu écrire un champ dans un autre format : les
     // champs encore valides doivent survivre.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bouton, EnTete, Icone, Vide } from './composants/base'
 import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
@@ -92,9 +92,17 @@ export default function App() {
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
   const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [libelles, setLibelles] = useState<LibelleGmail[]>([])
+
+  /** Vrai tant que le premier relevé n'a pas abouti.
+   *
+   *  Distinct de `enCours`, qui vaut aussi pour une action : montrer un
+   *  squelette pendant qu'on supprime une règle effacerait la boîte sous les
+   *  yeux de l'utilisateur. */
+  const [premierReleve, setPremierReleve] = useState(true)
+  const [menuCompte, setMenuCompte] = useState(false)
   const [logos, setLogos] = useState<Record<string, string>>({})
 
-  const { sombre, accent } = prefs
+  const { sombre, accent, barreRepliee: repliee } = prefs
 
   // Relues une fois au montage : `localStorage` n'existe pas au moment où
   // l'état initial est calculé côté rendu serveur, et l'application doit
@@ -126,7 +134,10 @@ export default function App() {
       setEtat(sante)
       setRegles(jeu)
       setComptes(connus)
-      if (!sante.compteConnecte) setProfil(null)
+      if (!sante.compteConnecte) {
+        setProfil(null)
+        setPremierReleve(false)
+      }
       return sante
     } catch (e) {
       annoncer(messageDErreur(e), true)
@@ -138,6 +149,7 @@ export default function App() {
     try {
       const messages = await boiteLister()
       setBoite(messages)
+      setPremierReleve(false)
 
       // Les logos arrivent après : ils partent sur le réseau, et la boîte doit
       // s'afficher sans les attendre.
@@ -147,6 +159,7 @@ export default function App() {
         .catch(() => undefined)
     } catch (e) {
       annoncer(messageDErreur(e), true)
+      setPremierReleve(false)
     }
   }, [annoncer])
 
@@ -210,6 +223,29 @@ export default function App() {
     }
   }
 
+  /** Bascule de compte, partagée par la barre latérale et les Paramètres. */
+  const basculerVers = (adresse: string) =>
+    agir(async () => {
+      await compteBasculer(adresse)
+      // La boîte affichée est celle du compte précédent : la vider avant le
+      // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
+      setBoite([])
+      setPremierReleve(true)
+      setProfil(await compteProfil().catch(() => null))
+      setLibelles(await libellesLister().catch(() => []))
+      return `Compte actif : ${adresse}.`
+    })
+
+  const ajouterUnCompte = () =>
+    agir(async () => {
+      await compteAjouter()
+      setBoite([])
+      setPremierReleve(true)
+      setProfil(await compteProfil().catch(() => null))
+      setLibelles(await libellesLister().catch(() => []))
+      return 'Compte ajouté.'
+    })
+
   const parCategorie = useMemo(() => {
     const vides: Record<CategorieMessage, MessageAffiche[]> = {
       humain: [],
@@ -248,14 +284,32 @@ export default function App() {
     >
       <div className="flex min-h-0 flex-1">
         <nav
-          className="flex w-[248px] flex-none flex-col gap-0.5 border-r p-3"
-          style={{ background: 'var(--side)', borderColor: 'var(--line)' }}
+          className="flex flex-none flex-col gap-0.5 border-r p-3 transition-[width] duration-150"
+          style={{
+            width: repliee ? 68 : 248,
+            background: 'var(--side)',
+            borderColor: 'var(--line)',
+          }}
         >
-          <div
-            className="px-2.5 pt-1 pb-3 text-[11px] font-semibold tracking-wider uppercase"
-            style={{ color: 'var(--sub)' }}
-          >
-            Boîte de réception
+          <div className="flex items-center gap-1 pt-1 pb-3">
+            {!repliee && (
+              <span
+                className="min-w-0 flex-1 truncate px-2.5 text-[11px] font-semibold tracking-wider uppercase"
+                style={{ color: 'var(--sub)' }}
+              >
+                Boîte de réception
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => regler({ barreRepliee: !repliee })}
+              aria-expanded={!repliee}
+              title={repliee ? 'Déplier la barre' : 'Replier la barre'}
+              aria-label={repliee ? 'Déplier la barre' : 'Replier la barre'}
+              className="bouton bouton-icone mx-auto flex-none rounded-lg p-1.5"
+            >
+              <Icone nom={repliee ? 'chevron_right' : 'chevron_left'} taille={17} />
+            </button>
           </div>
 
           {NAV.map(({ vue: v, libelle, glyphe }) => {
@@ -267,11 +321,14 @@ export default function App() {
                 type="button"
                 onClick={() => setVue(v)}
                 aria-current={actif ? 'page' : undefined}
+                // Repliée, la barre garde le libellé en infobulle : une icône
+                // seule ne dit pas ce qu'elle range.
+                title={repliee ? `${libelle} (${compte(v)})` : undefined}
                 className="survolable flex items-center gap-3 rounded-lg px-2.5 py-2 text-left"
                 style={actif ? { background: 'var(--card)' } : undefined}
               >
                 <span
-                  className="flex h-7 w-7 flex-none items-center justify-center rounded-[9px]"
+                  className="relative flex h-7 w-7 flex-none items-center justify-center rounded-[9px]"
                   style={{ background: actif ? solide : doux }}
                 >
                   <Icone
@@ -280,19 +337,31 @@ export default function App() {
                     rempli={actif}
                     style={{ color: actif ? '#FFFFFF' : solide }}
                   />
+                  {repliee && compte(v) > 0 && (
+                    <span
+                      className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-semibold"
+                      style={{ background: solide, color: '#FFFFFF' }}
+                    >
+                      {compte(v)}
+                    </span>
+                  )}
                 </span>
-                <span
-                  className="min-w-0 flex-1 truncate text-[13px] font-medium"
-                  style={{ color: actif ? 'var(--fg)' : 'var(--sub)' }}
-                >
-                  {libelle}
-                </span>
-                <span
-                  className="flex-none font-mono text-[11px]"
-                  style={{ color: actif ? solide : 'var(--sub)' }}
-                >
-                  {compte(v)}
-                </span>
+                {!repliee && (
+                  <>
+                    <span
+                      className="min-w-0 flex-1 truncate text-[13px] font-medium"
+                      style={{ color: actif ? 'var(--fg)' : 'var(--sub)' }}
+                    >
+                      {libelle}
+                    </span>
+                    <span
+                      className="flex-none font-mono text-[11px]"
+                      style={{ color: actif ? solide : 'var(--sub)' }}
+                    >
+                      {compte(v)}
+                    </span>
+                  </>
+                )}
               </button>
             )
           })}
@@ -300,46 +369,75 @@ export default function App() {
           <div className="flex-1" />
 
           <div
-            className="mt-3 flex items-center gap-1.5 border-t pt-3"
+            className="relative mt-3 flex items-center gap-1.5 border-t pt-3"
             style={{ borderColor: 'var(--line)' }}
           >
+            {menuCompte && (
+              <MenuDeCompte
+                comptes={comptes}
+                repliee={repliee}
+                onFermer={() => setMenuCompte(false)}
+                onBasculer={(adresse) => {
+                  setMenuCompte(false)
+                  void basculerVers(adresse)
+                }}
+                onAjouter={() => {
+                  setMenuCompte(false)
+                  void ajouterUnCompte()
+                }}
+                onParametres={() => {
+                  setMenuCompte(false)
+                  setVue('parametres')
+                }}
+              />
+            )}
+
             {/* L'avatar est dans le bouton, pas à côté : la zone survolée doit
                 couvrir tout ce qui désigne le compte, sans quoi le fond gris
                 s'arrête au bord de la photo. */}
             <button
               type="button"
-              onClick={() => setVue('parametres')}
+              onClick={() => setMenuCompte((o) => !o)}
+              aria-haspopup="menu"
+              aria-expanded={menuCompte}
               className="survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left"
               title={profil?.adresse ?? undefined}
             >
               <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-semibold">
-                  {profil?.nom ?? (etat?.compteConnecte ? 'Compte Google' : 'Non connecté')}
-                </span>
-                <span
-                  className="block truncate font-mono text-[10px]"
-                  style={{ color: 'var(--sub)' }}
-                >
-                  {profil?.adresse ?? 'aucun compte relié'}
-                </span>
-              </span>
+              {!repliee && (
+                <>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-semibold">
+                      {profil?.nom ?? (etat?.compteConnecte ? 'Compte Google' : 'Non connecté')}
+                    </span>
+                    <span
+                      className="block truncate font-mono text-[10px]"
+                      style={{ color: 'var(--sub)' }}
+                    >
+                      {profil?.adresse ?? 'aucun compte relié'}
+                    </span>
+                  </span>
+                  <Icone nom="expand_more" taille={16} style={{ color: 'var(--sub)' }} />
+                </>
+              )}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setVue('parametres')}
-              aria-label="Paramètres"
-              aria-current={vue === 'parametres' ? 'page' : undefined}
-              className="survolable flex h-8 w-8 flex-none items-center justify-center rounded-lg"
-              style={
-                vue === 'parametres'
-                  ? { background: 'var(--card)', color: 'var(--accent-fg)' }
-                  : { color: 'var(--sub)' }
-              }
-            >
-              <Icone nom="settings" taille={17} rempli={vue === 'parametres'} />
-            </button>
+            {!repliee && (
+              <button
+                type="button"
+                onClick={() => setVue('parametres')}
+                aria-label="Paramètres"
+                aria-current={vue === 'parametres' ? 'page' : undefined}
+                className="survolable flex h-8 w-8 flex-none items-center justify-center rounded-lg"
+                style={
+                  vue === 'parametres'
+                    ? { background: 'var(--card)', color: 'var(--accent-fg)' }
+                    : { color: 'var(--sub)' }
+                }
+              >
+                <Icone nom="settings" taille={17} rempli={vue === 'parametres'} />
+              </button>
+            )}
           </div>
         </nav>
 
@@ -353,8 +451,9 @@ export default function App() {
                   icone="refresh"
                   onClick={() => void agir(async () => (await relever(), null))}
                   disabled={enCours}
+                  enAttente={enCours}
                 >
-                  Actualiser
+                  {enCours ? 'Relevé en cours…' : 'Actualiser'}
                 </Bouton>
               )}
             </EnTete>
@@ -405,25 +504,8 @@ export default function App() {
                 })
               }
               comptes={comptes}
-              onBasculer={(adresse) =>
-                void agir(async () => {
-                  await compteBasculer(adresse)
-                  // La boîte affichée est celle du compte précédent : la vider
-                  // avant le relevé évite de montrer les messages de l'un sous
-                  // l'adresse de l'autre.
-                  setBoite([])
-                  setProfil(await compteProfil().catch(() => null))
-                  return `Compte actif : ${adresse}.`
-                })
-              }
-              onAjouterCompte={() =>
-                void agir(async () => {
-                  await compteAjouter()
-                  setBoite([])
-                  setProfil(await compteProfil().catch(() => null))
-                  return 'Compte ajouté.'
-                })
-              }
+              onBasculer={(adresse) => void basculerVers(adresse)}
+              onAjouterCompte={() => void ajouterUnCompte()}
               onOublierCompte={(adresse) =>
                 void agir(async () => {
                   await compteOublier(adresse)
@@ -449,6 +531,7 @@ export default function App() {
           ) : (
             <Courrier
               messages={parCategorie[vue]}
+              chargement={premierReleve}
               sombre={sombre}
               regles={regles?.automations ?? []}
               proposition={PROPOSITIONS[vue]}
@@ -493,6 +576,131 @@ export default function App() {
           )}
         </main>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Menu de compte, ouvert depuis le pied de la barre latérale.
+ *
+ * Il double le sélecteur des Paramètres à dessein : changer de compte est un
+ * geste fréquent, et l'imposer par un détour en Paramètres reviendrait à le
+ * ranger avec les réglages qu'on touche une fois par an.
+ *
+ * Il se ferme au clic hors de lui et à `Échap` — un menu dont on ne sait pas
+ * sortir bloque tout ce qui est derrière.
+ */
+function MenuDeCompte({
+  comptes,
+  repliee,
+  onFermer,
+  onBasculer,
+  onAjouter,
+  onParametres,
+}: {
+  comptes: CompteConnu[]
+  repliee: boolean
+  onFermer: () => void
+  onBasculer: (adresse: string) => void
+  onAjouter: () => void
+  onParametres: () => void
+}) {
+  const cadre = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const dehors = (e: MouseEvent) => {
+      if (!cadre.current?.contains(e.target as Node)) onFermer()
+    }
+    const auClavier = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onFermer()
+    }
+
+    // En phase de capture, et au tour suivant : sans cela, le clic qui vient
+    // d'ouvrir le menu le refermerait aussitôt.
+    const minuteur = window.setTimeout(() => {
+      document.addEventListener('mousedown', dehors, true)
+    }, 0)
+    document.addEventListener('keydown', auClavier)
+
+    return () => {
+      window.clearTimeout(minuteur)
+      document.removeEventListener('mousedown', dehors, true)
+      document.removeEventListener('keydown', auClavier)
+    }
+  }, [onFermer])
+
+  const autres = comptes.filter((c) => !c.actif)
+
+  return (
+    <div
+      ref={cadre}
+      role="menu"
+      className="absolute bottom-full left-0 z-40 mb-2 overflow-hidden rounded-xl border py-1"
+      style={{
+        width: repliee ? 260 : '100%',
+        background: 'var(--card)',
+        borderColor: 'var(--line)',
+        boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
+      }}
+    >
+      {autres.map((c) => (
+        <button
+          key={c.adresse}
+          type="button"
+          role="menuitem"
+          onClick={() => onBasculer(c.adresse)}
+          className="survolable flex w-full items-center gap-2.5 px-3 py-2 text-left"
+        >
+          {c.photo ? (
+            <img src={c.photo} alt="" className="h-7 w-7 flex-none rounded-full object-cover" />
+          ) : (
+            <span
+              className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+              style={{ background: 'var(--sunk)' }}
+            >
+              <LogoGoogle taille={14} />
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-semibold">
+              {c.nom ?? c.adresse}
+            </span>
+            {c.nom && (
+              <span
+                className="block truncate font-mono text-[10px]"
+                style={{ color: 'var(--sub)' }}
+              >
+                {c.adresse}
+              </span>
+            )}
+          </span>
+        </button>
+      ))}
+
+      {autres.length > 0 && (
+        <div className="my-1 border-t" style={{ borderColor: 'var(--line)' }} />
+      )}
+
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onAjouter}
+        className="survolable flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-semibold"
+        style={{ color: 'var(--accent-fg)' }}
+      >
+        <Icone nom="login" taille={16} compenser />
+        Ajouter un compte Google
+      </button>
+
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onParametres}
+        className="survolable flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-semibold"
+      >
+        <Icone nom="settings" taille={16} compenser style={{ color: 'var(--sub)' }} />
+        Paramètres
+      </button>
     </div>
   )
 }

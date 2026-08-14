@@ -7,7 +7,14 @@
  * une règle qui vaudra pour tous les suivants.
  */
 import { useEffect, useState } from 'react'
-import { Bouton, Etiquette, Icone, Vide } from '../composants/base'
+import {
+  Bouton,
+  Etiquette,
+  Icone,
+  SqueletteLecture,
+  SqueletteListe,
+  Vide,
+} from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
@@ -46,6 +53,7 @@ export function Courrier({
   onRepondre,
   onRanger,
   libelles,
+  chargement,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -62,6 +70,8 @@ export function Courrier({
   onRepondre?: (message: MessageAffiche) => void
   onRanger?: (id: string, libelle?: string) => void
   libelles?: LibelleGmail[]
+  /** Vrai tant que le premier relevé n'a pas abouti. */
+  chargement?: boolean
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
@@ -90,6 +100,14 @@ export function Courrier({
       courant = false
     }
   }, [idAffiche])
+  if (chargement) {
+    return (
+      <div className="flex min-h-0 flex-1">
+        <SqueletteListe />
+        <SqueletteLecture />
+      </div>
+    )
+  }
   if (!choisi) return <Vide {...vide} />
   const regleExistante = regles.find(
     (r) => r.expediteur.toLowerCase() === choisi.adresse,
