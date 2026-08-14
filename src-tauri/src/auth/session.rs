@@ -123,6 +123,15 @@ impl<S: SecretStore> SessionAuth<S> {
         Ok(jetons.access_token().to_string())
     }
 
+    /// Jette l'`access_token` en mémoire sans toucher au jeton durable.
+    ///
+    /// Sert après un `401` de Gmail : notre calcul d'expiration disait le jeton
+    /// valable, Google dit le contraire. C'est Google qui a raison — il a pu être
+    /// révoqué, ou les horloges divergent. Le prochain appel en redemandera un.
+    pub fn oublier_le_jeton_courant(&mut self) {
+        self.jetons = None;
+    }
+
     /// Oublie la session et rend le `refresh_token` à révoquer chez Google.
     pub fn fermer(&mut self) -> Resultat<Option<String>> {
         let a_revoquer = self.secrets.get(CLE_REFRESH_TOKEN_GOOGLE)?.or_else(|| {
@@ -352,6 +361,20 @@ mod tests {
         let mut s = SessionAuth::nouvelle(MemoryStore::new());
 
         assert_eq!(s.fermer().unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn oublier_le_jeton_courant_force_un_renouvellement_sans_deconnecter() {
+        let mut s = session_ouverte();
+        let faux = FauxRenouvelleur::qui_reussit();
+
+        // Sans invalidation, le jeton en mémoire serait réutilisé tel quel.
+        s.oublier_le_jeton_courant();
+        let jeton = s.access_token(&faux, t0()).await.unwrap();
+
+        assert_eq!(jeton, "ya29.renouvele");
+        assert_eq!(faux.appels.get(), 1);
+        assert!(s.est_connecte().unwrap(), "le jeton durable reste en place");
     }
 
     #[tokio::test]

@@ -24,6 +24,14 @@ export interface EtatApplication {
   clientGoogleConfigure: boolean
 }
 
+/** Miroir de `gmail::execution::RapportExecution`. */
+export interface RapportExecution {
+  archives: number
+  misALaCorbeille: number
+  /** Appels abandonnés après réessais. Le reste du plan a quand même été appliqué. */
+  echecs: number
+}
+
 /**
  * Miroir de la sérialisation de `error::AppError`.
  *

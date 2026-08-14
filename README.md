@@ -12,8 +12,8 @@ Cibles : macOS et Linux.
 Mise en place terminée, moteur de règles écrit, authentification Google en
 place. Le backend expose sa surface d'erreurs, le stockage des secrets, la
 persistance des règles, le calcul du plan d'actions, le flux OAuth2 PKCE complet
-et une commande de diagnostic. Les cinq vues du cahier des charges et le client
-Gmail restent à implémenter.
+et le client Gmail. Les cinq vues du cahier des charges et les résumés de
+newsletters restent à implémenter.
 
 Pour connecter votre compte, une étape se fait de votre côté, chez Google : voir
 [`docs/connexion-google.md`](docs/connexion-google.md).
@@ -46,7 +46,7 @@ src-tauri/src/
   rules/              Modèle, persistance et moteur de planification
   auth/               OAuth2 PKCE Google
   config.rs           Identifiant client Google
-  gmail/              Client API Gmail (surface déclarée)
+  gmail/              Client API Gmail
   llm/                Résumés de newsletters (surface déclarée)
 ```
 

@@ -6,7 +6,11 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
-import type { ErreurBackend, EtatApplication } from '../types/backend'
+import type {
+  ErreurBackend,
+  EtatApplication,
+  RapportExecution,
+} from '../types/backend'
 
 /** Vrai lorsqu'une valeur rejetée a la forme d'une erreur backend. */
 export function estErreurBackend(e: unknown): e is ErreurBackend {
@@ -50,4 +54,14 @@ export function googleConnecter(): Promise<void> {
 /** Déconnecte le compte et révoque l'autorisation chez Google. */
 export function googleDeconnecter(): Promise<void> {
   return invoke<void>('google_deconnecter')
+}
+
+/**
+ * Applique les règles à la boîte Gmail.
+ *
+ * Le parcours entier reste côté Rust : ne reviennent ici que des décomptes,
+ * jamais des identifiants de messages.
+ */
+export function gmailSynchroniser(): Promise<RapportExecution> {
+  return invoke<RapportExecution>('gmail_synchroniser')
 }

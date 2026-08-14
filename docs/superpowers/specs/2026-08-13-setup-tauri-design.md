@@ -185,12 +185,14 @@ Gmail : elle est affichée, pas exécutée.
 - `commands/` — `app_health`, `google_connecter`, `google_deconnecter`.
   `app_health` sert de tranche verticale React → IPC → Rust, touchant le
   trousseau, le disque et les chemins Tauri.
-- `gmail/`, `llm/` — surfaces déclarées : constantes, trait, et les contraintes
-  d'implémentation documentées. Aucune fausse implémentation.
+- `gmail/` — client complet : analyse des réponses, réessais, traduction du plan
+  en appels, transport, orchestration, 62 tests (section 7).
+- `llm/` — surface déclarée : trait et contraintes d'implémentation documentées.
+  Aucune fausse implémentation.
 - CI (lint, types, tests des deux côtés, `cargo audit`) et workflow de release
   en matrice trois plateformes.
 
-Total après les briques 5 et 6 : 109 tests Rust, 5 tests TypeScript,
+Total après les briques 5 à 7 : 172 tests Rust, 12 tests TypeScript,
 clippy sans avertissement. Le parcours de connexion a été validé de bout en bout
 contre le vrai Google : consentement, échange du code, `refresh_token` relu dans
 le trousseau depuis un programme extérieur à l'application.
@@ -203,7 +205,7 @@ le trousseau depuis un programme extérieur à l'application.
 | CSP du rendu des corps d'e-mail | Avec la vue 1, en même temps que l'iframe en bac à sable. |
 | Signature et notarisation macOS | Avant toute distribution. Demande un compte Apple Developer. |
 | Verification Google du scope restreint | Avant de dépasser 100 utilisateurs. Audit de sécurité annuel par un tiers. |
-| Politique de réessai sur quotas Gmail | Avec le client Gmail. Recul exponentiel sur 429 et 5xx uniquement. |
+| Lecture des métadonnées par lot (`/batch`) | Quand une règle sur un expéditeur bavard rendra la latence sensible. |
 | Rattrapage d'un vendredi manqué | Voir section 5. Demande de mémoriser la date de dernière exécution. |
 | Affichage de l'adresse du compte connecté | Avec la vue de connexion. Le scope `userinfo.email` est déjà demandé. |
 
@@ -340,8 +342,92 @@ dans ses journaux, et signale `clientGoogleConfigure` faux au frontend. L'écran
 renvoie alors vers `docs/connexion-google.md` plutôt que d'afficher un bouton qui
 ne peut pas aboutir.
 
-## 7. Suite
+## 7. Client Gmail
 
-Le client Gmail (`gmail/`) est la brique suivante : appels à l'API, exécution du
-plan produit par le moteur de règles, politique de réessai sur les quotas. Elle
-debloque les vues.
+Écrit en TDD dans `gmail/`, en six fichiers. 62 tests, dont aucun ne touche le
+réseau.
+
+Le découpage suit la même règle qu'ailleurs : ce qui décide est séparé de ce qui
+transporte. `transport.rs` ne fait qu'émettre et rapporter ; les décisions —
+quand rejouer, comment paginer, que compter — vivent dans des modules testables
+hors ligne. Deux traits posent la frontière, `Transport` et `SourceJeton`, ce qui
+permet de rejouer un `429` ou un `401` dans un test sans attendre ni Google ni
+l'horloge (`tokio::test(start_paused)`).
+
+### La requête Gmail restreint, elle ne décide pas
+
+C'est le point de conception le plus important de cette brique.
+
+Lister toute la boîte puis lire les métadonnées de chaque message coûterait des
+centaines de lectures par lancement, pour n'agir que sur quelques messages. On
+demande donc à Gmail de restreindre en amont : une requête `in:inbox from:<adresse>`
+par règle active.
+
+**Mais la recherche de Gmail ne fait pas foi.** Son opérateur `from:` est large :
+il inspecte aussi le nom affiché, que l'expéditeur choisit librement. S'y fier
+rouvrirait exactement l'usurpation que `normaliser_adresse` ferme — un tiers
+déclencherait la règle d'un autre en imitant son adresse dans son nom affiché.
+
+La requête ne sert donc qu'à réduire le volume. La décision revient toujours au
+moteur, qui compare l'adresse réelle extraite de l'en-tête `From`. Un test couvre
+le cas : Gmail remonte un message dont le nom affiché imite l'adresse visée, et
+aucune action n'est planifiée.
+
+Effet de bord agréable : deux règles sur la même adresse à la casse près se
+normalisent vers une seule interrogation. C'est un test qui l'a révélé — il
+attendait deux appels, il en fallait un.
+
+### Le coût en quota est une propriété testée
+
+Le quota Gmail se compte en unités par utilisateur et par seconde, pas en
+requêtes. `execution.rs` traduit le plan en appels et regroupe les archivages :
+`batchModify` accepte mille identifiants, donc deux cents archivages coûtent un
+appel. Les tests portent sur le nombre d'appels produits, pas seulement sur leur
+contenu.
+
+La mise à la corbeille, elle, reste un appel par message : `trash` ne traite
+qu'un message à la fois. `batchDelete` existe et serait plus économique, mais il
+supprime définitivement — il n'a pas sa place derrière une action déclenchée
+automatiquement par une règle.
+
+### Réessais : trois cas, pas deux
+
+`reessai.rs` distingue ce qu'un simple « rejouer sur erreur » confondrait :
+
+- `429` et `5xx` — condition passagère, recul exponentiel avec demi-gigue. Sans
+  la part d'aléatoire, tous les clients qui ont pris un `429` ensemble repartent
+  ensemble et reconstituent le pic.
+- `401` — le jeton est refusé. Ni rejouer tel quel ni abandonner : il faut en
+  redemander un. Google fait autorité contre notre calcul d'expiration.
+- `403` — ambigu chez Google, qui l'utilise pour le quota **et** pour le refus de
+  permission. Seul le `reason` du corps les sépare. Sans motif exploitable, on
+  abandonne : marteler une permission refusée est pire que renoncer.
+
+Un `Retry-After` est respecté quand Google en envoie un, mais ramené au plafond :
+un en-tête erroné ne doit pas figer l'application.
+
+### Ce qui traverse l'IPC
+
+`gmail_synchroniser` rend un décompte — archivés, mis à la corbeille, échecs — et
+rien d'autre. Aucun identifiant de message, aucun sujet, aucun jeton. Le verrou de
+session n'est tenu que le temps d'obtenir un jeton, jamais pendant les appels
+Gmail, qui durent plusieurs secondes.
+
+Un échec sur une opération n'interrompt pas les suivantes, et le rapport le dit :
+un message disparu entre la liste et l'action est un cas courant sur une boîte
+vivante, pas une panne.
+
+### Limite connue : les lectures restent séquentielles
+
+Les métadonnées sont lues un message à la fois. Gmail expose un point d'entrée
+`/batch` acceptant cent sous-requêtes en un appel HTTP, qui diviserait la latence
+d'autant. La restriction par règle rend le nombre de lectures faible en usage
+courant, donc ce n'est pas urgent — mais une règle posée sur un expéditeur très
+bavard le fera sentir. `PLAFOND_PAR_REGLE` borne les dégâts à deux cents messages
+par passe.
+
+## 8. Suite
+
+Les cinq vues du cahier des charges. Le backend leur fournit désormais tout ce
+dont elles ont besoin, à l'exception des résumés de newsletters (`llm/`), dont le
+fournisseur reste à choisir.

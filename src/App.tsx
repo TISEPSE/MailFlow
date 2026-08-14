@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   appHealth,
+  gmailSynchroniser,
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
 } from './lib/tauri'
-import type { EtatApplication } from './types/backend'
+import { resumerRapport } from './lib/rapport'
+import type { EtatApplication, RapportExecution } from './types/backend'
 
 /**
  * Écran de diagnostic provisoire.
@@ -18,6 +20,7 @@ export default function App() {
   const [etat, setEtat] = useState<EtatApplication | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
+  const [rapport, setRapport] = useState<RapportExecution | null>(null)
 
   const rafraichir = useCallback(
     () => appHealth().then(setEtat).catch((e) => setErreur(messageDErreur(e))),
@@ -37,8 +40,23 @@ export default function App() {
   async function lancer(action: () => Promise<void>) {
     setEnCours(true)
     setErreur(null)
+    setRapport(null)
     try {
       await action()
+    } catch (e) {
+      setErreur(messageDErreur(e))
+    } finally {
+      setEnCours(false)
+      await rafraichir()
+    }
+  }
+
+  async function synchroniser() {
+    setEnCours(true)
+    setErreur(null)
+    setRapport(null)
+    try {
+      setRapport(await gmailSynchroniser())
     } catch (e) {
       setErreur(messageDErreur(e))
     } finally {
@@ -110,14 +128,24 @@ export default function App() {
           )}
 
           {etat.compteConnecte ? (
-            <button
-              type="button"
-              onClick={() => void lancer(googleDeconnecter)}
-              disabled={enCours}
-              className="self-start rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-            >
-              {enCours ? 'Déconnexion…' : 'Déconnecter mon compte Gmail'}
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void synchroniser()}
+                disabled={enCours}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+              >
+                {enCours ? 'Synchronisation…' : 'Appliquer mes règles'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void lancer(googleDeconnecter)}
+                disabled={enCours}
+                className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Déconnecter mon compte Gmail
+              </button>
+            </div>
           ) : (
             <button
               type="button"
@@ -135,6 +163,19 @@ export default function App() {
             <p className="text-sm text-neutral-500">
               Votre navigateur s'est ouvert sur la page de connexion Google.
               Revenez ici une fois votre accord donné.
+            </p>
+          )}
+
+          {rapport && (
+            <p className="rounded-md bg-emerald-50 p-4 text-sm text-emerald-900">
+              {resumerRapport(rapport)}
+            </p>
+          )}
+
+          {etat.compteConnecte && etat.nombreDeRegles === 0 && (
+            <p className="text-sm text-neutral-500">
+              Aucune règle n'est encore définie : la synchronisation n'aura rien à
+              faire. Les vues de création arriveront ensuite.
             </p>
           )}
         </div>

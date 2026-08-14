@@ -32,3 +32,4 @@ keyring = { version = "4.1.6", features = ["apple-native-keyring-store"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["test-util", "macros", "rt-multi-thread"] }

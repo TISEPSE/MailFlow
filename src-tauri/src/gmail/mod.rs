@@ -26,6 +26,13 @@
 //!   Il ne doit jamais être injecté dans le DOM de l'application : la vue 1 devra
 //!   l'afficher dans une `iframe` en bac à sable, sans accès au contexte parent.
 
+pub mod client;
+pub mod execution;
+pub mod modele;
+pub mod reessai;
+pub mod synchronisation;
+pub mod transport;
+
 pub const BASE_API: &str = "https://gmail.googleapis.com/gmail/v1";
 
 /// En-têtes suffisants au tri, pour éviter de charger les corps de messages.

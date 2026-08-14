@@ -11,11 +11,17 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
 
+use chrono::{Local, Utc};
+
 use crate::auth::flux::ClientOAuth;
 use crate::auth::session::SessionAuth;
 use crate::auth::{DELAI_AUTORISATION, connecter};
 use crate::config;
 use crate::error::{AppError, Resultat};
+use crate::gmail::client::{ClientGmail, SourceJeton};
+use crate::gmail::execution::RapportExecution;
+use crate::gmail::synchronisation::synchroniser;
+use crate::gmail::transport::TransportHttp;
 use crate::rules::RulesStore;
 use crate::secrets::KeyringStore;
 
@@ -64,6 +70,28 @@ impl EtatAuth {
         self.client
             .as_ref()
             .ok_or_else(|| AppError::Config(format!("{} non renseigné", config::VAR_CLIENT_ID)))
+    }
+}
+
+/// Donne au client Gmail de quoi s'authentifier, sans rien lui apprendre
+/// d'OAuth2.
+///
+/// Le verrou de session n'est pris que le temps d'obtenir un jeton, jamais
+/// pendant les appels Gmail : une synchronisation dure plusieurs secondes, et
+/// bloquer la session tout ce temps empêcherait toute autre commande.
+struct JetonsDeSession<'a> {
+    etat: &'a EtatAuth,
+}
+
+impl SourceJeton for JetonsDeSession<'_> {
+    async fn jeton(&self, forcer: bool) -> Resultat<String> {
+        let client = self.etat.client()?;
+        let mut session = self.etat.session.lock().await;
+
+        if forcer {
+            session.oublier_le_jeton_courant();
+        }
+        session.access_token(client, Utc::now()).await
     }
 }
 
@@ -196,4 +224,32 @@ pub async fn google_deconnecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
 
     log::info!("compte Gmail déconnecté");
     Ok(())
+}
+
+/// Applique les règles à la boîte Gmail et rend le compte de ce qui a été fait.
+///
+/// Le parcours entier vit côté Rust : le frontend déclenche et reçoit un
+/// décompte, jamais des identifiants de messages ni des jetons.
+#[tauri::command]
+pub async fn gmail_synchroniser(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<RapportExecution> {
+    let dossier = dossier_config(&app)?;
+    let regles = RulesStore::new(&dossier).charger()?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+
+    let rapport = synchroniser(&client, &regles, Local::now())
+        .await
+        .inspect_err(|e| log::warn!("synchronisation interrompue : {e}"))?;
+
+    log::info!(
+        "synchronisation terminée : {} archivé(s), {} à la corbeille, {} échec(s)",
+        rapport.archives,
+        rapport.mis_a_la_corbeille,
+        rapport.echecs
+    );
+
+    Ok(rapport)
 }
