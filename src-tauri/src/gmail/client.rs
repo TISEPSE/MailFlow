@@ -15,7 +15,7 @@ use std::time::Duration;
 use super::execution::{OperationGmail, RapportExecution};
 use super::modele::{MessageMetadata, RefMessage, ReponseErreur, ReponseListe};
 use super::reessai::{Suite, suite_apres};
-use super::{BASE_API, ENTETES_TRI};
+use super::{BASE_API, ENTETES_TRI, libelles};
 use crate::auth::URL_USERINFO;
 
 /// Ce que Google veut bien dire d'un compte : de quoi le reconnaître, rien de
@@ -261,6 +261,30 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
 
         serde_json::from_str::<Renseignements>(&corps)
             .map_err(|e| AppError::Reseau(format!("renseignements illisibles : {e}")))
+    }
+
+    /// Retire le libellé `UNREAD` de messages.
+    ///
+    /// Seul endroit où MailFlow touche à l'état de lecture. Le geste vient de
+    /// l'utilisateur — il vient d'ouvrir le message — et reste réversible
+    /// depuis Gmail, qui sait remettre un message en non-lu.
+    ///
+    /// Un lot vide n'appelle rien : Gmail refuse `batchModify` sans
+    /// identifiant, et ce serait dépenser une requête pour un refus.
+    pub async fn marquer_lu(&self, ids: &[String]) -> Resultat<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let corps = serde_json::json!({
+            "ids": ids,
+            "removeLabelIds": [libelles::UNREAD],
+        })
+        .to_string();
+
+        self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
+            .await
+            .map(|_| ())
     }
 
     pub async fn metadonnees(&self, id: &str) -> Resultat<MessageMetadata> {
@@ -652,6 +676,34 @@ mod tests {
 
         assert_eq!(c.client.adresse_du_compte().await.unwrap(), "moi@gmail.com");
         assert!(c.urls()[0].ends_with("/users/me/profile"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn marquer_lu_ne_retire_que_le_libelle_de_non_lu() {
+        // Un `removeLabelIds` trop large retirerait le message de la boîte de
+        // réception, alors que l'utilisateur n'a fait que l'ouvrir.
+        let c = client(vec![ok("{}")]);
+
+        c.client
+            .marquer_lu(&["m1".to_string(), "m2".to_string()])
+            .await
+            .unwrap();
+
+        let corps = c.corps_envoyes()[0].clone();
+        let envoye: serde_json::Value = serde_json::from_str(&corps).unwrap();
+
+        assert_eq!(envoye["removeLabelIds"], serde_json::json!(["UNREAD"]));
+        assert_eq!(envoye["ids"], serde_json::json!(["m1", "m2"]));
+        assert!(envoye.get("addLabelIds").is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn marquer_lu_sans_message_n_appelle_rien() {
+        let c = client(vec![]);
+
+        c.client.marquer_lu(&[]).await.unwrap();
+
+        assert!(c.urls().is_empty());
     }
 
     #[tokio::test(start_paused = true)]

@@ -15,15 +15,11 @@ export function ListeMessages({
   selection,
   onSelect,
   logos,
-  consultes,
 }: {
   messages: MessageAffiche[]
   selection: string | null
   onSelect: (id: string) => void
   logos: Record<string, string>
-  /** Messages ouverts pendant cette session. Gmail les croit encore non lus :
-   *  MailFlow ne lit que des métadonnées et ne retire jamais le libellé. */
-  consultes: ReadonlySet<string>
 }) {
   return (
     <div
@@ -36,7 +32,7 @@ export function ListeMessages({
       {messages.map((m, i) => {
         const [fond, encre] = palette(i)
         const choisi = m.id === selection
-        const neuf = m.nonLu && !consultes.has(m.id)
+        const neuf = m.nonLu
         return (
           <button
             key={m.id}

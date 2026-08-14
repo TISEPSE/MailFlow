@@ -173,10 +173,16 @@ button:not(:disabled),
   background: color-mix(in oklab, var(--card) 55%, var(--faint));
 }
 
-/* La tuile ouverte se repère à un liseré plutôt qu'à un fond : le fond porte
-   déjà l'information « lu / non lu », et ne peut pas dire deux choses. */
-.tuile[aria-current='true'] {
-  box-shadow: inset 3px 0 0 var(--accent);
+/* La tuile ouverte garde le gris du survol.
+
+   Ouvrir un message le marque lu chez Gmail : il devient donc gris de toute
+   façon, et le gris un peu plus soutenu suffit à dire lequel on regarde. Un
+   liseré d'accent le disait aussi, mais ajoutait une couleur là où deux nuances
+   de gris se lisent sans rien apprendre. Les deux sélecteurs couvrent l'instant
+   où Gmail n'a pas encore confirmé la lecture. */
+.tuile[aria-current='true'],
+.tuile[data-neuf='true'][aria-current='true'] {
+  background: var(--faint);
 }
 
 /* Séparateurs internes d'une carte de réglages.

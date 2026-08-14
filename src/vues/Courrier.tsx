@@ -38,8 +38,7 @@ export function Courrier({
   onCreerRegle,
   sombre,
   logos,
-  consultes,
-  onConsulte,
+  onOuvrir,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -48,10 +47,8 @@ export function Courrier({
   onCreerRegle: (regle: Regle) => Promise<void>
   sombre: boolean
   logos: Record<string, string>
-  /** Messages ouverts pendant cette session, tenus par `App` pour qu'ils le
-   *  restent d'une vue à l'autre. */
-  consultes: ReadonlySet<string>
-  onConsulte: (id: string) => void
+  /** Ouvrir un message le marque comme lu chez Gmail. */
+  onOuvrir: (id: string) => void
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
@@ -84,12 +81,11 @@ export function Courrier({
   return (
     <div className="flex min-h-0 flex-1">
       <ListeMessages
-        consultes={consultes}
         messages={messages}
         selection={choisi.id}
         onSelect={(id) => {
           setSelection(id)
-          onConsulte(id)
+          onOuvrir(id)
         }}
         logos={logos}
       />

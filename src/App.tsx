@@ -26,6 +26,7 @@ import {
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
+  messageMarquerLu,
   regleAjouter,
   regleBasculer,
   regleSupprimer,
@@ -94,13 +95,6 @@ export default function App() {
   const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [logos, setLogos] = useState<Record<string, string>>({})
 
-  /** Messages ouverts pendant cette session.
-   *
-   *  MailFlow ne lit que des métadonnées et ne retire jamais le libellé
-   *  `UNREAD` : Gmail continue donc de les croire non lus. Sans cette trace,
-   *  une tuile qu'on vient de consulter resterait blanche, ce qui reviendrait à
-   *  redire « nouveau » à propos d'un message qu'on a sous les yeux. */
-  const [consultes, setConsultes] = useState<ReadonlySet<string>>(new Set())
   const { sombre, accent } = prefs
 
   // Relues une fois au montage : `localStorage` n'existe pas au moment où
@@ -156,6 +150,24 @@ export default function App() {
       annoncer(messageDErreur(e), true)
     }
   }, [annoncer])
+
+  /**
+   * Marque un message comme lu, d'abord à l'écran puis chez Gmail.
+   *
+   * L'affichage est mis à jour sans attendre le réseau : le message est sous
+   * les yeux de l'utilisateur, le voir rester en gras une seconde donnerait
+   * l'impression que le clic n'a pas porté. En cas d'échec, le prochain relevé
+   * rétablira l'état réel — Gmail fait foi, pas notre optimisme.
+   */
+  const marquerLu = useCallback(
+    async (id: string) => {
+      setBoite((messages) =>
+        messages.map((m) => (m.id === id && m.nonLu ? { ...m, nonLu: false } : m)),
+      )
+      await messageMarquerLu(id).catch((e) => annoncer(messageDErreur(e), true))
+    },
+    [annoncer],
+  )
 
   useEffect(() => {
     void rafraichir().then(async (sante) => {
@@ -394,7 +406,6 @@ export default function App() {
                   // avant le relevé évite de montrer les messages de l'un sous
                   // l'adresse de l'autre.
                   setBoite([])
-                  setConsultes(new Set())
                   setProfil(await compteProfil().catch(() => null))
                   return `Compte actif : ${adresse}.`
                 })
@@ -403,7 +414,6 @@ export default function App() {
                 void agir(async () => {
                   await compteAjouter()
                   setBoite([])
-                  setConsultes(new Set())
                   setProfil(await compteProfil().catch(() => null))
                   return 'Compte ajouté.'
                 })
@@ -437,10 +447,7 @@ export default function App() {
               regles={regles?.automations ?? []}
               proposition={PROPOSITIONS[vue]}
               logos={logos}
-              consultes={consultes}
-              onConsulte={(id) =>
-                setConsultes((vus) => (vus.has(id) ? vus : new Set(vus).add(id)))
-              }
+              onOuvrir={(id) => void marquerLu(id)}
               onCreerRegle={(r) =>
                 agir(async () => {
                   setRegles(await regleAjouter(r))

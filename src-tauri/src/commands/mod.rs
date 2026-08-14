@@ -337,6 +337,21 @@ pub async fn boite_lister(
     Ok(boite)
 }
 
+/// Marque un message comme lu chez Gmail.
+///
+/// C'est la seule commande qui modifie la boîte sans passer par une règle. Le
+/// geste est celui de l'utilisateur — il vient d'ouvrir le message — et Gmail
+/// sait remettre un message en non-lu.
+///
+/// À noter : MailFlow n'affiche que l'extrait fourni par Gmail, jamais le corps.
+/// Ouvrir un message ici en dit donc moins que l'ouvrir dans Gmail, mais le
+/// marque tout autant comme lu.
+#[tauri::command]
+pub async fn message_marquer_lu(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    client.marquer_lu(&[id]).await
+}
+
 /// Adresse du compte relié, ou `None` si aucun ne l'est.
 ///
 /// Séparée de `app_health` : celle-ci s'appelle à chaque rafraîchissement, y

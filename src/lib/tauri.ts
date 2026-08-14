@@ -100,6 +100,16 @@ export function boiteLister(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('boite_lister')
 }
 
+/**
+ * Marque un message comme lu chez Gmail.
+ *
+ * Modifie reellement la boite : le libelle `UNREAD` est retire. Gmail sait
+ * remettre un message en non-lu, l'operation n'est donc pas definitive.
+ */
+export function messageMarquerLu(id: string): Promise<void> {
+  return invoke<void>('message_marquer_lu', { id })
+}
+
 /** Adresse du compte relié, ou `null` si aucun ne l'est. */
 export function compteAdresse(): Promise<string | null> {
   return invoke<string | null>('compte_adresse')
