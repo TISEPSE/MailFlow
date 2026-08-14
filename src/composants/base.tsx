@@ -5,7 +5,7 @@
  * des couleurs littérales : c'est ce qui permet au thème et à la couleur
  * d'accent de basculer sans que chaque vue ait à s'en occuper.
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { BOITE, GLYPHES, GLYPHES_PLEINS, MARGE_ENCRE, type NomIcone } from './glyphes'
 
@@ -529,11 +529,126 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className={`bouton ${teintes[variante]} inline-flex flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs leading-none font-semibold whitespace-nowrap`}
+      className={`bouton ${teintes[variante]} inline-flex h-9 flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs leading-none font-semibold whitespace-nowrap`}
     >
       {icone && <Icone nom={icone} taille={14} compenser tourne={enAttente} />}
       {children}
     </button>
+  )
+}
+
+/**
+ * Liste déroulante.
+ *
+ * Écrite plutôt qu'empruntée à `<select>` : le menu natif ne se met pas en
+ * forme, il ignore le thème sombre et n'a pas les arrondis du reste. Sur une
+ * fenêtre où tout est dessiné, il détonne autant qu'il déçoit au clic.
+ */
+export function Selecteur<T extends string>({
+  valeurs,
+  valeur,
+  onChange,
+  libelle,
+  className = '',
+}: {
+  valeurs: readonly { valeur: T; texte: string }[]
+  valeur: T
+  onChange: (v: T) => void
+  libelle: string
+  className?: string
+}) {
+  const [ouvert, setOuvert] = useState(false)
+  const cadre = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!ouvert) return
+
+    const dehors = (e: MouseEvent) => {
+      if (!cadre.current?.contains(e.target as Node)) setOuvert(false)
+    }
+    const auClavier = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOuvert(false)
+    }
+
+    // Au tour suivant : sans ce report, le clic qui vient d'ouvrir la liste la
+    // refermerait aussitôt.
+    const minuteur = window.setTimeout(() => {
+      document.addEventListener('mousedown', dehors, true)
+    }, 0)
+    document.addEventListener('keydown', auClavier)
+
+    return () => {
+      window.clearTimeout(minuteur)
+      document.removeEventListener('mousedown', dehors, true)
+      document.removeEventListener('keydown', auClavier)
+    }
+  }, [ouvert])
+
+  const choisi = valeurs.find((v) => v.valeur === valeur) ?? valeurs[0]
+
+  return (
+    <div ref={cadre} className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOuvert((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={ouvert}
+        aria-label={libelle}
+        className="bouton bouton-neutre flex h-11 w-full items-center gap-2 rounded-xl px-3.5 text-left text-[13px] leading-none font-semibold"
+      >
+        <span className="min-w-0 flex-1 truncate">{choisi?.texte}</span>
+        <Icone
+          nom="expand_more"
+          taille={17}
+          style={{
+            color: 'var(--sub)',
+            transform: ouvert ? 'rotate(180deg)' : undefined,
+            transition: 'transform 160ms ease',
+          }}
+        />
+      </button>
+
+      {ouvert && (
+        <div
+          role="listbox"
+          aria-label={libelle}
+          className="absolute top-full right-0 left-0 z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border p-1"
+          style={{
+            background: 'var(--card)',
+            borderColor: 'var(--line)',
+            boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
+          }}
+        >
+          {valeurs.map((v) => {
+            const actif = v.valeur === valeur
+            return (
+              <button
+                key={v.valeur}
+                type="button"
+                role="option"
+                aria-selected={actif}
+                onClick={() => {
+                  onChange(v.valeur)
+                  setOuvert(false)
+                }}
+                className="survolable flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium"
+                style={actif ? { background: 'var(--faint)' } : undefined}
+              >
+                <span className="min-w-0 flex-1 truncate">{v.texte}</span>
+                {actif && (
+                  <Icone
+                    nom="check_circle"
+                    taille={15}
+                    rempli
+                    style={{ color: 'var(--accent-fg)' }}
+                  />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 

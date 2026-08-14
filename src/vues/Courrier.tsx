@@ -12,6 +12,7 @@ import {
   Etiquette,
   Icone,
   Modale,
+  Selecteur,
   SqueletteLecture,
   SqueletteListe,
   Vide,
@@ -318,20 +319,15 @@ function ChoixDeRangement({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-semibold">Ranger sous</span>
-        <select
-          value={choix}
-          onChange={(e) => setChoix(e.target.value)}
-          autoFocus
-          className="bouton bouton-neutre rounded-xl px-3 py-2.5 text-[13px] font-semibold"
-          style={{ color: 'var(--fg)' }}
-        >
-          <option value="">Aucun libellé — simplement archiver</option>
-          {libelles.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.nom}
-            </option>
-          ))}
-        </select>
+        <Selecteur
+          valeurs={[
+            { valeur: '', texte: 'Aucun libellé — simplement archiver' },
+            ...libelles.map((l) => ({ valeur: l.id, texte: l.nom })),
+          ]}
+          valeur={choix}
+          onChange={setChoix}
+          libelle="Libellé de destination"
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -349,7 +345,7 @@ function ChoixDeRangement({
             }}
             placeholder="Factures, Voyages…"
             aria-label="Nom du nouveau libellé"
-            className="selectionnable min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-[13px] outline-none"
+            className="selectionnable h-9 min-w-0 flex-1 rounded-lg border px-3 text-[13px] outline-none"
             style={{
               background: 'var(--sunk)',
               borderColor: 'var(--line)',

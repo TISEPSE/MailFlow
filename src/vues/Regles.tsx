@@ -14,6 +14,7 @@ import {
   Bouton,
   EnTete,
   Modale,
+  Selecteur,
   Etiquette,
   Icone,
   Interrupteur,
@@ -95,7 +96,7 @@ export function Regles({
           type="button"
           onClick={() => setFormulaireOuvert(true)}
           aria-haspopup="dialog"
-          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] leading-none font-semibold"
+          className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[13px] leading-none font-semibold"
         >
           <Icone nom="playlist_add_check" taille={15} rempli compenser />
           Ajouter une règle
@@ -348,20 +349,16 @@ function FormulaireAjout({
 
       {archive && (
         <Champ titre="Ranger sous">
-          <select
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            aria-label="Libellé de destination"
-            className="bouton bouton-neutre w-full rounded-xl px-3 py-2.5 text-[13px] font-semibold"
-            style={{ color: 'var(--fg)' }}
-          >
-            <option value="">Aucun libellé — simplement archiver</option>
-            {libelles.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.nom}
-              </option>
-            ))}
-          </select>
+          <Selecteur
+            valeurs={[
+              { valeur: '', texte: 'Aucun libellé — simplement archiver' },
+              ...libelles.map((l) => ({ valeur: l.id, texte: l.nom })),
+            ]}
+            valeur={destination}
+            onChange={setDestination}
+            libelle="Libellé de destination"
+            className="w-full"
+          />
         </Champ>
       )}
 
@@ -377,7 +374,7 @@ function FormulaireAjout({
         <button
           type="submit"
           disabled={!valide || enCours}
-          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] leading-none font-semibold"
+          className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[13px] leading-none font-semibold"
         >
           Enregistrer la règle
         </button>
@@ -439,7 +436,7 @@ function ChampAdresse({
         placeholder="promo@offres-tech.fr"
         autoFocus
         autoComplete="off"
-        className="selectionnable rounded-xl border px-4 py-2.5 font-mono text-[13px] outline-none"
+        className="selectionnable h-11 rounded-xl border px-4 font-mono text-[13px] outline-none"
         style={{ background: 'var(--sunk)', borderColor: 'var(--line)', color: 'var(--fg)' }}
       />
 
