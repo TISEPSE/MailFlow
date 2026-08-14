@@ -417,6 +417,12 @@ export default function App() {
               sombre={sombre}
               onBasculer={(id) => agir(async () => (setRegles(await regleBasculer(id)), null))}
               onSupprimer={(id) => agir(async () => (setRegles(await regleSupprimer(id)), 'Règle supprimée.'))}
+              onCreerRegle={(r) =>
+                agir(async () => {
+                  setRegles(await regleAjouter(r))
+                  return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
+                })
+              }
             />
           ) : (
             <Courrier

@@ -4,36 +4,59 @@
  * C'est la seule page où l'utilisateur voit d'un coup tout ce que MailFlow fait
  * en son nom. Chaque règle y est écrite en une phrase, parce qu'un tableau de
  * champs techniques ne dit pas ce qui va se passer.
+ *
+ * L'ajout se fait aussi ici. Ailleurs, une règle naît d'un message qu'on a sous
+ * les yeux ; ici, l'utilisateur tape l'adresse — c'est le seul moyen de viser un
+ * expéditeur dont aucun message n'est présentement dans la boîte.
  */
 import { useState } from 'react'
-import { Bouton, Etiquette, Icone, Interrupteur, Vide } from '../composants/base'
+import { Bouton, Etiquette, Icone, Interrupteur, Segments, Vide } from '../composants/base'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
-import { phrase } from '../lib/regles'
-import type { Regle } from '../types/backend'
+import { adresseValide, nouvelleRegle, phrase } from '../lib/regles'
+import type { ActionRegle, Categorie, Regle } from '../types/backend'
 
 const ONGLETS = ['Toutes', 'Publicités', 'Newsletters', 'Formations'] as const
 type Onglet = (typeof ONGLETS)[number]
 
-const CATEGORIE_ONGLET: Record<Exclude<Onglet, 'Toutes'>, Regle['categorie']> = {
+const CATEGORIE_ONGLET: Record<Exclude<Onglet, 'Toutes'>, Categorie> = {
   Publicités: 'publicite',
   Newsletters: 'newsletter',
   Formations: 'formation',
+}
+
+const CATEGORIES = ['Publicités', 'Newsletters', 'Formations'] as const
+
+/**
+ * Les deux seules actions proposées ici.
+ *
+ * `generer_resume_et_archiver` est volontairement absente : le module de résumé
+ * n'existe pas, et une règle qui promet un résumé archiverait sans résumer.
+ */
+const ACTIONS = ['Archiver', 'Mettre à la corbeille'] as const
+type LibelleAction = (typeof ACTIONS)[number]
+
+const ACTION: Record<LibelleAction, ActionRegle> = {
+  Archiver: 'archiver_automatique',
+  'Mettre à la corbeille': 'supprimer_toujours',
 }
 
 export function Regles({
   regles,
   onBasculer,
   onSupprimer,
+  onCreerRegle,
   sombre,
 }: {
   regles: Regle[]
   onBasculer: (id: string) => Promise<void>
   onSupprimer: (id: string) => Promise<void>
+  onCreerRegle: (regle: Regle) => Promise<void>
   sombre: boolean
 }) {
   const [onglet, setOnglet] = useState<Onglet>('Toutes')
   const [recherche, setRecherche] = useState('')
   const [aConfirmer, setAConfirmer] = useState<string | null>(null)
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false)
 
   const q = recherche.trim().toLowerCase()
   const visibles = regles
@@ -48,21 +71,54 @@ export function Regles({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className="flex flex-none items-center gap-3 border-b px-6 py-3"
+        className="flex flex-none items-start gap-4 border-b px-8 py-6"
+        style={{ borderColor: 'var(--line)' }}
+      >
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[26px] font-bold tracking-tight">Règles automatiques</h1>
+          <p className="pt-1 text-[14px]" style={{ color: 'var(--sub)' }}>
+            {decompte(regles.length)}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setFormulaireOuvert((o) => !o)}
+          aria-expanded={formulaireOuvert}
+          className="inline-flex flex-none items-center gap-2.5 rounded-xl px-5 py-3 text-[14px] font-semibold transition-opacity hover:opacity-90"
+          style={{ background: 'var(--accent)', color: '#FFFFFF' }}
+        >
+          <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={19} />
+          {formulaireOuvert ? 'Fermer' : 'Ajouter une règle'}
+        </button>
+      </div>
+
+      {formulaireOuvert && (
+        <FormulaireAjout
+          onAnnuler={() => setFormulaireOuvert(false)}
+          onValider={async (regle) => {
+            await onCreerRegle(regle)
+            setFormulaireOuvert(false)
+          }}
+        />
+      )}
+
+      <div
+        className="flex flex-none items-center gap-4 border-b px-8 py-4"
         style={{ borderColor: 'var(--line)' }}
       >
         <div
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-1.5"
-          style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-4 py-3"
+          style={{ background: 'var(--sunk)' }}
         >
-          <Icone nom="search" taille={17} style={{ color: 'var(--sub)' }} />
+          <Icone nom="search" taille={18} style={{ color: 'var(--sub)' }} />
           <input
             type="text"
             value={recherche}
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Rechercher une règle par nom ou adresse"
             aria-label="Rechercher une règle"
-            className="selectionnable min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+            className="selectionnable min-w-0 flex-1 bg-transparent text-[14px] outline-none"
             style={{ color: 'var(--fg)' }}
           />
         </div>
@@ -70,7 +126,7 @@ export function Regles({
         <div
           role="tablist"
           aria-label="Filtrer par catégorie"
-          className="flex flex-none gap-1 rounded-lg p-1"
+          className="flex flex-none gap-1 rounded-xl p-1.5"
           style={{ background: 'var(--sunk)' }}
         >
           {ONGLETS.map((o) => {
@@ -82,7 +138,7 @@ export function Regles({
                 role="tab"
                 aria-selected={actif}
                 onClick={() => setOnglet(o)}
-                className="rounded-md px-3 py-1 text-xs font-semibold whitespace-nowrap"
+                className="rounded-lg px-5 py-2 text-[13.5px] font-semibold whitespace-nowrap transition-colors"
                 style={{
                   background: actif ? 'var(--card)' : 'transparent',
                   color: actif ? 'var(--fg)' : 'var(--sub)',
@@ -102,12 +158,12 @@ export function Regles({
           titre={regles.length === 0 ? 'Aucune règle' : 'Aucune règle ici'}
           detail={
             regles.length === 0
-              ? "Les règles se créent depuis les vues Publicités, Newsletters et Formations : ouvrez un message, et dites ce qu'il faut faire des suivants."
+              ? "Les règles se créent depuis les vues Publicités, Newsletters et Formations — ouvrez un message, et dites ce qu'il faut faire des suivants — ou avec « Ajouter une règle » ci-dessus."
               : 'Aucune règle ne correspond à ce filtre.'
           }
         />
       ) : (
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto px-8 py-6">
           <div className="flex flex-col gap-2">
             {visibles.map((r) => {
               const [encre, fond] = ton(r.categorie, sombre)
@@ -183,6 +239,122 @@ export function Regles({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** « 5 règles enregistrées… » — au singulier quand il n'y en a qu'une. */
+function decompte(n: number): string {
+  if (n === 0) return "Aucune règle enregistrée pour l'instant."
+  const s = n > 1 ? 's' : ''
+  return `${n} règle${s} enregistrée${s} dans MailFlow. Tout est modifiable ici.`
+}
+
+/**
+ * Formulaire d'ajout.
+ *
+ * Il affiche la phrase que la règle produira, avant d'enregistrer : c'est la
+ * seule manière pour l'utilisateur de vérifier qu'il a demandé ce qu'il croit.
+ */
+function FormulaireAjout({
+  onValider,
+  onAnnuler,
+}: {
+  onValider: (regle: Regle) => Promise<void>
+  onAnnuler: () => void
+}) {
+  const [adresse, setAdresse] = useState('')
+  const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>('Publicités')
+  const [libelleAction, setLibelleAction] = useState<LibelleAction>('Archiver')
+  const [enCours, setEnCours] = useState(false)
+
+  const valide = adresseValide(adresse)
+  const regle = nouvelleRegle({
+    adresse: valide ? adresse : 'exemple@domaine.fr',
+    categorie: CATEGORIE_ONGLET[categorie],
+    action: ACTION[libelleAction],
+  })
+
+  const enregistrer = async () => {
+    if (!valide || enCours) return
+    setEnCours(true)
+    try {
+      await onValider(regle)
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        void enregistrer()
+      }}
+      className="flex flex-none flex-col gap-4 border-b px-8 py-5"
+      style={{ borderColor: 'var(--line)', background: 'var(--sunk)' }}
+    >
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
+        <input
+          type="text"
+          value={adresse}
+          onChange={(e) => setAdresse(e.target.value)}
+          placeholder="promo@offres-tech.fr"
+          autoFocus
+          className="selectionnable rounded-xl border px-4 py-2.5 font-mono text-[13px] outline-none"
+          style={{ background: 'var(--card)', borderColor: 'var(--line)', color: 'var(--fg)' }}
+        />
+      </label>
+
+      <div className="flex flex-wrap items-center gap-6">
+        <Champ titre="Catégorie">
+          <Segments
+            valeurs={CATEGORIES}
+            valeur={categorie}
+            onChange={setCategorie}
+            libelle="Catégorie de la règle"
+          />
+        </Champ>
+
+        <Champ titre="Action">
+          <Segments
+            valeurs={ACTIONS}
+            valeur={libelleAction}
+            onChange={setLibelleAction}
+            libelle="Action de la règle"
+          />
+        </Champ>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div
+          className="min-w-0 flex-1 text-[13px]"
+          style={{ color: valide ? 'var(--fg)' : 'var(--sub)' }}
+        >
+          {valide
+            ? phrase(regle)
+            : 'Saisissez une adresse complète pour voir ce que la règle fera.'}
+        </div>
+        <button
+          type="submit"
+          disabled={!valide || enCours}
+          className="inline-flex flex-none items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          style={{ background: 'var(--accent)', color: '#FFFFFF' }}
+        >
+          Enregistrer la règle
+        </button>
+        <Bouton onClick={onAnnuler}>Annuler</Bouton>
+      </div>
+    </form>
+  )
+}
+
+function Champ({ titre, children }: { titre: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[12.5px] font-semibold">{titre}</span>
+      {children}
     </div>
   )
 }

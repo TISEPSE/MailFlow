@@ -66,18 +66,15 @@ export function Pastille({
   logo?: string
 }) {
   if (logo) {
+    // `cover` plutôt que `contain` : le logo occupe tout le disque, comme les
+    // initiales qu'il remplace. Une icône de site est carrée, le recadrage ne
+    // rogne donc rien en pratique.
     return (
       <img
         src={logo}
         alt=""
-        className="flex-none rounded-full object-contain"
-        style={{
-          width: taille,
-          height: taille,
-          background: 'var(--card)',
-          border: '1px solid var(--line)',
-          padding: taille * 0.14,
-        }}
+        className="flex-none rounded-full object-cover"
+        style={{ width: taille, height: taille, background: fond }}
       />
     )
   }

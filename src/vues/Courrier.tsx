@@ -11,6 +11,7 @@ import { Bouton, Etiquette, Icone, Vide } from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
+import { nouvelleRegle } from '../lib/regles'
 import type {
   ActionRegle,
   CategorieMessage,
@@ -59,20 +60,14 @@ export function Courrier({
     if (!proposition || !choisi.adresse) return
     setEnCours(true)
     try {
-      await onCreerRegle({
-        // L'identifiant doit être stable et unique ; l'adresse le garantit et
-        // reste lisible dans `regles.json`, que l'utilisateur avancé peut ouvrir.
-        id: `rule_${choisi.adresse.replace(/[^a-z0-9]+/gi, '_')}`,
-        expediteur: choisi.adresse,
-        nom_affichage: choisi.nom,
-        categorie: proposition.categorie,
-        action: proposition.action,
-        active: true,
-        date_ajout: new Date().toISOString().slice(0, 10),
-        ...(proposition.action === 'archiver_automatique'
-          ? { frequence: 'tous_les_vendredis' as const, heure_execution: '18:00' }
-          : {}),
-      })
+      await onCreerRegle(
+        nouvelleRegle({
+          adresse: choisi.adresse,
+          nom: choisi.nom,
+          categorie: proposition.categorie,
+          action: proposition.action,
+        }),
+      )
     } finally {
       setEnCours(false)
     }
