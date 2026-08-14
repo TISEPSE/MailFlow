@@ -58,6 +58,11 @@ pub fn run() {
             commands::google_connecter,
             commands::google_deconnecter,
             commands::gmail_synchroniser,
+            commands::regles_lister,
+            commands::regle_ajouter,
+            commands::regle_supprimer,
+            commands::regle_basculer,
+            commands::boite_lister,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de l'application Tauri");

@@ -26,6 +26,8 @@
 //!   Il ne doit jamais être injecté dans le DOM de l'application : la vue 1 devra
 //!   l'afficher dans une `iframe` en bac à sable, sans accès au contexte parent.
 
+pub mod boite;
+pub mod classement;
 pub mod client;
 pub mod execution;
 pub mod modele;

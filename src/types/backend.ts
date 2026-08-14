@@ -24,6 +24,55 @@ export interface EtatApplication {
   clientGoogleConfigure: boolean
 }
 
+/** Miroir de `gmail::classement::CategorieMessage`. */
+export type CategorieMessage = 'humain' | 'publicite' | 'newsletter' | 'formation'
+
+/** Miroir de `gmail::boite::MessageAffiche`. */
+export interface MessageAffiche {
+  id: string
+  /** Nom choisi par l'expediteur. Cosmetique : ne sert jamais a comparer. */
+  nom: string
+  /** Adresse normalisee. C'est elle qui sert a creer une regle. */
+  adresse: string
+  sujet: string
+  /** Extrait fourni par Gmail. Du texte, jamais du balisage. */
+  extrait: string
+  date: string | null
+  nonLu: boolean
+  categorie: CategorieMessage
+}
+
+/** Miroir de `rules::model::Categorie`. */
+export type Categorie = 'publicite' | 'newsletter' | 'formation'
+
+/** Miroir de `rules::model::Action`. */
+export type ActionRegle =
+  | 'supprimer_toujours'
+  | 'archiver_automatique'
+  | 'generer_resume_et_archiver'
+
+/** Miroir de `rules::model::Rule`. Les noms de champs suivent `regles.json`. */
+export interface Regle {
+  id: string
+  expediteur: string
+  nom_affichage: string
+  categorie: Categorie
+  action: ActionRegle
+  active: boolean
+  /** `AAAA-MM-JJ`. */
+  date_ajout: string
+  frequence?: 'tous_les_vendredis'
+  /** `HH:MM`. */
+  heure_execution?: string
+}
+
+/** Miroir de `rules::model::RuleSet`. */
+export interface JeuDeRegles {
+  version: string
+  last_updated: string
+  automations: Regle[]
+}
+
 /** Miroir de `gmail::execution::RapportExecution`. */
 export interface RapportExecution {
   archives: number

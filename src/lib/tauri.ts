@@ -9,7 +9,10 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   ErreurBackend,
   EtatApplication,
+  JeuDeRegles,
+  MessageAffiche,
   RapportExecution,
+  Regle,
 } from '../types/backend'
 
 /** Vrai lorsqu'une valeur rejetée a la forme d'une erreur backend. */
@@ -64,4 +67,33 @@ export function googleDeconnecter(): Promise<void> {
  */
 export function gmailSynchroniser(): Promise<RapportExecution> {
   return invoke<RapportExecution>('gmail_synchroniser')
+}
+
+/** Jeu de regles tel qu'il est sur le disque. */
+export function reglesLister(): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regles_lister')
+}
+
+/**
+ * Enregistre une regle et rend le jeu complet.
+ *
+ * Les commandes de regles rendent toujours l'ensemble plutot qu'un accuse de
+ * reception : l'interface se reaffiche a partir de ce qui est reellement sur le
+ * disque, au lieu de maintenir sa propre copie qui finirait par diverger.
+ */
+export function regleAjouter(regle: Regle): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_ajouter', { regle })
+}
+
+export function regleSupprimer(id: string): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_supprimer', { id })
+}
+
+export function regleBasculer(id: string): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_basculer', { id })
+}
+
+/** Releve la boite de reception, deja classee par vue. */
+export function boiteLister(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('boite_lister')
 }

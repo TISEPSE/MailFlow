@@ -10,5 +10,5 @@ pub mod model;
 pub mod store;
 
 pub use engine::{ActionPlanifiee, EntreePlan, MessageResume, planifier};
-pub use model::{Action, Categorie, Frequence, Rule, RuleSet, normaliser_adresse};
+pub use model::{Action, Categorie, Frequence, Rule, RuleSet, nom_affiche, normaliser_adresse};
 pub use store::RulesStore;

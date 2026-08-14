@@ -42,6 +42,45 @@ impl RuleSet {
             .filter(|r| r.active && r.adresse_normalisee().as_deref() == Some(adresse.as_str()))
             .collect()
     }
+
+    /// Ajoute une règle, ou remplace celle qui vise déjà le même expéditeur.
+    ///
+    /// Deux règles sur une même adresse se contrediraient sans que l'interface
+    /// puisse le montrer clairement. La plus récente gagne : c'est le geste que
+    /// l'utilisateur vient de faire.
+    pub fn ajouter(&mut self, regle: Rule) {
+        let cible = regle.adresse_normalisee();
+
+        match self
+            .automations
+            .iter()
+            .position(|r| cible.is_some() && r.adresse_normalisee() == cible)
+        {
+            Some(i) => self.automations[i] = regle,
+            None => self.automations.insert(0, regle),
+        }
+    }
+
+    /// Retire une règle. Rend `false` si l'identifiant n'existe pas.
+    pub fn supprimer(&mut self, id: &str) -> bool {
+        let avant = self.automations.len();
+        self.automations.retain(|r| r.id != id);
+        self.automations.len() != avant
+    }
+
+    /// Active ou désactive une règle sans la supprimer.
+    ///
+    /// Désactiver plutôt que supprimer permet de suspendre une automatisation
+    /// sans perdre son paramétrage.
+    pub fn basculer(&mut self, id: &str) -> bool {
+        match self.automations.iter_mut().find(|r| r.id == id) {
+            Some(r) => {
+                r.active = !r.active;
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -135,6 +174,31 @@ pub fn normaliser_adresse(entete_from: &str) -> Option<String> {
     Some(adresse.to_lowercase())
 }
 
+/// Nom affiché d'un en-tête `From`, ou l'adresse à défaut.
+///
+/// Purement cosmétique — il est choisi par l'expéditeur et ne doit jamais
+/// intervenir dans une décision, voir [`normaliser_adresse`]. Il sert à
+/// l'affichage, où montrer « Karim Belhadj » vaut mieux que
+/// `karim.belhadj@atelier-nord.fr`.
+pub fn nom_affiche(entete_from: &str) -> String {
+    let brut = entete_from.trim();
+
+    if let Some(debut) = brut.rfind('<')
+        && brut.rfind('>').is_some_and(|fin| debut < fin)
+    {
+        let nom = brut[..debut].trim().trim_matches('"').trim();
+        if !nom.is_empty() {
+            return nom.to_string();
+        }
+    }
+
+    // Sans nom affiché, on montre la partie locale plutôt que l'adresse
+    // entière : « karim.belhadj » tient dans une liste, l'adresse non.
+    normaliser_adresse(brut)
+        .and_then(|a| a.split_once('@').map(|(locale, _)| locale.to_string()))
+        .unwrap_or_else(|| brut.to_string())
+}
+
 /// `chrono` sérialise `NaiveTime` en `HH:MM:SS`, alors que le cahier des charges
 /// spécifie `HH:MM`. Ce module fait la conversion dans les deux sens.
 mod serde_heure_hhmm {
@@ -176,6 +240,97 @@ mod tests {
             frequence: None,
             heure_execution: None,
         }
+    }
+
+    #[test]
+    fn le_nom_affiche_est_extrait_de_l_entete() {
+        assert_eq!(
+            nom_affiche("\"Karim Belhadj\" <karim@atelier.fr>"),
+            "Karim Belhadj"
+        );
+        assert_eq!(
+            nom_affiche("Sophie Renard <s@clinique.fr>"),
+            "Sophie Renard"
+        );
+    }
+
+    #[test]
+    fn sans_nom_affiche_on_montre_la_partie_locale() {
+        // L'adresse entière déborderait d'une colonne de liste.
+        assert_eq!(
+            nom_affiche("karim.belhadj@atelier-nord.fr"),
+            "karim.belhadj"
+        );
+        assert_eq!(nom_affiche("<promo@offres.fr>"), "promo");
+    }
+
+    #[test]
+    fn un_nom_affiche_usurpateur_reste_cosmetique() {
+        // Il s'affiche tel quel, mais `normaliser_adresse` — seule à décider —
+        // rend bien l'adresse réelle.
+        let from = "\"contact@ma-banque.fr\" <pirate@exemple.net>";
+
+        assert_eq!(nom_affiche(from), "contact@ma-banque.fr");
+        assert_eq!(
+            normaliser_adresse(from).as_deref(),
+            Some("pirate@exemple.net")
+        );
+    }
+
+    #[test]
+    fn ajouter_place_la_nouvelle_regle_en_tete() {
+        let mut jeu = RuleSet {
+            automations: vec![regle("ancien@x.fr", Action::SupprimerToujours)],
+            ..Default::default()
+        };
+
+        jeu.ajouter(regle("nouveau@x.fr", Action::ArchiverAutomatique));
+
+        assert_eq!(jeu.automations.len(), 2);
+        assert_eq!(jeu.automations[0].expediteur, "nouveau@x.fr");
+    }
+
+    #[test]
+    fn ajouter_remplace_la_regle_visant_le_meme_expediteur() {
+        // Deux règles sur une même adresse se contrediraient en silence.
+        let mut jeu = RuleSet {
+            automations: vec![regle("promo@x.fr", Action::ArchiverAutomatique)],
+            ..Default::default()
+        };
+
+        jeu.ajouter(regle("PROMO@X.FR", Action::SupprimerToujours));
+
+        assert_eq!(jeu.automations.len(), 1);
+        assert_eq!(jeu.automations[0].action, Action::SupprimerToujours);
+    }
+
+    #[test]
+    fn supprimer_signale_un_identifiant_inconnu() {
+        let mut jeu = RuleSet {
+            automations: vec![regle("a@b.fr", Action::SupprimerToujours)],
+            ..Default::default()
+        };
+        let id = jeu.automations[0].id.clone();
+
+        assert!(jeu.supprimer(&id));
+        assert!(jeu.automations.is_empty());
+        assert!(!jeu.supprimer(&id), "un second appel ne trouve plus rien");
+    }
+
+    #[test]
+    fn basculer_suspend_sans_perdre_le_parametrage() {
+        let mut jeu = RuleSet {
+            automations: vec![regle("a@b.fr", Action::ArchiverAutomatique)],
+            ..Default::default()
+        };
+        let id = jeu.automations[0].id.clone();
+
+        assert!(jeu.basculer(&id));
+        assert!(!jeu.automations[0].active);
+        assert_eq!(jeu.automations[0].action, Action::ArchiverAutomatique);
+
+        assert!(jeu.basculer(&id));
+        assert!(jeu.automations[0].active);
     }
 
     #[test]

@@ -18,11 +18,12 @@ use crate::auth::session::SessionAuth;
 use crate::auth::{DELAI_AUTORISATION, connecter};
 use crate::config;
 use crate::error::{AppError, Resultat};
+use crate::gmail::boite::{MessageAffiche, charger_boite};
 use crate::gmail::client::{ClientGmail, SourceJeton};
 use crate::gmail::execution::RapportExecution;
 use crate::gmail::synchronisation::synchroniser;
 use crate::gmail::transport::TransportHttp;
-use crate::rules::RulesStore;
+use crate::rules::{Rule, RuleSet, RulesStore};
 use crate::secrets::KeyringStore;
 
 /// État d'authentification partagé, géré par Tauri.
@@ -252,4 +253,74 @@ pub async fn gmail_synchroniser(
     );
 
     Ok(rapport)
+}
+
+// ---------------------------------------------------------------------------
+// Règles
+// ---------------------------------------------------------------------------
+
+/// Chaque commande de règle rend le jeu complet plutôt qu'un accusé de
+/// réception. L'interface se réaffiche à partir de ce qui est réellement sur le
+/// disque, au lieu de maintenir sa propre copie qui finirait par diverger.
+fn ecrire_regles(app: &AppHandle, regles: &RuleSet) -> Resultat<()> {
+    RulesStore::new(&dossier_config(app)?).enregistrer(regles)
+}
+
+#[tauri::command]
+pub async fn regles_lister(app: AppHandle) -> Resultat<RuleSet> {
+    RulesStore::new(&dossier_config(&app)?).charger()
+}
+
+#[tauri::command]
+pub async fn regle_ajouter(app: AppHandle, regle: Rule) -> Resultat<RuleSet> {
+    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+    regles.ajouter(regle);
+    ecrire_regles(&app, &regles)?;
+
+    log::info!("règle enregistrée, {} au total", regles.automations.len());
+    Ok(regles)
+}
+
+#[tauri::command]
+pub async fn regle_supprimer(app: AppHandle, id: String) -> Resultat<RuleSet> {
+    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+    if regles.supprimer(&id) {
+        ecrire_regles(&app, &regles)?;
+        log::info!("règle {id} supprimée");
+    }
+    Ok(regles)
+}
+
+#[tauri::command]
+pub async fn regle_basculer(app: AppHandle, id: String) -> Resultat<RuleSet> {
+    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+    if regles.basculer(&id) {
+        ecrire_regles(&app, &regles)?;
+    }
+    Ok(regles)
+}
+
+// ---------------------------------------------------------------------------
+// Boîte de réception
+// ---------------------------------------------------------------------------
+
+/// Relève la boîte et classe les messages par vue.
+///
+/// Ne rend ni corps de message ni identifiant de fil : le HTML d'un e-mail est
+/// écrit par un inconnu et ne traversera l'IPC que le jour où une `iframe` en
+/// bac à sable saura l'afficher sans risque.
+#[tauri::command]
+pub async fn boite_lister(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<Vec<MessageAffiche>> {
+    let regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let boite = charger_boite(&client, &regles)
+        .await
+        .inspect_err(|e| log::warn!("relevé de la boîte interrompu : {e}"))?;
+
+    log::info!("{} message(s) relevé(s)", boite.len());
+    Ok(boite)
 }

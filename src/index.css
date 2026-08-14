@@ -1,8 +1,64 @@
 @import 'tailwindcss';
 
+/* Polices embarquées plutôt que chargées depuis Google Fonts : la CSP de
+   l'application interdit les origines externes, et une application de bureau ne
+   doit pas dépendre du réseau pour s'afficher. */
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+/* Police d'icônes réduite aux glyphes réellement employés : 5,1 Mio pour
+   3 000 icônes deviennent 46 Kio pour la trentaine utilisée. Régénérer avec
+   `python3 outils/sous-ensemble-icones.py` après avoir ajouté une icône —
+   sans quoi elle s'affichera en toutes lettres. */
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url('./assets/icones.woff2') format('woff2');
+}
+
 @theme {
   --font-sans:
-    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* Jetons de surface. Le thème bascule en changeant `data-mf` sur la racine,
+   l'accent en surchargeant --accent* par style en ligne. */
+:root,
+[data-mf='clair'] {
+  --bg: #ffffff;
+  --side: #f5f5f7;
+  --card: #ffffff;
+  --sunk: #f2f2f5;
+  --line: #e3e3e8;
+  --fg: #1d1d1f;
+  --sub: #6e6e76;
+  --faint: #ededf1;
+  --accent: #2f6bff;
+  --accent-soft: #e8eeff;
+  --accent-fg: #2455cc;
+  --piste: #d6d6dc;
+  --shadow:
+    0 1px 2px rgba(20, 20, 30, 0.06), 0 8px 24px rgba(20, 20, 30, 0.05);
+}
+
+[data-mf='sombre'] {
+  --bg: #1c1c1f;
+  --side: #232327;
+  --card: #26262a;
+  --sunk: #1f1f23;
+  --line: #35353b;
+  --fg: #f3f3f5;
+  --sub: #9c9ca5;
+  --faint: #2e2e34;
+  --accent: #4e82ff;
+  --accent-soft: #23304f;
+  --accent-fg: #9ebbff;
+  --piste: #44444c;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.28);
 }
 
 html,
@@ -12,9 +68,58 @@ body,
 }
 
 body {
-  /* Le webview WebKit autorise le glisser-deposer de la fenetre depuis
-     n'importe quelle zone de texte selectionnee ; on garde la selection
-     limitee au contenu utile plutot qu'a toute la chrome applicative. */
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+
+  /* Le webview autorise le glisser-déposer de la fenêtre depuis n'importe
+     quelle zone de texte sélectionnée ; on garde la sélection limitée au
+     contenu utile plutôt qu'à toute la chrome applicative. */
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Le contenu que l'utilisateur peut vouloir copier : adresses, sujets,
+   chemins de fichiers. */
+.selectionnable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 130, 0.32);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* Les icônes sont une police à ligatures : le texte du glyphe ne doit jamais
+   apparaître en clair pendant le chargement. */
+.material-symbols-rounded {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'opsz' 20;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Réduit les animations pour qui l'a demandé au système. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
