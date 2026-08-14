@@ -143,3 +143,21 @@ button:not(:disabled),
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Tuiles de la liste de messages.
+
+   Le fond gris de la colonne transparaît pour un message déjà lu ; un message
+   non lu est posé en blanc et ressort donc du lot. C'est le second signal après
+   la pastille et la graisse du nom : à distance, un aplat se voit avant un
+   point de 6 pixels.
+
+   Au survol, une tuile lue passe au blanc. Une tuile déjà blanche — non lue ou
+   sélectionnée — ne bouge pas : elle n'a nulle part où aller, et la voir
+   changer donnerait l'impression qu'autre chose se produit. */
+.tuile {
+  transition: background-color 120ms ease;
+}
+
+.tuile:hover:not([aria-current='true']) {
+  background: var(--card);
+}

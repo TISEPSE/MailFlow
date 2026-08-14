@@ -53,24 +53,18 @@ export function Regles({
   onBasculer,
   onSupprimer,
   onCreerRegle,
-  onAppliquer,
-  enCours,
   sombre,
 }: {
   regles: Regle[]
   onBasculer: (id: string) => Promise<void>
   onSupprimer: (id: string) => Promise<void>
   onCreerRegle: (regle: Regle) => Promise<void>
-  onAppliquer: () => Promise<void>
-  enCours: boolean
   sombre: boolean
 }) {
   const [onglet, setOnglet] = useState<Onglet>('Toutes')
   const [recherche, setRecherche] = useState('')
   const [aConfirmer, setAConfirmer] = useState<string | null>(null)
   const [formulaireOuvert, setFormulaireOuvert] = useState(false)
-
-  const actives = regles.filter((r) => r.active).length
 
   const q = recherche.trim().toLowerCase()
   const visibles = regles
@@ -96,8 +90,6 @@ export function Regles({
           {formulaireOuvert ? 'Fermer' : 'Ajouter une règle'}
         </button>
       </EnTete>
-
-      <Application actives={actives} enCours={enCours} onAppliquer={onAppliquer} />
 
       {formulaireOuvert && (
         <FormulaireAjout
@@ -245,47 +237,6 @@ export function Regles({
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-/**
- * Bandeau d'application des règles.
- *
- * Il était auparavant en pied de barre latérale, visible sur toutes les pages.
- * Sa place est ici : c'est la page qui dit ce que les règles font, et c'est donc
- * la seule où « les appliquer » signifie quelque chose de précis.
- */
-function Application({
-  actives,
-  enCours,
-  onAppliquer,
-}: {
-  actives: number
-  enCours: boolean
-  onAppliquer: () => Promise<void>
-}) {
-  return (
-    <div
-      className="flex flex-none flex-wrap items-center gap-3 border-b px-8 py-4"
-      style={{ borderColor: 'var(--line)', background: 'var(--accent-soft)' }}
-    >
-      <Icone nom="bolt" taille={19} rempli style={{ color: 'var(--accent-fg)' }} />
-      <span className="min-w-0 flex-1 text-[13.5px]" style={{ color: 'var(--accent-fg)' }}>
-        {actives === 0
-          ? "Aucune règle active : rien ne sera modifié dans votre boîte."
-          : `${actives} règle${actives > 1 ? 's' : ''} active${actives > 1 ? 's' : ''}, prête${actives > 1 ? 's' : ''} à s'appliquer à votre boîte.`}
-      </span>
-      <button
-        type="button"
-        onClick={() => void onAppliquer()}
-        disabled={enCours || actives === 0}
-        className="inline-flex flex-none items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-        style={{ background: 'var(--accent)', color: '#FFFFFF' }}
-      >
-        <Icone nom="sync" taille={16} />
-        {enCours ? 'En cours…' : 'Appliquer mes règles'}
-      </button>
     </div>
   )
 }

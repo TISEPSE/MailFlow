@@ -24,7 +24,10 @@ export function ListeMessages({
   return (
     <div
       className="flex w-[368px] flex-none flex-col overflow-y-auto border-r"
-      style={{ background: 'var(--side)', borderColor: 'var(--line)' }}
+      // `--sunk` plutôt que `--side` : c'est ce fond qui fait le gris des
+      // messages lus, et il doit se distinguer du blanc d'un message non lu
+      // autant que de la barre latérale, qui le jouxte.
+      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
     >
       {messages.map((m, i) => {
         const [fond, encre] = palette(i)
@@ -35,9 +38,12 @@ export function ListeMessages({
             type="button"
             onClick={() => onSelect(m.id)}
             aria-current={choisi}
-            className="survolable flex items-start gap-3 border-b px-4 py-3 text-left"
+            className="tuile flex items-start gap-3 border-b px-4 py-3 text-left"
             style={
-              choisi
+              // Un fond en style en ligne l'emporterait sur la règle de survol :
+              // il n'est donc posé que pour les tuiles qui doivent rester
+              // blanches quoi qu'il arrive.
+              choisi || m.nonLu
                 ? { background: 'var(--card)', borderColor: 'var(--line)' }
                 : { borderColor: 'var(--line)' }
             }

@@ -4,7 +4,6 @@ import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
-import { resumerRapport } from './lib/rapport'
 import { initiales, ton } from './lib/presentation'
 import {
   DEFAUTS,
@@ -375,10 +374,6 @@ export default function App() {
             <Regles
               regles={regles?.automations ?? []}
               sombre={sombre}
-              enCours={enCours}
-              onAppliquer={() =>
-                agir(async () => resumerRapport(await gmailSynchroniser()))
-              }
               onBasculer={(id) => agir(async () => (setRegles(await regleBasculer(id)), null))}
               onSupprimer={(id) => agir(async () => (setRegles(await regleSupprimer(id)), 'Règle supprimée.'))}
               onCreerRegle={(r) =>
