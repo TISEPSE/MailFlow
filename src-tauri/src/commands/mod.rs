@@ -31,18 +31,28 @@ pub struct EtatAuth {
 
 impl EtatAuth {
     pub fn nouveau() -> Self {
-        let client = config::client_id_google().and_then(|id| {
-            ClientOAuth::nouveau(id)
+        let client = match (config::client_id_google(), config::client_secret_google()) {
+            (Some(id), Some(secret)) => ClientOAuth::nouveau(id, secret)
                 .inspect_err(|e| log::error!("client OAuth inutilisable : {e}"))
-                .ok()
-        });
-
-        if client.is_none() {
-            log::warn!(
-                "aucun identifiant client Google ({}) : la connexion Gmail est indisponible",
-                config::VAR_CLIENT_ID
-            );
-        }
+                .ok(),
+            (id, secret) => {
+                // Nommer précisément ce qui manque : les deux valeurs viennent du
+                // même fichier téléchargé chez Google, et n'en copier qu'une est
+                // l'erreur la plus facile à commettre.
+                let mut absents = Vec::new();
+                if id.is_none() {
+                    absents.push(config::VAR_CLIENT_ID);
+                }
+                if secret.is_none() {
+                    absents.push(config::VAR_CLIENT_SECRET);
+                }
+                log::warn!(
+                    "connexion Gmail indisponible, configuration absente : {}",
+                    absents.join(", ")
+                );
+                None
+            }
+        };
 
         Self {
             session: Mutex::new(SessionAuth::nouvelle(KeyringStore::new())),

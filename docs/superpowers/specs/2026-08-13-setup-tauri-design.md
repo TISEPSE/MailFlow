@@ -2,7 +2,7 @@
 
 Date : 2026-08-13
 Portée : socle technique, moteur de règles, authentification Google. Ni les cinq
-vues ni le client Gmail ne sont implementes ici.
+vues ni le client Gmail ne sont implémentés ici.
 
 Ce document grandit avec le projet : les sections 5 et 6 ont été ajoutées après
 la mise en place initiale.
@@ -12,7 +12,7 @@ la mise en place initiale.
 ### Tauri plutôt qu'Electron
 
 Le cahier des charges laissait le choix ouvert. Tauri est retenu pour une raison
-qui tient à la nature de l'application : MailFlow affiche du HTML d'e-mail,
+qui tient à la nature de l'application : MailFlow affiché du HTML d'e-mail,
 c'est-à-dire du contenu écrit par des tiers inconnus, et détient en même temps un
 accès permanent à la boîte mail de l'utilisateur.
 
@@ -29,7 +29,7 @@ OAuth2, appels Gmail, moteur de règles et accès disque vivent côté Rust. Le
 frontend reçoit des données déjà triées et n'émet que des intentions
 (`archive_message`, `apply_rules`).
 
-La surface exposée reste volontairement étroite et specifique. Aucune commande
+La surface exposée reste volontairement étroite et spécifique. Aucune commande
 générique du type « lis ce fichier » ou « appelle cette URL » : chacune élargirait
 ce qu'un webview compromis pourrait atteindre.
 
@@ -44,7 +44,7 @@ Le runner Linux est fixé à `ubuntu-22.04` : la glibc du runner détermine la
 version minimale exigée chez l'utilisateur, et compiler sur une distribution
 récente produit des binaires qui refusent de démarrer ailleurs.
 
-## 2. Modeles de sécurité
+## 2. Modèles de sécurité
 
 ### Le webview est une zone non fiable
 
@@ -59,14 +59,14 @@ raison précise : le `Display` de reqwest inclut l'URL complète, donc
 potentiellement des paramètres de requête.
 
 Trois tests verrouillent cette propriété, dont un qui vérifie qu'un
-`AppError::Config` contenant `client_secret=abc123` ne laisse rien passer.
+`AppError::Config` contenant `client_secret=abc123` ne laissé rien passer.
 
 ### Les secrets ne touchent pas le disque
 
 Le `refresh_token` Google et la clé d'API du LLM vont dans le trousseau système :
 Keychain sur macOS, Secret Service sur Linux. L'accès passe par le trait
 `SecretStore` plutôt que par `keyring::Entry` en direct, pour que la logique
-métier reste testable sans dépendre du bureau de l'hote — une machine de CI n'a
+métier reste testable sans dépendre du bureau de l'hôte — une machine de CI n'a
 pas de trousseau.
 
 Cas limite traité : sur une session Linux sans agent Secret Service, le trousseau
@@ -76,11 +76,24 @@ milieu.
 
 ### OAuth2 : PKCE et redirection loopback
 
-MailFlow est installe chez l'utilisateur et ne peut détenir aucun secret. Google
+MailFlow est installé chez l'utilisateur et ne peut détenir aucun secret. Google
 le reconnaît pour les clients de type « Desktop app » : la sécurité repose sur
 PKCE (RFC 7636), pas sur le `client_secret`.
 
-Choix arretes, documentes dans `src-tauri/src/auth/mod.rs` :
+**Correction apportée après le premier essai réel.** J'avais conclu de ce qui
+précède qu'il ne fallait envoyer aucun `client_secret`, et verrouillé ce choix
+par un test. Google le refuse : son endpoint de jetons répond `invalid_request` /
+« client_secret is missing. », y compris pour un client « Desktop » et y compris
+avec PKCE. Les deux affirmations coexistent — la valeur n'est pas un secret au
+sens usuel, Google la distribue lui-même dans le fichier téléchargé depuis sa
+console, mais elle reste obligatoire dans la requête.
+
+La leçon vaut plus que la correction : le raisonnement était juste sur le
+principe, faux sur la contrainte, et seul un appel réel l'a montré. Un test qui
+verrouille une hypothèse jamais confrontée au service tiers ne protège de rien —
+il fige l'erreur et la fait passer pour une décision.
+
+Choix arrêtés, documentés dans `src-tauri/src/auth/mod.rs` :
 
 - L'URL d'autorisation s'ouvre dans le **navigateur système**, jamais dans un
   webview de l'application. L'utilisateur voit la vraie barre d'adresse de Google
@@ -95,39 +108,39 @@ Choix arretes, documentes dans `src-tauri/src/auth/mod.rs` :
 
 ### Comparaison d'expéditeurs
 
-Un en-tête `From` s'écrit `"Nom affiche" <adresse@exemple.fr>`, et le nom affiche
+Un en-tête `From` s'écrit `"Nom affiche" <adresse@exemple.fr>`, et le nom affiché
 est entièrement choisi par l'expéditeur. Comparer la chaîne brute ouvrirait deux
-failles symetriques : un expéditeur pourrait déclencher une règle visant
+failles symétriques : un expéditeur pourrait déclencher une règle visant
 quelqu'un d'autre en imitant son adresse dans son nom affiché, ou échapper à une
 règle de suppression en changeant ce nom.
 
 `normaliser_adresse` n'extrait que la partie entre chevrons et la met en
-minuscules. Le nom affiche est cosmétique et n'intervient jamais dans une
+minuscules. Le nom affiché est cosmétique et n'intervient jamais dans une
 décision. Deux tests couvrent l'usurpation.
 
 ### Permissions du webview
 
-Le fichier de capacites Tauri n'accorde que `core:default`. `tauri-plugin-opener`
-est enregistre côté Rust — nécessaire pour ouvrir le navigateur pendant OAuth —
-mais n'est **pas** accorde au webview : c'est le backend qui déclenche
+Le fichier de capacités Tauri n'accordé que `core:default`. `tauri-plugin-opener`
+est enregistré côté Rust — nécessaire pour ouvrir le navigateur pendant OAuth —
+mais n'est **pas** accordé au webview : c'est le backend qui déclenche
 l'ouverture, pas le frontend.
 
 La CSP interdit `frame-src` et `object-src`, et limite `connect-src` à l'IPC. Le
 mode développement a sa propre CSP, élargie au strict nécessaire pour le
 rechargement à chaud de Vite.
 
-Point laisse ouvert : `frame-src 'none'` devra être desserre quand la vue 1
+Point laissé ouvert : `frame-src 'none'` devra être desserré quand la vue 1
 affichera le corps des messages. Le HTML d'e-mail ne doit jamais être injecté
 dans le DOM de l'application ; il ira dans une `iframe` en bac à sable, sans
 accès au contexte parent. La règle CSP correspondante se décidera à ce
-moment-la.
+moment-là.
 
-### Persistance de règles.json
+### Persistance de `regles.json`
 
 Deux exigences, toutes deux testées :
 
 - **Écriture atomique.** Le fichier est réécrit à chaque modification de règle.
-  Une coupure au mauvais moment laisserait un JSON tronque, donc toutes les
+  Une coupure au mauvais moment laisserait un JSON tronqué, donc toutes les
   automatisations perdues. L'écriture passe par un fichier temporaire voisin,
   `sync_all`, puis `rename`.
 - **Permissions `0600` sur Unix.** Le fichier liste les correspondants de
@@ -138,7 +151,7 @@ Deux exigences, toutes deux testées :
 
 Un fichier absent rend un jeu de règles vide : c'est l'état normal au premier
 lancement. Un fichier présent mais illisible remonte une erreur et n'est pas
-écrase, pour ne pas effacer sans préavis toutes les automatisations.
+écrasé, pour ne pas effacer sans préavis toutes les automatisations.
 
 ### Le LLM reçoit du courrier
 
@@ -157,17 +170,17 @@ Le contenu d'une newsletter est du texte non fiable, susceptible de contenir des
 instructions destinées au modèle. La réponse du modèle ne déclenche aucune action
 Gmail : elle est affichée, pas exécutée.
 
-## 3. Ce qui est livre
+## 3. Ce qui est livré
 
 - Projet Tauri v2 + React 19 + TypeScript + Tailwind v4 qui compile et se lance.
 - `error.rs` — erreurs typées, réduction avant IPC, 3 tests.
-- `secrets.rs` — trait `SecretStore`, implementations trousseau et mémoire, 5 tests.
+- `secrets.rs` — trait `SecretStore`, implémentations trousseau et mémoire, 5 tests.
 - `rules/model.rs` — format `regles.json` conforme au cahier des charges,
   comparaison d'expéditeurs, 11 tests.
 - `rules/store.rs` — persistance atomique en `0600`, 7 tests.
 - `rules/engine.rs` — planification des actions Gmail, 14 tests (section 5).
 - `auth/` — flux OAuth2 PKCE complet : serveur loopback, échange et
-  renouvellement de jetons, session adossée au trousseau, 58 tests (section 6).
+  renouvellement de jetons, session adossée au trousseau, 61 tests (section 6).
 - `config.rs` — résolution de l'identifiant client Google, 7 tests.
 - `commands/` — `app_health`, `google_connecter`, `google_deconnecter`.
   `app_health` sert de tranche verticale React → IPC → Rust, touchant le
@@ -177,8 +190,10 @@ Gmail : elle est affichée, pas exécutée.
 - CI (lint, types, tests des deux côtés, `cargo audit`) et workflow de release
   en matrice trois plateformes.
 
-Total après les briques 5 et 6 : 106 tests Rust, 5 tests TypeScript,
-clippy sans avertissement.
+Total après les briques 5 et 6 : 109 tests Rust, 5 tests TypeScript,
+clippy sans avertissement. Le parcours de connexion a été validé de bout en bout
+contre le vrai Google : consentement, échange du code, `refresh_token` relu dans
+le trousseau depuis un programme extérieur à l'application.
 
 ## 4. Décisions reportées
 
@@ -251,7 +266,7 @@ Ce port est joignable par tout processus de la session pendant que la fenêtre e
 ouverte. C'est inherent au flux loopback, et ce qui protège est ailleurs :
 
 - le `state` est imprévisible et comparé **à temps constant** ; un `==` classique
-  s'arrête au premier octet différent, ce qui laisse reconstituer la valeur
+  s'arrête au premier octet différent, ce qui laissé reconstituer la valeur
   attendue par la mesure ;
 - la fenêtre est de cinq minutes, pas d'une session entière ;
 - la ligne de requête est plafonnée à 8 Kio et sa lecture à cinq secondes : une
@@ -304,16 +319,26 @@ n'ecrasent pas mutuellement leur `refresh_token`.
 trousseau est vide d'abord : si la révocation échoue faute de réseau,
 l'utilisateur est quand même déconnecté localement.
 
-### L'identifiant client n'est pas un secret
+### Les identifiants du client ne vont pas dans le trousseau
 
-`config.rs` le lit dans l'ordre : variable d'environnement, valeur figée à la
-compilation, puis fichier `.env`. Il ne va **pas** dans le trousseau : Google le
-publie de fait dans l'URL d'autorisation, et le traiter comme un secret rendrait
-la mise en place inutilement pénible sans rien proteger.
+`config.rs` lit les deux valeurs dans le même ordre : variable d'environnement,
+valeur figée à la compilation, puis fichier `.env`.
 
-Absent, l'application se lance quand même et le dit (`clientGoogleConfigure`
-faux). La vue de connexion pourra renvoyer vers `docs/connexion-google.md` plutôt
-que d'afficher un bouton qui ne peut pas aboutir.
+Aucune ne va dans le trousseau. L'identifiant apparaît de toute façon dans l'URL
+d'autorisation. Le `client_secret`, malgré son nom, est documenté par Google
+comme non traité en secret pour les applications installées, et reste extractible
+de tout binaire distribué : le protéger comme un secret d'utilisateur coûterait
+de l'ergonomie sans rien gagner. C'est de la configuration.
+
+Il ne part que dans le corps des POST vers `oauth2.googleapis.com`, jamais dans
+l'URL ouverte par le navigateur — celle-ci finit dans l'historique et les
+journaux du système. Un test le verrouille, un autre vérifie que le `Debug` de
+`ClientOAuth` le masque.
+
+L'une des deux absente, l'application se lance quand même, nomme celle qui manque
+dans ses journaux, et signale `clientGoogleConfigure` faux au frontend. L'écran
+renvoie alors vers `docs/connexion-google.md` plutôt que d'afficher un bouton qui
+ne peut pas aboutir.
 
 ## 7. Suite
 

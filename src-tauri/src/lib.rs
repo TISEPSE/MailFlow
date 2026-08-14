@@ -25,11 +25,27 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
+                // Deux destinations. La sortie standard passe par la chaîne
+                // npm → cargo → tauri, qui la bufferise : quand le parcours
+                // OAuth échoue, la ligne qui l'explique peut ne jamais sortir du
+                // tuyau. Le fichier, lui, est écrit par le processus lui-même.
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
+                        .target(tauri_plugin_log::Target::new(
+                            tauri_plugin_log::TargetKind::Stdout,
+                        ))
+                        .target(tauri_plugin_log::Target::new(
+                            tauri_plugin_log::TargetKind::LogDir {
+                                file_name: Some("mailflow".into()),
+                            },
+                        ))
                         .build(),
                 )?;
+
+                if let Ok(dossier) = app.path().app_log_dir() {
+                    log::info!("journal écrit dans {}", dossier.display());
+                }
             }
 
             // Construit après l'initialisation des logs, pour que l'absence

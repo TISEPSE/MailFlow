@@ -133,6 +133,7 @@ fn interpreter_reponse(statut: u16, corps: &str) -> Resultat<ReponseJeton> {
 /// Parametres de formulaire pour l'échange du code contre des jetons.
 fn corps_echange(
     client_id: &str,
+    client_secret: &str,
     code: &str,
     verifier: &str,
     redirect_uri: &str,
@@ -140,6 +141,7 @@ fn corps_echange(
     vec![
         ("grant_type", "authorization_code".into()),
         ("client_id", client_id.into()),
+        ("client_secret", client_secret.into()),
         ("code", code.into()),
         ("code_verifier", verifier.into()),
         ("redirect_uri", redirect_uri.into()),
@@ -147,10 +149,15 @@ fn corps_echange(
 }
 
 /// Parametres de formulaire pour le renouvellement de l'`access_token`.
-fn corps_renouvellement(client_id: &str, refresh_token: &str) -> Vec<(&'static str, String)> {
+fn corps_renouvellement(
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+) -> Vec<(&'static str, String)> {
     vec![
         ("grant_type", "refresh_token".into()),
         ("client_id", client_id.into()),
+        ("client_secret", client_secret.into()),
         ("refresh_token", refresh_token.into()),
     ]
 }
@@ -159,14 +166,43 @@ fn corps_renouvellement(client_id: &str, refresh_token: &str) -> Vec<(&'static s
 pub struct ClientOAuth {
     http: reqwest::Client,
     client_id: String,
+
+    /// Exige par l'endpoint de jetons de Google, meme pour un client
+    /// « Desktop » et meme avec PKCE. Google le distribue dans le fichier
+    /// telecharge depuis sa console et documente qu'il n'est pas traite comme
+    /// un secret pour les applications installees : c'est de la configuration,
+    /// au meme titre que l'identifiant client.
+    ///
+    /// Il ne part que dans le corps des POST vers `oauth2.googleapis.com`,
+    /// jamais dans l'URL ouverte par le navigateur.
+    client_secret: String,
+}
+
+/// Écrit à la main : le `Debug` dérivé imprimerait `client_secret` en clair.
+/// L'identifiant, lui, n'est pas secret et aide à diagnostiquer un `.env` qui
+/// pointe vers le mauvais projet Google.
+impl std::fmt::Debug for ClientOAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientOAuth")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"<masqué>")
+            .finish_non_exhaustive()
+    }
 }
 
 impl ClientOAuth {
-    pub fn nouveau(client_id: String) -> Resultat<Self> {
+    pub fn nouveau(client_id: String, client_secret: String) -> Resultat<Self> {
         let client_id = client_id.trim().to_string();
         if client_id.is_empty() {
             return Err(AppError::Config(
                 "identifiant client Google absent (MAILFLOW_GOOGLE_CLIENT_ID)".into(),
+            ));
+        }
+
+        let client_secret = client_secret.trim().to_string();
+        if client_secret.is_empty() {
+            return Err(AppError::Config(
+                "secret client Google absent (MAILFLOW_GOOGLE_CLIENT_SECRET)".into(),
             ));
         }
 
@@ -178,7 +214,11 @@ impl ClientOAuth {
             .build()
             .map_err(|e| AppError::Config(format!("client HTTP inutilisable : {e}")))?;
 
-        Ok(Self { http, client_id })
+        Ok(Self {
+            http,
+            client_id,
+            client_secret,
+        })
     }
 
     /// Ouvre une tentative de connexion pour l'URI de redirection donnée.
@@ -194,6 +234,7 @@ impl ClientOAuth {
     ) -> Resultat<ReponseJeton> {
         let corps = corps_echange(
             &self.client_id,
+            &self.client_secret,
             code,
             demande.verifier.secret(),
             &demande.redirect_uri,
@@ -203,7 +244,7 @@ impl ClientOAuth {
 
     /// Renouvelle l'`access_token` à partir du `refresh_token` durable.
     pub async fn renouveler(&self, refresh_token: &str) -> Resultat<ReponseJeton> {
-        let corps = corps_renouvellement(&self.client_id, refresh_token);
+        let corps = corps_renouvellement(&self.client_id, &self.client_secret, refresh_token);
         self.poster(URL_JETON, &corps).await
     }
 
@@ -244,10 +285,18 @@ mod tests {
     use super::*;
 
     const CLIENT_ID: &str = "123456789012-abcdef.apps.googleusercontent.com";
+    const CLIENT_SECRET: &str = "GOCSPX-secret-de-test";
     const REDIRECT: &str = "http://127.0.0.1:41234";
 
     fn demande() -> DemandeAutorisation {
         DemandeAutorisation::nouvelle(CLIENT_ID, REDIRECT.into()).unwrap()
+    }
+
+    #[test]
+    fn un_secret_client_vide_est_une_erreur_de_configuration() {
+        let e = ClientOAuth::nouveau(CLIENT_ID.into(), "  ".into()).unwrap_err();
+
+        assert_eq!(e.code(), "CONFIG_INVALIDE");
     }
 
     fn params(url: &Url) -> std::collections::HashMap<String, String> {
@@ -322,6 +371,9 @@ mod tests {
         let e = DemandeAutorisation::nouvelle("  ", REDIRECT.into()).unwrap_err();
 
         assert_eq!(e.code(), "CONFIG_INVALIDE");
+
+        let e = ClientOAuth::nouveau("  ".into(), CLIENT_SECRET.into()).unwrap_err();
+        assert_eq!(e.code(), "CONFIG_INVALIDE");
     }
 
     #[test]
@@ -354,27 +406,54 @@ mod tests {
         assert!(interpreter_reponse(500, "").is_err());
     }
 
+    /// Google exige `client_secret` sur son endpoint de jetons, y compris pour
+    /// les clients « Desktop » et y compris avec PKCE. Sans lui, il repond
+    /// `invalid_request` / « client_secret is missing. » — verifie contre
+    /// l'endpoint reel.
+    ///
+    /// Ce n'est pas un secret au sens usuel : Google le publie dans le fichier
+    /// telecharge depuis la console et documente qu'il n'est pas traite comme
+    /// tel pour les applications installees. La securite du flux reste assuree
+    /// par PKCE.
     #[test]
-    fn l_echange_du_code_envoie_le_verifier_et_jamais_de_secret_client() {
-        let c = corps_echange(CLIENT_ID, "4/0AX4", "le-verifier", REDIRECT);
+    fn l_echange_du_code_envoie_le_verifier_et_le_secret_client() {
+        let c = corps_echange(CLIENT_ID, CLIENT_SECRET, "4/0AX4", "le-verifier", REDIRECT);
         let p: std::collections::HashMap<_, _> = c.into_iter().collect();
 
         assert_eq!(p["grant_type"], "authorization_code");
         assert_eq!(p["code"], "4/0AX4");
         assert_eq!(p["code_verifier"], "le-verifier");
         assert_eq!(p["redirect_uri"], REDIRECT);
-        // Une application de bureau n'a pas de secret : en envoyer un serait
-        // prétendre le contraire.
-        assert!(!p.contains_key("client_secret"));
+        assert_eq!(p["client_secret"], CLIENT_SECRET);
     }
 
     #[test]
-    fn le_renouvellement_envoie_le_refresh_token() {
-        let c = corps_renouvellement(CLIENT_ID, "1//0g-durable");
+    fn le_renouvellement_envoie_le_refresh_token_et_le_secret_client() {
+        let c = corps_renouvellement(CLIENT_ID, CLIENT_SECRET, "1//0g-durable");
         let p: std::collections::HashMap<_, _> = c.into_iter().collect();
 
         assert_eq!(p["grant_type"], "refresh_token");
         assert_eq!(p["refresh_token"], "1//0g-durable");
-        assert!(!p.contains_key("client_secret"));
+        assert_eq!(p["client_secret"], CLIENT_SECRET);
+    }
+
+    #[test]
+    fn le_debug_du_client_ne_revele_pas_le_secret() {
+        let c = ClientOAuth::nouveau(CLIENT_ID.into(), CLIENT_SECRET.into()).unwrap();
+
+        let trace = format!("{c:?}");
+        assert!(!trace.contains(CLIENT_SECRET));
+        // L'identifiant, lui, n'est pas secret et aide au diagnostic.
+        assert!(trace.contains(CLIENT_ID));
+    }
+
+    #[test]
+    fn le_secret_client_ne_part_jamais_dans_l_url_d_autorisation() {
+        // Il n'a rien a faire dans une URL ouverte par le navigateur, qui finit
+        // dans l'historique et les journaux du systeme.
+        let url = demande().url().to_string();
+
+        assert!(!url.contains("client_secret"));
+        assert!(!url.contains(CLIENT_SECRET));
     }
 }

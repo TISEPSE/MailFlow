@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react'
-import { appHealth, messageDErreur } from './lib/tauri'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  appHealth,
+  googleConnecter,
+  googleDeconnecter,
+  messageDErreur,
+} from './lib/tauri'
 import type { EtatApplication } from './types/backend'
 
 /**
@@ -12,10 +17,35 @@ import type { EtatApplication } from './types/backend'
 export default function App() {
   const [etat, setEtat] = useState<EtatApplication | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
+  const [enCours, setEnCours] = useState(false)
+
+  const rafraichir = useCallback(
+    () => appHealth().then(setEtat).catch((e) => setErreur(messageDErreur(e))),
+    [],
+  )
 
   useEffect(() => {
-    appHealth().then(setEtat).catch((e) => setErreur(messageDErreur(e)))
-  }, [])
+    void rafraichir()
+  }, [rafraichir])
+
+  /**
+   * Le parcours Google se déroule dans le navigateur : la promesse peut rester
+   * en attente plusieurs minutes. L'état `enCours` évite qu'un second clic
+   * n'ouvre une deuxième tentative — le backend refuserait, mais autant ne pas
+   * l'y amener.
+   */
+  async function lancer(action: () => Promise<void>) {
+    setEnCours(true)
+    setErreur(null)
+    try {
+      await action()
+    } catch (e) {
+      setErreur(messageDErreur(e))
+    } finally {
+      setEnCours(false)
+      await rafraichir()
+    }
+  }
 
   return (
     <main className="mx-auto flex h-full max-w-2xl flex-col justify-center gap-6 p-10 font-sans">
@@ -61,6 +91,53 @@ export default function App() {
           />
           <Ligne intitule="Fichier de règles" valeur={etat.cheminRegles} />
         </dl>
+      )}
+
+      {etat && (
+        <div className="flex flex-col gap-3">
+          {!etat.clientGoogleConfigure && (
+            <p className="rounded-md bg-amber-50 p-4 text-sm text-amber-900">
+              L'identifiant client Google n'est pas renseigné. La marche à suivre
+              est décrite dans <code>docs/connexion-google.md</code>.
+            </p>
+          )}
+
+          {!etat.trousseauDisponible && (
+            <p className="rounded-md bg-amber-50 p-4 text-sm text-amber-900">
+              Aucun trousseau de mots de passe n'est joignable. MailFlow ne
+              pourrait pas conserver votre connexion.
+            </p>
+          )}
+
+          {etat.compteConnecte ? (
+            <button
+              type="button"
+              onClick={() => void lancer(googleDeconnecter)}
+              disabled={enCours}
+              className="self-start rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              {enCours ? 'Déconnexion…' : 'Déconnecter mon compte Gmail'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void lancer(googleConnecter)}
+              disabled={enCours || !etat.clientGoogleConfigure || !etat.trousseauDisponible}
+              className="self-start rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {enCours
+                ? 'En attente de votre accord…'
+                : 'Connecter mon compte Gmail'}
+            </button>
+          )}
+
+          {enCours && !etat.compteConnecte && (
+            <p className="text-sm text-neutral-500">
+              Votre navigateur s'est ouvert sur la page de connexion Google.
+              Revenez ici une fois votre accord donné.
+            </p>
+          )}
+        </div>
       )}
     </main>
   )

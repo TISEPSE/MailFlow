@@ -108,7 +108,7 @@ pub enum Frequence {
 /// Extrait l'adresse comparable d'un en-tête `From`.
 ///
 /// Point de sécurité : un en-tête `From` s'écrit `"Nom affiche" <adresse@x.fr>`,
-/// et le nom affiche est entièrement choisi par l'expéditeur. Comparer la chaîne
+/// et le nom affiché est entièrement choisi par l'expéditeur. Comparer la chaîne
 /// brute permettrait à `"contact@ma-banque.fr" <pirate@exemple.net>` de déclencher
 /// une règle visant la banque — ou, dans l'autre sens, à un expéditeur d'échapper
 /// à une règle de suppression en changeant son nom affiché. Seule la partie entre

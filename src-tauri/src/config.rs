@@ -1,10 +1,15 @@
-//! Ou MailFlow trouve son identifiant client Google.
+//! Où MailFlow trouve les identifiants Google de son client OAuth2.
 //!
-//! Cet identifiant n'est pas un secret — Google le dit explicitement pour les
-//! clients de bureau, et il apparaît de toute façon dans l'URL d'autorisation.
-//! Il n'a donc rien à faire dans le trousseau : c'est de la configuration, pas un
-//! secret, et le confondre avec un secret rendrait la mise en place inutilement
-//! pénible pour l'utilisateur.
+//! Deux valeurs, issues du même fichier téléchargé depuis la console Google :
+//! l'identifiant client et le « secret » client.
+//!
+//! Ni l'un ni l'autre n'a sa place dans le trousseau. L'identifiant apparaît de
+//! toute façon dans l'URL d'autorisation. Quant au second, malgré son nom,
+//! Google documente qu'il n'est pas traité comme un secret pour les applications
+//! installées — il est extractible de tout binaire distribué, et Google
+//! l'imprime dans un fichier qu'il invite à télécharger. Les traiter comme des
+//! secrets d'utilisateur rendrait la mise en place inutilement pénible sans rien
+//! protéger : c'est de la configuration.
 //!
 //! Trois sources, dans cet ordre :
 //!
@@ -14,6 +19,16 @@
 //!    `docs/connexion-google.md`.
 
 pub const VAR_CLIENT_ID: &str = "MAILFLOW_GOOGLE_CLIENT_ID";
+
+/// Secret client Google.
+///
+/// Google l'exige sur son endpoint de jetons, y compris pour un client
+/// « Desktop » et y compris avec PKCE. Il est distribué dans le fichier
+/// téléchargé depuis la console, et Google documente qu'il n'est pas traité
+/// comme un secret pour les applications installées — il est de toute façon
+/// extractible de tout binaire distribué. C'est donc de la configuration, au
+/// même titre que l'identifiant : pas une entrée de trousseau.
+pub const VAR_CLIENT_SECRET: &str = "MAILFLOW_GOOGLE_CLIENT_SECRET";
 
 /// Extrait une valeur d'un contenu de fichier `.env`.
 ///
@@ -66,17 +81,25 @@ fn non_vide(v: String) -> Option<String> {
     (!v.is_empty()).then_some(v)
 }
 
-/// Identifiant client Google, ou `None` s'il n'a pas été configuré.
-pub fn client_id_google() -> Option<String> {
-    std::env::var(VAR_CLIENT_ID)
+fn resoudre(variable: &str, fige_a_la_compilation: Option<&str>) -> Option<String> {
+    std::env::var(variable)
         .ok()
         .and_then(non_vide)
-        .or_else(|| {
-            option_env!("MAILFLOW_GOOGLE_CLIENT_ID")
-                .map(String::from)
-                .and_then(non_vide)
-        })
-        .or_else(|| depuis_dotenv(VAR_CLIENT_ID))
+        .or_else(|| fige_a_la_compilation.map(String::from).and_then(non_vide))
+        .or_else(|| depuis_dotenv(variable))
+}
+
+/// Identifiant client Google, ou `None` s'il n'a pas été configuré.
+pub fn client_id_google() -> Option<String> {
+    resoudre(VAR_CLIENT_ID, option_env!("MAILFLOW_GOOGLE_CLIENT_ID"))
+}
+
+/// Secret client Google, ou `None` s'il n'a pas été configuré.
+pub fn client_secret_google() -> Option<String> {
+    resoudre(
+        VAR_CLIENT_SECRET,
+        option_env!("MAILFLOW_GOOGLE_CLIENT_SECRET"),
+    )
 }
 
 #[cfg(test)]

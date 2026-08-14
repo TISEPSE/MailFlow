@@ -9,17 +9,23 @@ une seule fois. Elle est gratuite et ne demande pas de carte bancaire.
 
 ## Ce que vous obtenez au bout
 
-Une chaîne de caractères appelée **identifiant client**, qui ressemble à :
+Un fichier téléchargé depuis Google, contenant **deux valeurs** :
 
-```
-123456789012-abcdefghijklmnop.apps.googleusercontent.com
-```
+- l'**identifiant client**, du genre
+  `123456789012-abcdefghijklmnop.apps.googleusercontent.com` ;
+- le **secret client**, du genre `GOCSPX-xxxxxxxxxxxxxxxxxxxx`.
 
-Vous la collerez dans un fichier du projet. C'est tout ce qu'on attend de vous.
+Vous les collerez dans un fichier du projet. C'est tout ce qu'on attend de vous.
 
-Ce n'est pas un mot de passe et ce n'est pas secret : Google sait qu'une
-application installée sur un ordinateur ne peut rien cacher. La sécurité repose
-sur autre chose, géré entièrement par le code.
+Malgré son nom, le « secret client » n'est pas un mot de passe. Google sait qu'une
+application installée sur un ordinateur ne peut rien cacher : n'importe qui peut
+extraire cette valeur du programme. Google le documente explicitement et ne la
+traite pas comme un secret pour ce type d'application. Elle sert à identifier
+l'application, pas à prouver qui vous êtes.
+
+Ce qui protège réellement votre compte, c'est un mécanisme appelé PKCE, géré
+entièrement par le code : à chaque connexion, MailFlow tire une valeur aléatoire
+que lui seul connaît, et sans laquelle le code renvoyé par Google ne vaut rien.
 
 ## Avant de commencer
 
@@ -100,12 +106,13 @@ Menu de gauche : **APIs et services** > **Identifiants**. Puis
 
 - Nom : `MailFlow Desktop`
 
-Validez. Google affiche alors l'identifiant client. **Copiez-le.**
+Validez. Google affiche alors les deux valeurs et propose un bouton
+**Télécharger le JSON**. Prenez-le : c'est le plus simple, et il contient tout.
 
-Si vous fermez la fenêtre trop vite, ce n'est pas grave : l'identifiant reste
-consultable dans la liste des identifiants.
+Si vous fermez la fenêtre trop vite, ce n'est pas grave : les deux valeurs
+restent consultables dans la liste des identifiants.
 
-## 7. Le donner à MailFlow
+## 7. Les donner à MailFlow
 
 Dans le dossier du projet, un fichier `.env.example` sert de modèle. Faites-en
 une copie nommée `.env` :
@@ -114,16 +121,29 @@ une copie nommée `.env` :
 cp .env.example .env
 ```
 
-Ouvrez `.env` et collez votre identifiant après le signe égal :
+Ouvrez le fichier JSON téléchargé. Il ressemble à ceci :
+
+```json
+{"installed":{"client_id":"123456789012-abcdef.apps.googleusercontent.com",
+ "client_secret":"GOCSPX-xxxxxxxxxxxxxxxxxxxx", ...}}
+```
+
+Reportez les deux valeurs dans `.env`, après les signes égal :
 
 ```
-MAILFLOW_GOOGLE_CLIENT_ID=123456789012-abcdefghijklmnop.apps.googleusercontent.com
+MAILFLOW_GOOGLE_CLIENT_ID=123456789012-abcdef.apps.googleusercontent.com
+MAILFLOW_GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxx
 ```
 
 Enregistrez. C'est fini.
 
+Si vous n'en renseignez qu'une seule, MailFlow vous dira laquelle manque au
+démarrage — l'oubli est facile, les deux sont nécessaires.
+
 Le fichier `.env` n'est pas envoyé sur GitHub : il est explicitement exclu, pour
 que votre configuration reste sur votre machine.
+
+Vous pouvez supprimer le fichier JSON téléchargé une fois les valeurs recopiées.
 
 ## Ce qui se passera au premier lancement
 

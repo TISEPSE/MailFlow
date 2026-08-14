@@ -8,6 +8,13 @@
 //! la sécurité du flux ne repose pas sur le `client_secret` mais sur PKCE
 //! (RFC 7636).
 //!
+//! **Google exige néanmoins ce `client_secret`** sur son endpoint de jetons, y
+//! compris pour un client « Desktop » et y compris avec PKCE : sans lui, il
+//! répond `invalid_request` / « client_secret is missing. » Les deux idées
+//! coexistent — la valeur n'est pas un secret au sens usuel, et Google la
+//! distribue lui-même dans le fichier téléchargé depuis sa console, mais elle
+//! reste obligatoire dans la requête. Voir [`crate::config`].
+//!
 //! Deroulement :
 //!
 //! 1. Rust ouvre un serveur HTTP éphémère sur `127.0.0.1`, port attribué par l'OS.
@@ -18,7 +25,8 @@
 //!    Google et son gestionnaire de mots de passe fonctionne normalement.
 //! 4. Google redirige vers `http://127.0.0.1:<port>` avec le code d'autorisation.
 //! 5. Le serveur éphémère vérifie le `state`, récupère le code, puis s'arrête.
-//! 6. Rust échange le code contre les jetons, en POST, avec le `code_verifier`.
+//! 6. Rust échange le code contre les jetons, en POST, avec le `code_verifier`
+//!    et le `client_secret`.
 //! 7. Le `refresh_token` part dans le trousseau système (voir [`crate::secrets`]).
 //!    L'`access_token`, de courte durée, reste en mémoire uniquement.
 //!
@@ -116,11 +124,12 @@ mod tests {
     use std::cell::RefCell;
 
     const CLIENT_ID: &str = "123456789012-abcdef.apps.googleusercontent.com";
+    const CLIENT_SECRET: &str = "GOCSPX-secret-de-test";
 
     /// Interrompt le parcours juste après l'ouverture du navigateur, ce qui
     /// permet d'observer l'URL sans joindre Google.
     async fn url_proposee_a_l_utilisateur() -> url::Url {
-        let client = ClientOAuth::nouveau(CLIENT_ID.into()).unwrap();
+        let client = ClientOAuth::nouveau(CLIENT_ID.into(), CLIENT_SECRET.into()).unwrap();
         let mut session = SessionAuth::nouvelle(MemoryStore::new());
         let vue = RefCell::new(None);
 
@@ -157,7 +166,7 @@ mod tests {
 
     #[tokio::test]
     async fn un_navigateur_indisponible_n_ouvre_aucune_session() {
-        let client = ClientOAuth::nouveau(CLIENT_ID.into()).unwrap();
+        let client = ClientOAuth::nouveau(CLIENT_ID.into(), CLIENT_SECRET.into()).unwrap();
         let mut session = SessionAuth::nouvelle(MemoryStore::new());
 
         let e = connecter(
@@ -175,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn un_accord_qui_n_arrive_jamais_finit_par_abandonner() {
-        let client = ClientOAuth::nouveau(CLIENT_ID.into()).unwrap();
+        let client = ClientOAuth::nouveau(CLIENT_ID.into(), CLIENT_SECRET.into()).unwrap();
         let mut session = SessionAuth::nouvelle(MemoryStore::new());
 
         let e = connecter(
