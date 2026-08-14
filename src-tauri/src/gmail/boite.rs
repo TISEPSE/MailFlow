@@ -70,10 +70,26 @@ pub async fn charger_boite<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,
 ) -> Resultat<Vec<MessageAffiche>> {
+    charger_boite_suivi(client, regles, |_, _| {}).await
+}
+
+/// Même relevé, en rendant compte de son avancement.
+///
+/// Chaque message demande son propre appel : soixante messages, soixante
+/// allers-retours. C'est l'attente la plus longue de l'ouverture, et elle
+/// restait muette — l'interface ne pouvait annoncer qu'un vague « patientez ».
+/// `avance` est appelée une première fois avec le total, puis après chaque
+/// message.
+pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
+    client: &ClientGmail<T, J>,
+    regles: &RuleSet,
+    mut avance: impl FnMut(usize, usize),
+) -> Resultat<Vec<MessageAffiche>> {
     let refs = client.lister("in:inbox", PLAFOND_BOITE).await?;
+    avance(0, refs.len());
 
     let mut boite = Vec::with_capacity(refs.len());
-    for reference in &refs {
+    for (rang, reference) in refs.iter().enumerate() {
         match client.metadonnees(&reference.id).await {
             Ok(m) => boite.push(MessageAffiche::depuis(&m, regles)),
 
@@ -82,6 +98,9 @@ pub async fn charger_boite<T: Transport, J: SourceJeton>(
             // raison de ne rien montrer.
             Err(e) => log::info!("message {} illisible, ignoré : {e}", reference.id),
         }
+        // Compté même en cas d'échec : c'est un message traité de moins à
+        // attendre, et la barre ne doit pas rester en arrière.
+        avance(rang + 1, refs.len());
     }
 
     Ok(boite)
@@ -198,6 +217,28 @@ mod tests {
         assert_eq!(boite[0].categorie, CategorieMessage::Publicite);
         assert_eq!(boite[1].categorie, CategorieMessage::Humain);
         assert!(c.urls()[0].contains("in%3Ainbox"), "url : {}", c.urls()[0]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn l_avancement_est_annonce_message_par_message() {
+        let c = ClientDeTest::avec(vec![
+            ok(&serde_json::json!({
+                "messages": [{"id": "m1", "threadId": "t1"}, {"id": "m2", "threadId": "t2"}]
+            })
+            .to_string()),
+            ok(&serde_json::json!({"id": "m1", "threadId": "t1", "labelIds": ["INBOX"]}).to_string()),
+            ok(&serde_json::json!({"id": "m2", "threadId": "t2", "labelIds": ["INBOX"]}).to_string()),
+        ]);
+
+        let mut etapes = Vec::new();
+        charger_boite_suivi(&c.client, &RuleSet::default(), |faits, total| {
+            etapes.push((faits, total))
+        })
+        .await
+        .unwrap();
+
+        // Le total d'abord, pour que la barre existe avant le premier message.
+        assert_eq!(etapes, vec![(0, 2), (1, 2), (2, 2)]);
     }
 
     #[tokio::test(start_paused = true)]
