@@ -26,6 +26,7 @@ import {
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
+  libelleCreer,
   libellesLister,
   messageMarquerLu,
   messageRanger,
@@ -375,7 +376,6 @@ export default function App() {
             {menuCompte && (
               <MenuDeCompte
                 comptes={comptes}
-                repliee={repliee}
                 onFermer={() => setMenuCompte(false)}
                 onBasculer={(adresse) => {
                   setMenuCompte(false)
@@ -417,27 +417,21 @@ export default function App() {
                       {profil?.adresse ?? 'aucun compte relié'}
                     </span>
                   </span>
-                  <Icone nom="expand_more" taille={16} style={{ color: 'var(--sub)' }} />
+                  <Icone
+                    nom="expand_more"
+                    taille={16}
+                    style={{
+                      color: 'var(--sub)',
+                      // Pivote vers le haut quand le menu s'ouvre : la flèche
+                      // désigne alors l'endroit où le menu vient d'apparaître.
+                      transform: menuCompte ? 'rotate(180deg)' : undefined,
+                      transition: 'transform 160ms ease',
+                    }}
+                  />
                 </>
               )}
             </button>
 
-            {!repliee && (
-              <button
-                type="button"
-                onClick={() => setVue('parametres')}
-                aria-label="Paramètres"
-                aria-current={vue === 'parametres' ? 'page' : undefined}
-                className="survolable flex h-8 w-8 flex-none items-center justify-center rounded-lg"
-                style={
-                  vue === 'parametres'
-                    ? { background: 'var(--card)', color: 'var(--accent-fg)' }
-                    : { color: 'var(--sub)' }
-                }
-              >
-                <Icone nom="settings" taille={17} rempli={vue === 'parametres'} />
-              </button>
-            )}
           </div>
         </nav>
 
@@ -547,6 +541,13 @@ export default function App() {
                       })
                   : undefined
               }
+              onCreerLibelle={
+                vue === 'humain'
+                  ? async (nom) => {
+                      setLibelles(await libelleCreer(nom))
+                    }
+                  : undefined
+              }
               onRanger={
                 vue === 'humain'
                   ? (id, libelle) =>
@@ -592,14 +593,12 @@ export default function App() {
  */
 function MenuDeCompte({
   comptes,
-  repliee,
   onFermer,
   onBasculer,
   onAjouter,
   onParametres,
 }: {
   comptes: CompteConnu[]
-  repliee: boolean
   onFermer: () => void
   onBasculer: (adresse: string) => void
   onAjouter: () => void
@@ -635,9 +634,15 @@ function MenuDeCompte({
     <div
       ref={cadre}
       role="menu"
-      className="absolute bottom-full left-0 z-40 mb-2 overflow-hidden rounded-xl border py-1"
+      // Rembourrage horizontal : sans lui, le fond de survol d'une ligne va
+      // d'un bord à l'autre et coupe les arrondis du menu.
+      className="absolute bottom-full left-2 z-40 mb-2 rounded-xl border p-1.5"
       style={{
-        width: repliee ? 260 : '100%',
+        // Une largeur fixe, plus généreuse que la barre : « Ajouter un compte
+        // Google » passait à la ligne dans les 236 pixels disponibles, et un
+        // menu qui déborde d'un cran se lit comme ce qu'il est — une couche
+        // par-dessus, pas une partie de la barre.
+        width: 268,
         background: 'var(--card)',
         borderColor: 'var(--line)',
         boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
@@ -649,7 +654,7 @@ function MenuDeCompte({
           type="button"
           role="menuitem"
           onClick={() => onBasculer(c.adresse)}
-          className="survolable flex w-full items-center gap-2.5 px-3 py-2 text-left"
+          className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
         >
           {c.photo ? (
             <img src={c.photo} alt="" className="h-7 w-7 flex-none rounded-full object-cover" />
@@ -678,14 +683,14 @@ function MenuDeCompte({
       ))}
 
       {autres.length > 0 && (
-        <div className="my-1 border-t" style={{ borderColor: 'var(--line)' }} />
+        <div className="mx-1 my-1.5 border-t" style={{ borderColor: 'var(--line)' }} />
       )}
 
       <button
         type="button"
         role="menuitem"
         onClick={onAjouter}
-        className="survolable flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-semibold"
+        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold"
         style={{ color: 'var(--accent-fg)' }}
       >
         <Icone nom="login" taille={16} compenser />
@@ -696,7 +701,7 @@ function MenuDeCompte({
         type="button"
         role="menuitem"
         onClick={onParametres}
-        className="survolable flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-semibold"
+        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold"
       >
         <Icone nom="settings" taille={16} compenser style={{ color: 'var(--sub)' }} />
         Paramètres

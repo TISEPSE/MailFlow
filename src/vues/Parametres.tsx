@@ -62,7 +62,11 @@ export function Parametres({
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-8 pt-6 pb-12">
+        {/* `key` sur l'adresse : React remonte la carte quand le compte
+            change, ce qui rejoue l'apparition. Sans elle, seuls les textes
+            seraient remplacés, sans que rien ne signale le changement. */}
         <CarteCompte
+          key={profil?.adresse ?? 'aucun'}
           connecte={etat.compteConnecte}
           profil={profil}
           accent={accent}

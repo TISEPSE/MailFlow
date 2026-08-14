@@ -69,6 +69,7 @@ pub fn run() {
             commands::message_corps,
             commands::message_ranger,
             commands::libelles_lister,
+            commands::libelle_creer,
             commands::repondre_au_message,
             commands::message_signaler_spam,
             commands::message_marquer_lu,

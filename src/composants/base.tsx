@@ -240,12 +240,19 @@ export function EnTete({
 }) {
   return (
     <div
-      className="flex flex-none items-start gap-4 border-b px-8 py-6"
+      className="flex flex-none items-center gap-4 border-b px-6 py-3"
       style={{ borderColor: 'var(--line)' }}
     >
-      <div className="min-w-0 flex-1">
-        <h1 className="text-[26px] font-bold tracking-tight">{titre}</h1>
-        <p className="pt-1 text-[14px]" style={{ color: 'var(--sub)' }}>
+      <div className="flex min-w-0 flex-1 items-baseline gap-3">
+        <h1 className="flex-none text-[16px] font-semibold tracking-tight">{titre}</h1>
+        {/* La phrase d'explication passe sur la même ligne et s'efface la
+            première quand la largeur manque : elle rassure au premier passage,
+            elle n'a pas à coûter une bande de la hauteur de l'écran à chaque
+            lecture de message. */}
+        <p
+          className="hidden min-w-0 truncate text-[12.5px] lg:block"
+          style={{ color: 'var(--sub)' }}
+        >
           {sous}
         </p>
       </div>

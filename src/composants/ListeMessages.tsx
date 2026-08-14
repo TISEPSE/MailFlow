@@ -121,14 +121,14 @@ export function Lecture({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className="selectionnable flex-none border-b px-7 pt-4 pb-3"
+        className="selectionnable flex-none border-b px-6 pt-3 pb-2.5"
         style={{ borderColor: 'var(--line)' }}
       >
-        <h2 className="text-[16px] font-semibold tracking-tight">
+        <h2 className="text-[15px] font-semibold tracking-tight">
           {message.sujet || '(sans objet)'}
         </h2>
 
-        <div className="mt-2.5 flex items-center gap-2.5">
+        <div className="mt-2 flex items-center gap-2.5">
           <Pastille
             texte={initiales(message.nom)}
             taille={30}
@@ -147,7 +147,7 @@ export function Lecture({
           </div>
         </div>
 
-        {actions && <div className="mt-3 flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
       <Corps message={message} corps={corps} chargement={chargement} />

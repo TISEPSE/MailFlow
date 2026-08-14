@@ -84,9 +84,9 @@ export function Regles({
           type="button"
           onClick={() => setFormulaireOuvert(true)}
           aria-haspopup="dialog"
-          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold"
+          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] leading-none font-semibold"
         >
-          <Icone nom="playlist_add_check" taille={17} rempli compenser />
+          <Icone nom="playlist_add_check" taille={15} rempli compenser />
           Ajouter une règle
         </button>
       </EnTete>

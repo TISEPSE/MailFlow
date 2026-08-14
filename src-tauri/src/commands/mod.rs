@@ -483,6 +483,32 @@ pub async fn libelles_lister(etat: State<'_, EtatAuth>) -> Resultat<Vec<LibelleA
         .collect())
 }
 
+/// Crée un libellé Gmail et rend la liste complète, à jour.
+///
+/// Rendre la liste plutôt qu'un accusé : l'interface se réaffiche à partir de
+/// ce que Gmail connaît réellement, au lieu d'entretenir sa propre copie qui
+/// finirait par diverger.
+#[tauri::command]
+pub async fn libelle_creer(
+    etat: State<'_, EtatAuth>,
+    nom: String,
+) -> Resultat<Vec<LibelleAffiche>> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let cree = client.creer_libelle(&nom).await?;
+
+    log::info!("libellé créé");
+    Ok(client
+        .libelles()
+        .await
+        .unwrap_or_else(|_| vec![cree])
+        .into_iter()
+        .map(|l| LibelleAffiche {
+            id: l.id,
+            nom: l.name,
+        })
+        .collect())
+}
+
 /// Range un message sous un libellé, ou l'archive simplement.
 #[tauri::command]
 pub async fn message_ranger(

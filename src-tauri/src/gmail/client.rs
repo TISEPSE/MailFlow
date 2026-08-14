@@ -354,6 +354,32 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         Ok(propres)
     }
 
+    /// Crée un libellé et le rend tel que Gmail l'a enregistré.
+    ///
+    /// Le nom est rendu par Google, pas repris de la demande : Gmail normalise
+    /// les espaces et peut refuser un doublon. Se fier à ce qu'on a envoyé
+    /// afficherait un libellé qui n'existe pas sous ce nom.
+    pub async fn creer_libelle(&self, nom: &str) -> Resultat<crate::gmail::modele::LibelleGmail> {
+        let nom = nom.trim();
+        if nom.is_empty() {
+            return Err(AppError::Config("un libellé a besoin d'un nom".into()));
+        }
+
+        let corps = serde_json::json!({
+            "name": nom,
+            "labelListVisibility": "labelShow",
+            "messageListVisibility": "show",
+        })
+        .to_string();
+
+        let reponse = self
+            .appeler(Methode::Post, &url_libelles(), Some(corps))
+            .await?;
+
+        serde_json::from_str(&reponse)
+            .map_err(|e| AppError::Reseau(format!("libellé créé mais illisible : {e}")))
+    }
+
     /// Range des messages sous un libellé et les sort de la boîte de réception.
     ///
     /// Sans `libelle`, c'est un archivage simple — exactement le bouton
@@ -820,6 +846,28 @@ mod tests {
         // Triés sans tenir compte de la casse, sinon « factures » passerait
         // après tous les libellés commençant par une majuscule.
         assert_eq!(noms, ["Archives", "factures"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_libelle_cree_est_rendu_tel_que_google_l_a_enregistre() {
+        // Gmail normalise les noms : afficher celui qu'on a demandé montrerait
+        // un libellé qui n'existe pas sous cette forme.
+        let c = client(vec![ok(r#"{"id":"L9","name":"Factures","type":"user"}"#)]);
+
+        let cree = c.client.creer_libelle("  Factures  ").await.unwrap();
+
+        assert_eq!(cree.name, "Factures");
+        assert_eq!(cree.id, "L9");
+        let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
+        assert_eq!(envoye["name"], "Factures");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_libelle_sans_nom_n_est_pas_demande_a_google() {
+        let c = client(vec![]);
+
+        assert!(c.client.creer_libelle("   ").await.is_err());
+        assert!(c.urls().is_empty());
     }
 
     #[tokio::test(start_paused = true)]

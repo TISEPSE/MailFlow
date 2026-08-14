@@ -327,3 +327,34 @@ button:not(:disabled),
     animation: none;
   }
 }
+
+/* Apparition douce d'un bloc dont le contenu vient de changer.
+
+   Employée sur la carte de compte : basculer d'un compte à l'autre remplace
+   nom, adresse et photo d'un seul coup, ce qui se lit comme un défaut
+   d'affichage plutôt que comme le résultat d'un clic. Le fondu dit qu'il s'agit
+   bien d'un remplacement. */
+@keyframes apparaitre {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.apparait {
+  animation: apparaitre 220ms ease-out;
+}
+
+/* Le contenu qu'une action est en train de remplacer s'estompe, sans jamais
+   disparaître : le faire sortir de la page ferait sauter tout ce qui suit. */
+.en-attente {
+  opacity: 0.55;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apparait {
+    animation: none;
+  }
+}

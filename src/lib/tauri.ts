@@ -117,6 +117,11 @@ export function libellesLister(): Promise<LibelleGmail[]> {
   return invoke<LibelleGmail[]>('libelles_lister')
 }
 
+/** Cree un libelle et rend la liste complete, a jour. */
+export function libelleCreer(nom: string): Promise<LibelleGmail[]> {
+  return invoke<LibelleGmail[]>('libelle_creer', { nom })
+}
+
 /** Range un message sous un libelle, ou l'archive quand `libelle` est absent. */
 export function messageRanger(id: string, libelle?: string): Promise<void> {
   return invoke<void>('message_ranger', { id, libelle: libelle ?? null })

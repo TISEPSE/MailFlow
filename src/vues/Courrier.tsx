@@ -11,6 +11,7 @@ import {
   Bouton,
   Etiquette,
   Icone,
+  Modale,
   SqueletteLecture,
   SqueletteListe,
   Vide,
@@ -52,6 +53,7 @@ export function Courrier({
   onSignalerSpam,
   onRepondre,
   onRanger,
+  onCreerLibelle,
   libelles,
   chargement,
 }: {
@@ -69,6 +71,7 @@ export function Courrier({
   /** Absents hors des mails directs, où répondre n'aurait pas de sens. */
   onRepondre?: (message: MessageAffiche) => void
   onRanger?: (id: string, libelle?: string) => void
+  onCreerLibelle?: (nom: string) => Promise<void>
   libelles?: LibelleGmail[]
   /** Vrai tant que le premier relevé n'a pas abouti. */
   chargement?: boolean
@@ -163,6 +166,7 @@ export function Courrier({
                 enCours={enCours}
                 onRepondre={onRepondre}
                 onRanger={onRanger}
+                onCreerLibelle={onCreerLibelle ?? (async () => {})}
               />
             )}
 
@@ -221,9 +225,9 @@ export function Courrier({
  * « Répondre » ouvre le client de courrier du système : MailFlow n'a pas — et
  * ne demande pas — le droit d'envoyer du courrier au nom de l'utilisateur.
  *
- * Le choix du libellé se fait avant de ranger, pas après : l'utilisateur voit
- * où le message va partir au moment où il décide, plutôt que de l'apprendre par
- * un message de confirmation.
+ * « Archiver » ouvre une fenêtre plutôt que d'agir aussitôt. Archiver, c'est
+ * faire disparaître un message de la boîte : mieux vaut dire où il va avant
+ * qu'après.
  */
 function BarreDeReponse({
   message,
@@ -231,14 +235,16 @@ function BarreDeReponse({
   enCours,
   onRepondre,
   onRanger,
+  onCreerLibelle,
 }: {
   message: MessageAffiche
   libelles: LibelleGmail[]
   enCours: boolean
   onRepondre: (message: MessageAffiche) => void
   onRanger: (id: string, libelle?: string) => void
+  onCreerLibelle: (nom: string) => Promise<void>
 }) {
-  const [destination, setDestination] = useState('')
+  const [rangement, setRangement] = useState(false)
 
   return (
     <>
@@ -251,33 +257,129 @@ function BarreDeReponse({
         Répondre
       </Bouton>
 
-      <Bouton
-        icone="archive"
-        onClick={() => onRanger(message.id, destination || undefined)}
-        disabled={enCours}
-      >
+      <Bouton icone="archive" onClick={() => setRangement(true)} disabled={enCours}>
         Archiver
       </Bouton>
 
-      {libelles.length > 0 && (
-        <label className="inline-flex items-center gap-2 text-[12px]" style={{ color: 'var(--sub)' }}>
-          dans
-          <select
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            aria-label="Libellé de destination"
-            className="bouton bouton-neutre rounded-lg px-3 py-2 text-xs font-semibold"
-            style={{ color: 'var(--fg)' }}
-          >
-            <option value="">Aucun libellé</option>
-            {libelles.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.nom}
-              </option>
-            ))}
-          </select>
-        </label>
+      {rangement && (
+        <Modale
+          titre="Archiver ce message"
+          sous="Il quittera la boîte de réception. Rien n'est supprimé."
+          onFermer={() => setRangement(false)}
+        >
+          <ChoixDeRangement
+            libelles={libelles}
+            enCours={enCours}
+            onCreerLibelle={onCreerLibelle}
+            onValider={(libelle) => {
+              setRangement(false)
+              onRanger(message.id, libelle)
+            }}
+            onAnnuler={() => setRangement(false)}
+          />
+        </Modale>
       )}
     </>
+  )
+}
+
+/** Où ranger le message : nulle part, sous un libellé, ou sous un nouveau. */
+function ChoixDeRangement({
+  libelles,
+  enCours,
+  onCreerLibelle,
+  onValider,
+  onAnnuler,
+}: {
+  libelles: LibelleGmail[]
+  enCours: boolean
+  onCreerLibelle: (nom: string) => Promise<void>
+  onValider: (libelle?: string) => void
+  onAnnuler: () => void
+}) {
+  const [choix, setChoix] = useState('')
+  const [nouveau, setNouveau] = useState('')
+  const [creation, setCreation] = useState(false)
+
+  const creer = async () => {
+    const nom = nouveau.trim()
+    if (!nom || creation) return
+
+    setCreation(true)
+    try {
+      await onCreerLibelle(nom)
+      setNouveau('')
+    } finally {
+      setCreation(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-semibold">Ranger sous</span>
+        <select
+          value={choix}
+          onChange={(e) => setChoix(e.target.value)}
+          autoFocus
+          className="bouton bouton-neutre rounded-xl px-3 py-2.5 text-[13px] font-semibold"
+          style={{ color: 'var(--fg)' }}
+        >
+          <option value="">Aucun libellé — simplement archiver</option>
+          {libelles.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.nom}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-semibold">Ou créer un libellé</span>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={nouveau}
+            onChange={(e) => setNouveau(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void creer()
+              }
+            }}
+            placeholder="Factures, Voyages…"
+            aria-label="Nom du nouveau libellé"
+            className="selectionnable min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-[13px] outline-none"
+            style={{
+              background: 'var(--sunk)',
+              borderColor: 'var(--line)',
+              color: 'var(--fg)',
+            }}
+          />
+          <Bouton
+            onClick={() => void creer()}
+            disabled={!nouveau.trim() || creation}
+            icone="add"
+          >
+            {creation ? 'Création…' : 'Créer'}
+          </Bouton>
+        </div>
+        <p className="text-[12px]" style={{ color: 'var(--sub)' }}>
+          Le libellé sera créé dans Gmail et vous le retrouverez partout.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <Bouton onClick={onAnnuler}>Annuler</Bouton>
+        <Bouton
+          variante="principal"
+          icone="archive"
+          onClick={() => onValider(choix || undefined)}
+          disabled={enCours}
+        >
+          Archiver
+        </Bouton>
+      </div>
+    </div>
   )
 }
