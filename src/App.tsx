@@ -354,7 +354,7 @@ export default function App() {
               aria-label={repliee ? 'Déplier la barre' : 'Replier la barre'}
               className="bouton bouton-icone mx-auto flex-none rounded-lg p-1.5"
             >
-              <Icone nom={repliee ? 'chevron_right' : 'chevron_left'} taille={17} />
+              <Icone nom={repliee ? 'left_panel_open' : 'left_panel_close'} taille={18} />
             </button>
           </div>
 
@@ -419,7 +419,11 @@ export default function App() {
                 onClick={() => void agir(async () => (await relever(), null))}
                 disabled={enCours || premierReleve}
                 title={repliee ? 'Actualiser la boîte' : undefined}
-                className="bouton bouton-doux flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold"
+                // Replié, il prend la forme des entrées de navigation : un pavé
+                // large au milieu de carrés se lisait comme un élément étranger.
+                className={`bouton bouton-doux flex items-center gap-3 rounded-lg py-2 text-left text-[13px] font-semibold ${
+                  repliee ? 'w-fit px-2.5' : 'w-full px-2.5'
+                }`}
               >
                 <span className="flex h-7 w-7 flex-none items-center justify-center">
                   <Icone
@@ -582,7 +586,6 @@ export default function App() {
             <Courrier
               messages={parCategorie[vue]}
               chargement={premierReleve}
-              sombre={sombre}
               regles={regles?.automations ?? []}
               proposition={PROPOSITIONS[vue]}
               logos={logos}

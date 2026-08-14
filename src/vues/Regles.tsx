@@ -91,11 +91,11 @@ export function Regles({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className="flex flex-none items-center gap-4 border-b px-8 py-4"
+        className="flex flex-none items-stretch gap-4 border-b px-8 py-4"
         style={{ borderColor: 'var(--line)' }}
       >
         <div
-          className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3.5"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3.5 py-2.5"
           style={{ background: 'var(--sunk)' }}
         >
           {/* Sans `compenser` : le relèvement optique vise l'alignement sur des
@@ -107,7 +107,7 @@ export function Regles({
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Rechercher une règle par nom ou adresse"
             aria-label="Rechercher une règle"
-            className="selectionnable min-w-0 flex-1 bg-transparent text-[13.5px] outline-none"
+            className="selectionnable min-w-0 flex-1 bg-transparent text-[13.5px] leading-5 outline-none"
             style={{ color: 'var(--fg)' }}
           />
         </div>
@@ -116,7 +116,7 @@ export function Regles({
           type="button"
           onClick={() => setFormulaireOuvert(true)}
           aria-haspopup="dialog"
-          className="bouton bouton-principal inline-flex h-10 flex-none items-center justify-center gap-2 rounded-xl px-4 text-[13px] leading-none font-semibold"
+          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 self-stretch rounded-xl px-4 text-[13px] leading-none font-semibold"
         >
           <Icone nom="playlist_add_check" taille={15} rempli compenser />
           Ajouter une règle
@@ -125,7 +125,7 @@ export function Regles({
         <div
           role="tablist"
           aria-label="Filtrer par catégorie"
-          className="flex h-10 flex-none items-center gap-1 rounded-xl px-1"
+          className="flex flex-none items-center gap-1 self-stretch rounded-xl px-1"
           style={{ background: 'var(--sunk)' }}
         >
           {ONGLETS.map((o) => {

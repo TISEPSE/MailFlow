@@ -9,7 +9,6 @@
 import { useEffect, useState } from 'react'
 import {
   Bouton,
-  Etiquette,
   Icone,
   Modale,
   Selecteur,
@@ -19,7 +18,7 @@ import {
 } from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
-import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
+
 import { nouvelleRegle } from '../lib/regles'
 import { messageCorps } from '../lib/tauri'
 import type {
@@ -48,7 +47,6 @@ export function Courrier({
   proposition,
   regles,
   onCreerRegle,
-  sombre,
   logos,
   onOuvrir,
   corpsConnus,
@@ -65,7 +63,6 @@ export function Courrier({
   proposition?: Proposition
   regles: Regle[]
   onCreerRegle: (regle: Regle) => Promise<void>
-  sombre: boolean
   logos: Record<string, string>
   /** Ouvrir un message le marque comme lu chez Gmail. */
   onOuvrir: (id: string) => void
@@ -147,8 +144,6 @@ export function Courrier({
     }
   }
 
-  const [encre, fond] = ton(choisi.categorie, sombre)
-
   return (
     <div className="flex min-h-0 flex-1">
       <ListeMessages
@@ -167,12 +162,6 @@ export function Courrier({
         logos={logos}
         actions={
           <>
-            <Etiquette
-              texte={LIBELLE_CATEGORIE[choisi.categorie]}
-              fond={fond}
-              couleur={encre}
-            />
-
             {onRepondre && onRanger && (
               <BarreDeReponse
                 message={choisi}
@@ -351,7 +340,7 @@ function ChoixDeRangement({
             }}
             placeholder="Factures, Voyages…"
             aria-label="Nom du nouveau libellé"
-            className="selectionnable h-11 min-w-0 flex-1 rounded-xl border px-3.5 text-[13px] outline-none"
+            className="selectionnable min-w-0 flex-1 rounded-xl border px-3.5 py-3 text-[13px] leading-5 outline-none"
             style={{
               background: 'var(--sunk)',
               borderColor: 'var(--line)',
@@ -362,7 +351,7 @@ function ChoixDeRangement({
             onClick={() => void creer()}
             disabled={!nouveau.trim() || creation}
             icone="add"
-            className="h-11 rounded-xl px-4"
+            className="self-stretch rounded-xl px-4"
           >
             {creation ? 'Création…' : 'Créer'}
           </Bouton>

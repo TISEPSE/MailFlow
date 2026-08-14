@@ -602,7 +602,7 @@ export function Selecteur<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={ouvert}
         aria-label={libelle}
-        className="bouton bouton-neutre flex h-11 w-full items-center gap-2 rounded-xl px-3.5 text-left text-[13px] leading-none font-semibold"
+        className="bouton bouton-neutre flex w-full items-center gap-2 rounded-xl px-3.5 py-3 text-left text-[13px] leading-5 font-semibold"
       >
         <span className="min-w-0 flex-1 truncate">{choisi?.texte}</span>
         <Icone
