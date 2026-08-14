@@ -22,7 +22,13 @@ import {
 } from '../composants/base'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
 import { adresseValide, nouvelleRegle, phrase } from '../lib/regles'
-import type { ActionRegle, Categorie, Regle } from '../types/backend'
+import type {
+  ActionRegle,
+  Categorie,
+  LibelleGmail,
+  MessageAffiche,
+  Regle,
+} from '../types/backend'
 
 const ONGLETS = ['Toutes', 'Publicités', 'Newsletters', 'Formations'] as const
 type Onglet = (typeof ONGLETS)[number]
@@ -54,12 +60,17 @@ export function Regles({
   onBasculer,
   onSupprimer,
   onCreerRegle,
+  expediteurs,
+  libelles,
   sombre,
 }: {
   regles: Regle[]
   onBasculer: (id: string) => Promise<void>
   onSupprimer: (id: string) => Promise<void>
   onCreerRegle: (regle: Regle) => Promise<void>
+  /** Expéditeurs de la boîte, proposés à la saisie. */
+  expediteurs: MessageAffiche[]
+  libelles: LibelleGmail[]
   sombre: boolean
 }) {
   const [onglet, setOnglet] = useState<Onglet>('Toutes')
@@ -97,17 +108,19 @@ export function Regles({
         style={{ borderColor: 'var(--line)' }}
       >
         <div
-          className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-4"
+          className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3.5"
           style={{ background: 'var(--sunk)' }}
         >
-          <Icone nom="search" taille={17} compenser style={{ color: 'var(--sub)' }} />
+          {/* Sans `compenser` : le relèvement optique vise l'alignement sur des
+              capitales, pas le centrage dans un champ de saisie. */}
+          <Icone nom="search" taille={17} style={{ color: 'var(--sub)' }} />
           <input
             type="text"
             value={recherche}
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Rechercher une règle par nom ou adresse"
             aria-label="Rechercher une règle"
-            className="selectionnable min-w-0 flex-1 bg-transparent text-[14px] outline-none"
+            className="selectionnable min-w-0 flex-1 bg-transparent text-[13.5px] outline-none"
             style={{ color: 'var(--fg)' }}
           />
         </div>
@@ -115,7 +128,7 @@ export function Regles({
         <div
           role="tablist"
           aria-label="Filtrer par catégorie"
-          className="flex h-11 flex-none items-center gap-1 rounded-xl px-1.5"
+          className="flex h-10 flex-none items-center gap-1 rounded-xl px-1"
           style={{ background: 'var(--sunk)' }}
         >
           {ONGLETS.map((o) => {
@@ -127,7 +140,7 @@ export function Regles({
                 role="tab"
                 aria-selected={actif}
                 onClick={() => setOnglet(o)}
-                className="flex h-8 items-center rounded-lg px-5 text-[13.5px] leading-none font-semibold whitespace-nowrap transition-colors"
+                className="flex h-8 items-center rounded-lg px-4 text-[13px] leading-none font-semibold whitespace-nowrap transition-colors"
                 style={{
                   background: actif ? 'var(--card)' : 'transparent',
                   color: actif ? 'var(--fg)' : 'var(--sub)',
@@ -235,6 +248,8 @@ export function Regles({
           onFermer={() => setFormulaireOuvert(false)}
         >
           <FormulaireAjout
+            expediteurs={expediteurs}
+            libelles={libelles}
             onAnnuler={() => setFormulaireOuvert(false)}
             onValider={async (regle) => {
               await onCreerRegle(regle)
@@ -263,21 +278,33 @@ function decompte(n: number): string {
 function FormulaireAjout({
   onValider,
   onAnnuler,
+  expediteurs,
+  libelles,
 }: {
   onValider: (regle: Regle) => Promise<void>
   onAnnuler: () => void
+  expediteurs: MessageAffiche[]
+  libelles: LibelleGmail[]
 }) {
   const [adresse, setAdresse] = useState('')
   const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>('Publicités')
   const [libelleAction, setLibelleAction] = useState<LibelleAction>('Archiver')
+  const [destination, setDestination] = useState('')
   const [enCours, setEnCours] = useState(false)
 
   const valide = adresseValide(adresse)
-  const regle = nouvelleRegle({
-    adresse: valide ? adresse : 'exemple@domaine.fr',
-    categorie: CATEGORIE_ONGLET[categorie],
-    action: ACTION[libelleAction],
-  })
+  const archive = ACTION[libelleAction] === 'archiver_automatique'
+
+  const regle = {
+    ...nouvelleRegle({
+      adresse: valide ? adresse : 'exemple@domaine.fr',
+      categorie: CATEGORIE_ONGLET[categorie],
+      action: ACTION[libelleAction],
+    }),
+    // La destination n'a de sens que pour un archivage : une règle qui met à la
+    // corbeille avec un libellé promettrait un rangement qui n'aura pas lieu.
+    ...(archive && destination ? { libelle: destination } : {}),
+  }
 
   const enregistrer = async () => {
     if (!valide || enCours) return
@@ -297,18 +324,7 @@ function FormulaireAjout({
       }}
       className="flex flex-col gap-4"
     >
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
-        <input
-          type="text"
-          value={adresse}
-          onChange={(e) => setAdresse(e.target.value)}
-          placeholder="promo@offres-tech.fr"
-          autoFocus
-          className="selectionnable rounded-xl border px-4 py-2.5 font-mono text-[13px] outline-none"
-          style={{ background: 'var(--card)', borderColor: 'var(--line)', color: 'var(--fg)' }}
-        />
-      </label>
+      <ChampAdresse adresse={adresse} onChange={setAdresse} expediteurs={expediteurs} />
 
       <div className="flex flex-wrap items-center gap-6">
         <Champ titre="Catégorie">
@@ -330,6 +346,25 @@ function FormulaireAjout({
         </Champ>
       </div>
 
+      {archive && (
+        <Champ titre="Ranger sous">
+          <select
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            aria-label="Libellé de destination"
+            className="bouton bouton-neutre w-full rounded-xl px-3 py-2.5 text-[13px] font-semibold"
+            style={{ color: 'var(--fg)' }}
+          >
+            <option value="">Aucun libellé — simplement archiver</option>
+            {libelles.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nom}
+              </option>
+            ))}
+          </select>
+        </Champ>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <div
           className="min-w-0 flex-1 text-[13px]"
@@ -349,6 +384,97 @@ function FormulaireAjout({
         <Bouton onClick={onAnnuler}>Annuler</Bouton>
       </div>
     </form>
+  )
+}
+
+/**
+ * Saisie de l'adresse, avec les expéditeurs de la boîte en suggestion.
+ *
+ * Taper une adresse de mémoire est le moyen le plus sûr de se tromper d'une
+ * lettre — et une règle qui vise une adresse inexistante ne se déclenche jamais
+ * sans rien dire. Les propositions viennent des messages réellement reçus.
+ */
+function ChampAdresse({
+  adresse,
+  onChange,
+  expediteurs,
+}: {
+  adresse: string
+  onChange: (v: string) => void
+  expediteurs: MessageAffiche[]
+}) {
+  const [ouvert, setOuvert] = useState(false)
+
+  const q = adresse.trim().toLowerCase()
+  const propositions = Array.from(
+    new Map(
+      expediteurs
+        .filter((m) => m.adresse)
+        .filter(
+          (m) =>
+            !q ||
+            m.adresse.toLowerCase().includes(q) ||
+            m.nom.toLowerCase().includes(q),
+        )
+        .map((m) => [m.adresse, m] as const),
+    ).values(),
+  ).slice(0, 6)
+
+  const montrer = ouvert && propositions.length > 0 && propositions[0]?.adresse !== q
+
+  return (
+    <label className="relative flex flex-col gap-1.5">
+      <span className="text-[12.5px] font-semibold">Adresse de l'expéditeur</span>
+      <input
+        type="text"
+        value={adresse}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setOuvert(true)
+        }}
+        onFocus={() => setOuvert(true)}
+        // `blur` est retardé : sans ce délai, la liste disparaîtrait avant que
+        // le clic sur une proposition n'ait le temps d'aboutir.
+        onBlur={() => window.setTimeout(() => setOuvert(false), 120)}
+        placeholder="promo@offres-tech.fr"
+        autoFocus
+        autoComplete="off"
+        className="selectionnable rounded-xl border px-4 py-2.5 font-mono text-[13px] outline-none"
+        style={{ background: 'var(--sunk)', borderColor: 'var(--line)', color: 'var(--fg)' }}
+      />
+
+      {montrer && (
+        <div
+          className="absolute top-full right-0 left-0 z-10 mt-1 overflow-hidden rounded-xl border p-1"
+          style={{
+            background: 'var(--card)',
+            borderColor: 'var(--line)',
+            boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
+          }}
+        >
+          {propositions.map((m) => (
+            <button
+              key={m.adresse}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                onChange(m.adresse)
+                setOuvert(false)
+              }}
+              className="survolable flex w-full flex-col rounded-lg px-2.5 py-1.5 text-left"
+            >
+              <span className="truncate text-[12.5px] font-semibold">{m.nom}</span>
+              <span
+                className="truncate font-mono text-[11px]"
+                style={{ color: 'var(--sub)' }}
+              >
+                {m.adresse}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </label>
   )
 }
 

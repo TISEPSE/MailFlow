@@ -299,21 +299,27 @@ function CarteCompte({
         )}
       </div>
 
-      {listeOuverte && connecte && (
-        <ChoixDeCompte
-          autres={autres}
-          enCours={enCours}
-          bloque={bloque}
-          onBasculer={(a) => {
-            setListeOuverte(false)
-            onBasculer(a)
-          }}
-          onAjouterCompte={() => {
-            setListeOuverte(false)
-            onAjouterCompte()
-          }}
-          onOublierCompte={onOublierCompte}
-        />
+      {/* Toujours monté, replié par la grille : c'est ce qui permet à la
+          fermeture de s'animer au lieu de faire sauter tout ce qui suit. */}
+      {connecte && (
+        <div className="deplie w-full" data-ouvert={listeOuverte} aria-hidden={!listeOuverte}>
+          <div>
+            <ChoixDeCompte
+              autres={autres}
+              enCours={enCours}
+              bloque={bloque}
+              onBasculer={(a) => {
+                setListeOuverte(false)
+                onBasculer(a)
+              }}
+              onAjouterCompte={() => {
+                setListeOuverte(false)
+                onAjouterCompte()
+              }}
+              onOublierCompte={onOublierCompte}
+            />
+          </div>
+        </div>
       )}
     </div>
   )

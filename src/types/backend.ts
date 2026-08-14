@@ -91,6 +91,8 @@ export interface Regle {
   active: boolean
   /** `AAAA-MM-JJ`. */
   date_ajout: string
+  /** Identifiant du libellé Gmail de destination, pour un archivage. */
+  libelle?: string
   frequence?: 'tous_les_vendredis'
   /** `HH:MM`. */
   heure_execution?: string

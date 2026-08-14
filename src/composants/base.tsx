@@ -368,15 +368,21 @@ export function Modale({
         // formulaire et relâché dehors ne doit pas fermer la fenêtre.
         if (e.target === e.currentTarget) onFermer()
       }}
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-8"
-      style={{ background: 'rgb(0 0 0 / 45%)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-8"
+      style={{
+        background: 'rgb(0 0 0 / 40%)',
+        // Le flou détache la fenêtre de la page sans l'effacer : on voit encore
+        // où l'on est, sans pouvoir lire ce qui est derrière.
+        backdropFilter: 'blur(10px) saturate(120%)',
+        WebkitBackdropFilter: 'blur(10px) saturate(120%)',
+      }}
     >
       <div
         ref={cadre}
         role="dialog"
         aria-modal="true"
         aria-label={titre}
-        className="mt-[8vh] w-full max-w-lg rounded-2xl border"
+        className="apparait my-auto w-full max-w-lg rounded-2xl border"
         style={{
           background: 'var(--card)',
           borderColor: 'var(--line)',

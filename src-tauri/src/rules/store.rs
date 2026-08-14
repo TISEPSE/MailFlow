@@ -133,6 +133,7 @@ mod tests {
                 action: Action::SupprimerToujours,
                 active: true,
                 date_ajout: NaiveDate::from_ymd_opt(2026, 8, 13).unwrap(),
+                libelle: None,
                 frequence: None,
                 heure_execution: None,
             }],

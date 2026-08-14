@@ -451,10 +451,15 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
 
         for operation in operations {
             let issue = match operation {
-                OperationGmail::RetirerLibelles { ids, libelles } => {
+                OperationGmail::ModifierLibelles {
+                    ids,
+                    ajouter,
+                    retirer,
+                } => {
                     let corps = serde_json::json!({
                         "ids": ids,
-                        "removeLabelIds": libelles,
+                        "addLabelIds": ajouter,
+                        "removeLabelIds": retirer,
                     })
                     .to_string();
                     self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
@@ -468,7 +473,7 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
 
             match issue {
                 Ok(_) => match operation {
-                    OperationGmail::RetirerLibelles { ids, .. } => rapport.archives += ids.len(),
+                    OperationGmail::ModifierLibelles { ids, .. } => rapport.archives += ids.len(),
                     OperationGmail::MettreALaCorbeille { .. } => rapport.mis_a_la_corbeille += 1,
                 },
 
@@ -766,9 +771,10 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn l_archivage_envoie_un_seul_appel_par_lot() {
         let c = client(vec![ok("")]);
-        let ops = vec![OperationGmail::RetirerLibelles {
+        let ops = vec![OperationGmail::ModifierLibelles {
             ids: vec!["m1".into(), "m2".into()],
-            libelles: vec!["INBOX".into()],
+            ajouter: Vec::new(),
+            retirer: vec!["INBOX".into()],
         }];
 
         let rapport = c.client.appliquer(&ops).await;

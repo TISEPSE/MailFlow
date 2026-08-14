@@ -99,6 +99,14 @@ pub struct Rule {
     pub active: bool,
     pub date_ajout: NaiveDate,
 
+    /// Libellé Gmail sous lequel ranger, en plus de sortir de la boîte.
+    ///
+    /// Sans objet pour une mise à la corbeille. Contient l'identifiant Gmail du
+    /// libellé, pas son nom : l'utilisateur peut le renommer sans que la règle
+    /// cesse de fonctionner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub libelle: Option<String>,
+
     /// Present uniquement pour les actions récurrentes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frequence: Option<Frequence>,
@@ -237,6 +245,7 @@ mod tests {
             action,
             active: true,
             date_ajout: NaiveDate::from_ymd_opt(2026, 8, 13).unwrap(),
+            libelle: None,
             frequence: None,
             heure_execution: None,
         }

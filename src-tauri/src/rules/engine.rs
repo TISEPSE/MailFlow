@@ -58,6 +58,9 @@ pub struct EntreePlan {
     pub message_id: String,
     pub action: ActionPlanifiee,
     pub regle_id: String,
+
+    /// Libellé de destination, quand la règle en désigne un.
+    pub libelle: Option<String>,
 }
 
 /// Une règle récurrente n'agit que dans sa fenêtre d'exécution.
@@ -147,6 +150,7 @@ pub fn planifier(
                 message_id: message.id.clone(),
                 action,
                 regle_id: regle.id.clone(),
+                libelle: regle.libelle.clone(),
             });
         }
     }
@@ -169,6 +173,7 @@ mod tests {
             action,
             active: true,
             date_ajout: NaiveDate::from_ymd_opt(2026, 8, 13).unwrap(),
+            libelle: None,
             frequence: None,
             heure_execution: None,
         }
@@ -202,6 +207,7 @@ mod tests {
                 message_id: "msg_1".into(),
                 action: ActionPlanifiee::MettreALaCorbeille,
                 regle_id: "rule_01".into(),
+                libelle: None,
             }]
         );
     }
@@ -226,6 +232,7 @@ mod tests {
                 message_id: "msg_1".into(),
                 action: ActionPlanifiee::RetirerDeLaBoiteDeReception,
                 regle_id: "rule_02".into(),
+                libelle: None,
             }]
         );
     }

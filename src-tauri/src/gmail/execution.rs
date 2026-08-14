@@ -26,9 +26,10 @@ pub const LOT_MAX: usize = 1000;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OperationGmail {
     /// `users.messages.batchModify`.
-    RetirerLibelles {
+    ModifierLibelles {
         ids: Vec<String>,
-        libelles: Vec<String>,
+        ajouter: Vec<String>,
+        retirer: Vec<String>,
     },
 
     /// `users.messages.trash`, un message à la fois.
@@ -39,7 +40,7 @@ impl OperationGmail {
     /// Nombre de messages concernés, pour le décompte du rapport.
     pub fn nombre_de_messages(&self) -> usize {
         match self {
-            Self::RetirerLibelles { ids, .. } => ids.len(),
+            Self::ModifierLibelles { ids, .. } => ids.len(),
             Self::MettreALaCorbeille { .. } => 1,
         }
     }
@@ -64,7 +65,12 @@ pub struct RapportExecution {
 /// plan (voir [`crate::rules::planifier`]). Sans elle, un même message pourrait
 /// être archivé et jeté dans la même passe.
 pub fn operations(plan: &[EntreePlan]) -> Vec<OperationGmail> {
-    let mut a_archiver: Vec<String> = Vec::new();
+    // Les archivages sont groupés par destination : un même appel ne peut poser
+    // qu'un jeu de libellés, et mélanger les destinations rangerait les messages
+    // n'importe où. `BTreeMap` pour que l'ordre des appels soit reproductible,
+    // donc testable.
+    let mut a_archiver: std::collections::BTreeMap<Option<String>, Vec<String>> =
+        std::collections::BTreeMap::new();
     let mut a_jeter: Vec<OperationGmail> = Vec::new();
 
     for entree in plan {
@@ -72,7 +78,10 @@ pub fn operations(plan: &[EntreePlan]) -> Vec<OperationGmail> {
             // Les deux mènent au même appel : côté Gmail, « résumer puis
             // archiver » n'est qu'un archivage. Le résumé se fait ailleurs.
             ActionPlanifiee::RetirerDeLaBoiteDeReception | ActionPlanifiee::ResumerPuisArchiver => {
-                a_archiver.push(entree.message_id.clone());
+                a_archiver
+                    .entry(entree.libelle.clone())
+                    .or_default()
+                    .push(entree.message_id.clone());
             }
             ActionPlanifiee::MettreALaCorbeille => {
                 a_jeter.push(OperationGmail::MettreALaCorbeille {
@@ -83,10 +92,16 @@ pub fn operations(plan: &[EntreePlan]) -> Vec<OperationGmail> {
     }
 
     let mut ops: Vec<OperationGmail> = a_archiver
-        .chunks(LOT_MAX)
-        .map(|lot| OperationGmail::RetirerLibelles {
-            ids: lot.to_vec(),
-            libelles: vec![libelles::INBOX.to_string()],
+        .into_iter()
+        .flat_map(|(destination, ids)| {
+            let ajouter: Vec<String> = destination.into_iter().collect();
+            ids.chunks(LOT_MAX)
+                .map(|lot| OperationGmail::ModifierLibelles {
+                    ids: lot.to_vec(),
+                    ajouter: ajouter.clone(),
+                    retirer: vec![libelles::INBOX.to_string()],
+                })
+                .collect::<Vec<_>>()
         })
         .collect();
 
@@ -103,16 +118,57 @@ mod tests {
             message_id: id.into(),
             action,
             regle_id: "rule_01".into(),
+            libelle: None,
         }
     }
 
     fn ids_archives(ops: &[OperationGmail]) -> Vec<Vec<String>> {
         ops.iter()
             .filter_map(|o| match o {
-                OperationGmail::RetirerLibelles { ids, .. } => Some(ids.clone()),
+                OperationGmail::ModifierLibelles { ids, .. } => Some(ids.clone()),
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn les_archivages_sont_groupes_par_destination() {
+        // Un même appel ne peut poser qu'un jeu de libellés : mélanger les
+        // destinations rangerait les messages n'importe où.
+        let plan = vec![
+            EntreePlan {
+                message_id: "m1".into(),
+                action: ActionPlanifiee::RetirerDeLaBoiteDeReception,
+                regle_id: "r1".into(),
+                libelle: Some("L1".into()),
+            },
+            EntreePlan {
+                message_id: "m2".into(),
+                action: ActionPlanifiee::RetirerDeLaBoiteDeReception,
+                regle_id: "r2".into(),
+                libelle: None,
+            },
+            EntreePlan {
+                message_id: "m3".into(),
+                action: ActionPlanifiee::RetirerDeLaBoiteDeReception,
+                regle_id: "r3".into(),
+                libelle: Some("L1".into()),
+            },
+        ];
+
+        let ops = operations(&plan);
+
+        assert_eq!(ops.len(), 2, "une destination, un appel");
+        assert!(ops.contains(&OperationGmail::ModifierLibelles {
+            ids: vec!["m1".into(), "m3".into()],
+            ajouter: vec!["L1".into()],
+            retirer: vec![libelles::INBOX.to_string()],
+        }));
+        assert!(ops.contains(&OperationGmail::ModifierLibelles {
+            ids: vec!["m2".into()],
+            ajouter: Vec::new(),
+            retirer: vec![libelles::INBOX.to_string()],
+        }));
     }
 
     #[test]
@@ -145,9 +201,10 @@ mod tests {
 
         assert_eq!(
             ops,
-            [OperationGmail::RetirerLibelles {
+            [OperationGmail::ModifierLibelles {
                 ids: vec!["m1".into()],
-                libelles: vec![libelles::INBOX.into()],
+                ajouter: Vec::new(),
+                retirer: vec![libelles::INBOX.into()],
             }]
         );
     }

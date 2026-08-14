@@ -23,7 +23,7 @@ export function ListeMessages({
 }) {
   return (
     <div
-      className="flex w-[368px] flex-none flex-col overflow-y-auto border-r"
+      className="flex w-[352px] flex-none flex-col overflow-y-auto border-r"
       // `--sunk` plutôt que `--side` : c'est ce fond qui fait le gris des
       // messages lus, et il doit se distinguer du blanc d'un message non lu
       // autant que de la barre latérale, qui le jouxte.
@@ -40,15 +40,20 @@ export function ListeMessages({
             onClick={() => onSelect(m.id)}
             aria-current={choisi}
             data-neuf={neuf}
-            className="tuile flex items-start gap-3 border-b px-4 py-3 text-left"
+            className="tuile relative flex items-start gap-2.5 border-b py-2.5 pr-3 pl-3 text-left"
             // Aucun fond en style en ligne : il l'emporterait sur les règles de
             // survol et de sélection, qui sont dans la feuille de styles.
             style={{ borderColor: 'var(--line)' }}
           >
-            <span
-              className="mt-2 h-1.5 w-1.5 flex-none rounded-full"
-              style={{ background: neuf ? 'var(--accent)' : 'transparent' }}
-            />
+            {/* La pastille de non-lu passe en repère absolu : en colonne, elle
+                coûtait une vingtaine de pixels à toutes les tuiles, y compris
+                aux messages lus qui n'en ont pas l'usage. */}
+            {neuf && (
+              <span
+                className="absolute top-1/2 left-[3px] h-1.5 w-1.5 -translate-y-1/2 rounded-full"
+                style={{ background: 'var(--accent)' }}
+              />
+            )}
             <Pastille
               texte={initiales(m.nom)}
               fond={fond}

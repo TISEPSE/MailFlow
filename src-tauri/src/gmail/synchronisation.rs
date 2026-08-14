@@ -112,6 +112,7 @@ mod tests {
             action,
             active,
             date_ajout: NaiveDate::from_ymd_opt(2026, 8, 14).unwrap(),
+            libelle: None,
             frequence: None,
             heure_execution: None,
         }

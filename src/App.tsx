@@ -219,9 +219,12 @@ export default function App() {
     } catch (e) {
       annoncer(messageDErreur(e), true)
     } finally {
-      setEnCours(false)
+      // Le rafraîchissement fait partie de l'action : rendre la main avant lui
+      // arrêtait l'animation alors que la boîte se chargeait encore, ce qui
+      // laissait croire que le travail était fini.
       const sante = await rafraichir()
       if (sante?.compteConnecte) await relever()
+      setEnCours(false)
     }
   }
 
@@ -464,7 +467,7 @@ export default function App() {
                   disabled={enCours}
                   enAttente={enCours}
                 >
-                  {enCours ? 'Relevé en cours…' : 'Actualiser'}
+                  {enCours ? 'Recherche…' : 'Actualiser'}
                 </Bouton>
               )}
             </EnTete>
@@ -522,6 +525,8 @@ export default function App() {
           ) : vue === 'regles' ? (
             <Regles
               regles={regles?.automations ?? []}
+              expediteurs={boite}
+              libelles={libelles}
               sombre={sombre}
               onBasculer={(id) => agir(async () => (setRegles(await regleBasculer(id)), null))}
               onSupprimer={(id) => agir(async () => (setRegles(await regleSupprimer(id)), 'Règle supprimée.'))}

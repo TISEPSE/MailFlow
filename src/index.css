@@ -358,3 +358,36 @@ button:not(:disabled),
     animation: none;
   }
 }
+
+/* Ouverture et fermeture sans à-coup d'un bloc de hauteur inconnue.
+
+   `grid-template-rows` de `0fr` à `1fr` est le seul moyen d'animer vers une
+   hauteur automatique : une hauteur maximale devinée serait soit trop courte —
+   le contenu se ferait couper — soit trop grande, et l'animation traînerait
+   dans le vide. Sans cela, la fermeture faisait sauter d'un coup tout ce qui
+   se trouve en dessous. */
+.deplie {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition:
+    grid-template-rows 200ms ease,
+    opacity 200ms ease;
+  opacity: 0;
+}
+
+.deplie[data-ouvert='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* L'enfant doit pouvoir se réduire à zéro, ce que `min-height: auto` empêche. */
+.deplie > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deplie {
+    transition: none;
+  }
+}

@@ -104,6 +104,7 @@ mod tests {
                 action: Action::ArchiverAutomatique,
                 active: true,
                 date_ajout: NaiveDate::from_ymd_opt(2026, 8, 14).unwrap(),
+                libelle: None,
                 frequence: None,
                 heure_execution: None,
             }],
