@@ -16,6 +16,7 @@ use chrono::{Local, Utc};
 use crate::auth::flux::ClientOAuth;
 use crate::auth::session::SessionAuth;
 use crate::auth::{DELAI_AUTORISATION, connecter};
+use crate::comptes::{self, Annuaire};
 use crate::config;
 use crate::error::{AppError, Resultat};
 use crate::gmail::boite::{MessageAffiche, charger_boite};
@@ -212,8 +213,19 @@ pub async fn google_connecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
 
 /// Déconnecte le compte et révoque l'autorisation chez Google.
 #[tauri::command]
-pub async fn google_deconnecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
+pub async fn google_deconnecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<()> {
     let a_revoquer = etat.session.lock().await.fermer()?;
+
+    // Le compte quitte aussi l'annuaire : son autorisation est rendue à Google,
+    // le proposer encore dans la liste des comptes serait promettre une bascule
+    // qui échouerait.
+    if let Ok(dossier) = dossier_config(&app) {
+        let mut annuaire = comptes::charger(&dossier);
+        if let Some(actif) = annuaire.actif.clone() {
+            annuaire.oublier(&actif);
+            let _ = comptes::ecrire(&dossier, &annuaire);
+        }
+    }
 
     // Le trousseau est déjà vide à ce stade : même si la révocation échoue
     // (machine hors ligne), l'utilisateur est bien déconnecté localement.
@@ -339,6 +351,121 @@ pub async fn compte_adresse(etat: State<'_, EtatAuth>) -> Resultat<Option<String
     client.adresse_du_compte().await.map(Some)
 }
 
+/// Un compte connu de l'annuaire, tel que l'interface le liste.
+#[derive(Debug, Serialize)]
+pub struct CompteConnu {
+    pub adresse: String,
+    pub nom: Option<String>,
+    pub actif: bool,
+}
+
+/// Comptes déjà autorisés, le premier étant l'actif.
+///
+/// Ne consomme aucun quota et ne touche pas au réseau : la liste vient du
+/// fichier d'annuaire, les jetons restent dans le trousseau.
+#[tauri::command]
+pub async fn comptes_lister(app: AppHandle) -> Resultat<Vec<CompteConnu>> {
+    let annuaire = comptes::charger(&dossier_config(&app)?);
+    Ok(en_liste(&annuaire))
+}
+
+fn en_liste(annuaire: &Annuaire) -> Vec<CompteConnu> {
+    let mut liste: Vec<CompteConnu> = annuaire
+        .connus
+        .iter()
+        .map(|c| CompteConnu {
+            adresse: c.adresse.clone(),
+            nom: c.nom.clone(),
+            actif: annuaire.actif.as_deref() == Some(c.adresse.as_str()),
+        })
+        .collect();
+
+    // L'actif d'abord : c'est celui dont l'interface parle au présent.
+    liste.sort_by_key(|c| !c.actif);
+    liste
+}
+
+/// Bascule sur un compte déjà autorisé, sans repasser par Google.
+///
+/// C'est tout l'intérêt de garder les jetons : l'utilisateur retrouve son autre
+/// boîte immédiatement, sans navigateur ni mot de passe.
+#[tauri::command]
+pub async fn compte_basculer(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    adresse: String,
+) -> Resultat<()> {
+    let dossier = dossier_config(&app)?;
+    let mut annuaire = comptes::charger(&dossier);
+
+    let mut session = etat.session.lock().await;
+    session.basculer(|secrets| comptes::basculer(secrets, &mut annuaire, &adresse))?;
+    comptes::ecrire(&dossier, &annuaire)?;
+
+    log::info!("compte actif changé");
+    Ok(())
+}
+
+/// Met le compte actif de côté et lance l'autorisation d'un autre.
+///
+/// Le jeton du compte courant n'est pas révoqué : on veut pouvoir y revenir
+/// d'un clic. C'est la différence avec `google_deconnecter`, qui, lui, rend
+/// l'autorisation à Google.
+#[tauri::command]
+pub async fn compte_ajouter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<()> {
+    let dossier = dossier_config(&app)?;
+    let mut annuaire = comptes::charger(&dossier);
+
+    {
+        let mut session = etat.session.lock().await;
+        session.basculer(|secrets| comptes::mettre_de_cote(secrets, &mut annuaire))?;
+    }
+    comptes::ecrire(&dossier, &annuaire)?;
+
+    // Si l'autorisation échoue ou est refusée, l'application se retrouve sans
+    // compte actif — mais l'ancien est en réserve, et la liste le propose
+    // toujours. Rien n'est perdu.
+    google_connecter(etat).await
+}
+
+/// Retire un compte de la liste et efface son autorisation.
+///
+/// Refuse le compte actif : le déconnecter passe par `google_deconnecter`, qui
+/// rend aussi l'autorisation à Google.
+#[tauri::command]
+pub async fn compte_oublier(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    adresse: String,
+) -> Resultat<()> {
+    let dossier = dossier_config(&app)?;
+    let mut annuaire = comptes::charger(&dossier);
+
+    if annuaire.actif.as_deref() == Some(adresse.trim().to_lowercase().as_str()) {
+        return Err(AppError::Auth(
+            "ce compte est le compte actif : déconnectez-le d'abord".into(),
+        ));
+    }
+
+    let cle = comptes::cle_compte(&adresse);
+    let jeton = etat.session.lock().await.secret(&cle)?;
+
+    // Effacé localement quoi qu'il arrive : laisser l'entrée derrière soi
+    // signifierait qu'un compte « oublié » garde une autorisation vivante.
+    etat.session.lock().await.effacer_secret(&cle)?;
+    annuaire.oublier(&adresse);
+    comptes::ecrire(&dossier, &annuaire)?;
+
+    if let (Some(jeton), Ok(client)) = (jeton, etat.client())
+        && let Err(e) = client.revoquer(&jeton).await
+    {
+        log::warn!("révocation côté Google impossible : {e}");
+    }
+
+    log::info!("compte retiré de la liste");
+    Ok(())
+}
+
 /// Qui est relié : adresse, nom affiché, photo.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct ProfilCompte {
@@ -357,7 +484,10 @@ pub struct ProfilCompte {
 /// Google. Échouer ici priverait l'utilisateur de l'information principale pour
 /// une décoration.
 #[tauri::command]
-pub async fn compte_profil(etat: State<'_, EtatAuth>) -> Resultat<Option<ProfilCompte>> {
+pub async fn compte_profil(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<Option<ProfilCompte>> {
     if !etat.session.lock().await.est_connecte()? {
         return Ok(None);
     }
@@ -367,11 +497,17 @@ pub async fn compte_profil(etat: State<'_, EtatAuth>) -> Resultat<Option<ProfilC
 
     let Ok(infos) = client.renseignements_du_compte().await else {
         log::info!("renseignements du compte indisponibles, adresse seule");
+        retenir_le_compte(&app, &adresse, None);
         return Ok(Some(ProfilCompte {
             adresse,
             ..Default::default()
         }));
     };
+
+    // C'est le seul endroit où l'adresse du compte relié est connue : c'est
+    // donc ici que l'annuaire apprend qu'il existe, sans quoi la bascule ne
+    // pourrait jamais rien proposer.
+    retenir_le_compte(&app, &adresse, infos.name.clone());
 
     let photo = match infos.picture.as_deref() {
         Some(url) => {
@@ -394,6 +530,27 @@ pub async fn compte_profil(etat: State<'_, EtatAuth>) -> Resultat<Option<ProfilC
         nom: infos.name,
         photo,
     }))
+}
+
+/// Note le compte actif dans l'annuaire.
+///
+/// Sans conséquence en cas d'échec : l'annuaire est un confort, pas une
+/// condition d'accès à la boîte. Faire échouer l'affichage du profil parce que
+/// le disque est plein serait disproportionné.
+fn retenir_le_compte(app: &AppHandle, adresse: &str, nom: Option<String>) {
+    let Ok(dossier) = dossier_config(app) else {
+        return;
+    };
+
+    let mut annuaire = comptes::charger(&dossier);
+    if annuaire.actif.as_deref() == Some(adresse) && annuaire.est_connu(adresse) && nom.is_none() {
+        return;
+    }
+
+    annuaire.retenir(adresse, nom);
+    if let Err(e) = comptes::ecrire(&dossier, &annuaire) {
+        log::warn!("annuaire des comptes non enregistré : {e}");
+    }
 }
 
 /// Client HTTP pour les images : hors API, sans jeton, HTTPS obligatoire.

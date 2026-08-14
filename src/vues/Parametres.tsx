@@ -13,11 +13,12 @@
  * revoir le stockage, les règles et le classement. La place est occupée par
  * « Changer de compte », qui, lui, fonctionne.
  */
+import { useState } from 'react'
 import { Bloc, Icone, Interrupteur, Segments } from '../composants/base'
 import { LogoGoogle } from '../composants/LogoGoogle'
 import { FREQUENCES, type Frequence } from '../lib/preferences'
 import { initiales } from '../lib/presentation'
-import type { EtatApplication, ProfilCompte } from '../types/backend'
+import type { CompteConnu, EtatApplication, ProfilCompte } from '../types/backend'
 
 const ACCENTS = ['#2F6BFF', '#1F7A5A', '#4C3BCF', '#C2410C'] as const
 
@@ -34,7 +35,10 @@ export function Parametres({
   onFrequence,
   onConnecter,
   onDeconnecter,
-  onChangerDeCompte,
+  comptes,
+  onBasculer,
+  onAjouterCompte,
+  onOublierCompte,
   enCours,
 }: {
   etat: EtatApplication
@@ -49,7 +53,10 @@ export function Parametres({
   onFrequence: (f: Frequence) => void
   onConnecter: () => void
   onDeconnecter: () => void
-  onChangerDeCompte: () => void
+  comptes: CompteConnu[]
+  onBasculer: (adresse: string) => void
+  onAjouterCompte: () => void
+  onOublierCompte: (adresse: string) => void
   enCours: boolean
 }) {
   return (
@@ -63,7 +70,10 @@ export function Parametres({
           enCours={enCours}
           onConnecter={onConnecter}
           onDeconnecter={onDeconnecter}
-          onChangerDeCompte={onChangerDeCompte}
+          comptes={comptes}
+          onBasculer={onBasculer}
+          onAjouterCompte={onAjouterCompte}
+          onOublierCompte={onOublierCompte}
         />
 
         <Bloc titre="Apparence">
@@ -85,7 +95,7 @@ export function Parametres({
             titre="Couleur d'accent"
             detail="Appliquée aux boutons, filtres et interrupteurs."
           >
-            <div className="flex flex-none gap-3">
+            <div className="flex flex-none gap-2.5">
               {ACCENTS.map((c) => (
                 <button
                   key={c}
@@ -93,7 +103,7 @@ export function Parametres({
                   onClick={() => onAccent(c)}
                   aria-label={`Couleur d'accent ${c}`}
                   aria-pressed={c === accent}
-                  className="h-8 w-8 rounded-full transition-transform hover:scale-110"
+                  className="h-7 w-7 rounded-full transition-transform hover:scale-110"
                   style={{
                     background: c,
                     outline: c === accent ? '2px solid var(--fg)' : 'none',
@@ -207,7 +217,10 @@ function CarteCompte({
   enCours,
   onConnecter,
   onDeconnecter,
-  onChangerDeCompte,
+  comptes,
+  onBasculer,
+  onAjouterCompte,
+  onOublierCompte,
 }: {
   connecte: boolean
   profil: ProfilCompte | null
@@ -216,11 +229,17 @@ function CarteCompte({
   enCours: boolean
   onConnecter: () => void
   onDeconnecter: () => void
-  onChangerDeCompte: () => void
+  comptes: CompteConnu[]
+  onBasculer: (adresse: string) => void
+  onAjouterCompte: () => void
+  onOublierCompte: (adresse: string) => void
 }) {
+  const [listeOuverte, setListeOuverte] = useState(false)
+  const autres = comptes.filter((c) => !c.actif)
+
   return (
     <div
-      className="flex flex-wrap items-center gap-5 rounded-2xl p-5"
+      className="flex flex-wrap items-center gap-4 rounded-2xl p-4"
       style={{
         background: connecte ? 'var(--accent-soft)' : 'var(--sunk)',
         border: '1px solid var(--line)',
@@ -230,13 +249,13 @@ function CarteCompte({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[17px] font-semibold">
+          <span className="truncate text-[16px] font-semibold">
             {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
           </span>
           {connecte && profil?.photo && <LogoGoogle taille={17} />}
         </div>
         <div
-          className="selectionnable truncate pt-0.5 text-[14px]"
+          className="selectionnable truncate pt-0.5 text-[13px]"
           style={{ color: 'var(--sub)' }}
         >
           {connecte
@@ -254,16 +273,14 @@ function CarteCompte({
               Déconnecter
             </BoutonCarte>
             {/* L'accent va sur l'action qui construit, pas sur celle qui
-                défait : « changer de compte » révoque puis relance le parcours
-                Google, en une seule opération pour qu'on ne puisse pas se
-                retrouver révoqué sans être reconnecté. */}
+                défait. */}
             <BoutonCarte
               principal
-              onClick={onChangerDeCompte}
+              onClick={() => setListeOuverte((o) => !o)}
               disabled={enCours || bloque}
-              icone="person"
+              icone={listeOuverte ? 'close' : 'person'}
             >
-              Changer de compte
+              {listeOuverte ? 'Fermer' : 'Changer de compte'}
             </BoutonCarte>
           </>
         ) : (
@@ -277,7 +294,149 @@ function CarteCompte({
           </BoutonCarte>
         )}
       </div>
+
+      {listeOuverte && connecte && (
+        <ChoixDeCompte
+          autres={autres}
+          enCours={enCours}
+          bloque={bloque}
+          onBasculer={(a) => {
+            setListeOuverte(false)
+            onBasculer(a)
+          }}
+          onAjouterCompte={() => {
+            setListeOuverte(false)
+            onAjouterCompte()
+          }}
+          onOublierCompte={onOublierCompte}
+        />
+      )}
     </div>
+  )
+}
+
+/**
+ * Liste des comptes déjà autorisés.
+ *
+ * Basculer ne repasse pas par Google : l'autorisation du compte visé est restée
+ * dans le trousseau, la boîte se recharge immédiatement. « Retirer » lui rend
+ * cette autorisation et l'efface — c'est irréversible, d'où la confirmation.
+ */
+function ChoixDeCompte({
+  autres,
+  enCours,
+  bloque,
+  onBasculer,
+  onAjouterCompte,
+  onOublierCompte,
+}: {
+  autres: CompteConnu[]
+  enCours: boolean
+  bloque: boolean
+  onBasculer: (adresse: string) => void
+  onAjouterCompte: () => void
+  onOublierCompte: (adresse: string) => void
+}) {
+  const [aRetirer, setARetirer] = useState<string | null>(null)
+
+  return (
+    <div
+      className="mt-1 w-full rounded-xl border p-2"
+      style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+    >
+      {autres.length === 0 ? (
+        <p className="px-3 py-2.5 text-[13px]" style={{ color: 'var(--sub)' }}>
+          Aucun autre compte enregistré. Ajoutez-en un : celui-ci restera
+          disponible, et vous pourrez passer de l'un à l'autre sans vous
+          reconnecter.
+        </p>
+      ) : (
+        autres.map((c) => (
+          <div key={c.adresse} className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onBasculer(c.adresse)}
+              disabled={enCours}
+              className="survolable min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left disabled:opacity-40"
+            >
+              <div className="truncate text-[13.5px] font-semibold">
+                {c.nom ?? c.adresse}
+              </div>
+              {c.nom && (
+                <div
+                  className="truncate font-mono text-[11px]"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  {c.adresse}
+                </div>
+              )}
+            </button>
+
+            {aRetirer === c.adresse ? (
+              <div className="flex flex-none items-center gap-1.5 pr-1">
+                <span className="text-[12px]" style={{ color: 'var(--sub)' }}>
+                  Retirer ce compte ?
+                </span>
+                <BoutonTexte
+                  onClick={() => {
+                    setARetirer(null)
+                    onOublierCompte(c.adresse)
+                  }}
+                  couleur="#C2410C"
+                >
+                  Oui
+                </BoutonTexte>
+                <BoutonTexte onClick={() => setARetirer(null)}>Non</BoutonTexte>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setARetirer(c.adresse)}
+                aria-label={`Retirer le compte ${c.adresse}`}
+                className="survolable flex-none rounded-lg p-2"
+                style={{ color: 'var(--sub)' }}
+              >
+                <Icone nom="delete" taille={17} />
+              </button>
+            )}
+          </div>
+        ))
+      )}
+
+      <div className="border-t pt-2 mt-1" style={{ borderColor: 'var(--line)' }}>
+        <button
+          type="button"
+          onClick={onAjouterCompte}
+          disabled={enCours || bloque}
+          className="survolable flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[13.5px] font-semibold disabled:opacity-40"
+          style={{ color: 'var(--accent-fg)' }}
+        >
+          <Icone nom="login" taille={17} />
+          Ajouter un compte Google
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function BoutonTexte({
+  children,
+  onClick,
+  couleur,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  couleur?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex-none rounded-md px-2 py-1 text-[12px] leading-none font-semibold transition-opacity hover:opacity-70"
+      style={{ color: couleur ?? 'var(--fg)' }}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -300,7 +459,7 @@ function BoutonCarte({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex flex-none items-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+      className="inline-flex flex-none items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
       style={
         principal
           ? { background: 'var(--accent)', color: '#FFFFFF' }
@@ -338,7 +497,7 @@ function Avatar({
       <img
         src={profil.photo}
         alt=""
-        className="h-14 w-14 flex-none rounded-full object-cover"
+        className="h-12 w-12 flex-none rounded-full object-cover"
         style={{ background: 'var(--card)' }}
       />
     )
@@ -347,10 +506,10 @@ function Avatar({
   if (!connecte) {
     return (
       <div
-        className="flex h-14 w-14 flex-none items-center justify-center rounded-full"
+        className="flex h-12 w-12 flex-none items-center justify-center rounded-full"
         style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
       >
-        <Icone nom="person_off" taille={24} style={{ color: 'var(--sub)' }} />
+        <Icone nom="person_off" taille={22} style={{ color: 'var(--sub)' }} />
       </div>
     )
   }
@@ -359,10 +518,10 @@ function Avatar({
 
   return (
     <div
-      className="flex h-14 w-14 flex-none items-center justify-center rounded-full text-[19px] font-semibold"
+      className="flex h-12 w-12 flex-none items-center justify-center rounded-full text-[17px] font-semibold"
       style={{ background: accent, color: '#FFFFFF' }}
     >
-      {nom ? initiales(nom) : <LogoGoogle taille={26} />}
+      {nom ? initiales(nom) : <LogoGoogle taille={24} />}
     </div>
   )
 }
@@ -380,16 +539,16 @@ function Reglage({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center gap-4 px-5 py-4">
+    <div className="flex items-center gap-3.5 px-4.5 py-3.5">
       <div
-        className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
+        className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px]"
         style={{ background: 'var(--sunk)' }}
       >
-        <Icone nom={icone} taille={20} style={{ color: 'var(--sub)' }} />
+        <Icone nom={icone} taille={18} style={{ color: 'var(--sub)' }} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[15px] font-semibold">{titre}</div>
-        <div className="truncate pt-0.5 text-[13px]" style={{ color: 'var(--sub)' }}>
+        <div className="text-[14px] font-semibold">{titre}</div>
+        <div className="truncate pt-0.5 text-[12.5px]" style={{ color: 'var(--sub)' }}>
           {detail}
         </div>
       </div>
@@ -401,7 +560,7 @@ function Reglage({
 function Statut({ ok }: { ok: boolean }) {
   return (
     <span
-      className="inline-flex flex-none items-center gap-1.5 text-[13px] font-semibold"
+      className="inline-flex flex-none items-center gap-1.5 text-[13px] leading-none font-semibold"
       style={{ color: ok ? 'var(--accent-fg)' : '#C2410C' }}
     >
       <Icone nom={ok ? 'check_circle' : 'error'} taille={17} rempli />

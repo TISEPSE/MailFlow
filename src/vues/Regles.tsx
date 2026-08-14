@@ -83,7 +83,7 @@ export function Regles({
           type="button"
           onClick={() => setFormulaireOuvert((o) => !o)}
           aria-expanded={formulaireOuvert}
-          className="inline-flex flex-none items-center gap-2.5 rounded-xl px-5 py-3 text-[14px] font-semibold transition-opacity hover:opacity-90"
+          className="inline-flex flex-none items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-[14px] leading-none font-semibold transition-opacity hover:opacity-90"
           style={{ background: 'var(--accent)', color: '#FFFFFF' }}
         >
           <Icone nom={formulaireOuvert ? 'close' : 'playlist_add_check'} taille={19} rempli />
@@ -136,7 +136,7 @@ export function Regles({
                 role="tab"
                 aria-selected={actif}
                 onClick={() => setOnglet(o)}
-                className="rounded-lg px-5 py-2 text-[13.5px] font-semibold whitespace-nowrap transition-colors"
+                className="rounded-lg px-5 py-2.5 text-[13.5px] leading-none font-semibold whitespace-nowrap transition-colors"
                 style={{
                   background: actif ? 'var(--card)' : 'transparent',
                   color: actif ? 'var(--fg)' : 'var(--sub)',
@@ -337,7 +337,7 @@ function FormulaireAjout({
         <button
           type="submit"
           disabled={!valide || enCours}
-          className="inline-flex flex-none items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="inline-flex flex-none items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] leading-none font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
           style={{ background: 'var(--accent)', color: '#FFFFFF' }}
         >
           Enregistrer la règle

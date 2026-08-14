@@ -11,6 +11,7 @@ import type {
   EtatApplication,
   JeuDeRegles,
   MessageAffiche,
+  CompteConnu,
   ProfilCompte,
   RapportExecution,
   Regle,
@@ -112,6 +113,26 @@ export function compteAdresse(): Promise<string | null> {
  */
 export function compteProfil(): Promise<ProfilCompte | null> {
   return invoke<ProfilCompte | null>('compte_profil')
+}
+
+/** Comptes deja autorises, l'actif en tete. */
+export function comptesLister(): Promise<CompteConnu[]> {
+  return invoke<CompteConnu[]>('comptes_lister')
+}
+
+/** Bascule sur un compte deja autorise, sans repasser par Google. */
+export function compteBasculer(adresse: string): Promise<void> {
+  return invoke<void>('compte_basculer', { adresse })
+}
+
+/** Met le compte actif de cote et lance l'autorisation d'un autre. */
+export function compteAjouter(): Promise<void> {
+  return invoke<void>('compte_ajouter')
+}
+
+/** Retire un compte inactif de la liste et rend son autorisation a Google. */
+export function compteOublier(adresse: string): Promise<void> {
+  return invoke<void>('compte_oublier', { adresse })
 }
 
 /**

@@ -32,6 +32,13 @@ export interface ProfilCompte {
   photo: string | null
 }
 
+/** Miroir de `commands::CompteConnu`. */
+export interface CompteConnu {
+  adresse: string
+  nom: string | null
+  actif: boolean
+}
+
 /** Miroir de `gmail::classement::CategorieMessage`. */
 export type CategorieMessage = 'humain' | 'publicite' | 'newsletter' | 'formation'
 

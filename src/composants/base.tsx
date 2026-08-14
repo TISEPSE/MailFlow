@@ -120,7 +120,7 @@ export function Interrupteur({
   /** Taille des pages de réglages, où l'interrupteur est le sujet de la ligne. */
   grand?: boolean
 }) {
-  const [large, haut, bille] = grand ? [52, 30, 24] : [40, 23, 17]
+  const [large, haut, bille] = grand ? [46, 27, 21] : [40, 23, 17]
   const marge = (haut - bille) / 2
 
   return (
@@ -180,7 +180,7 @@ export function Segments<T extends string>({
             role="radio"
             aria-checked={actif}
             onClick={() => onChange(v)}
-            className="rounded-lg px-4 py-1.5 text-[13.5px] font-semibold whitespace-nowrap transition-colors"
+            className="rounded-lg px-4 py-2 text-[13.5px] leading-none font-semibold whitespace-nowrap transition-colors"
             style={{
               background: actif ? 'var(--card)' : 'transparent',
               color: actif ? 'var(--fg)' : 'var(--sub)',
@@ -338,7 +338,7 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className="inline-flex flex-none items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-opacity hover:opacity-85 disabled:opacity-40"
+      className="inline-flex flex-none items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs leading-none font-semibold whitespace-nowrap transition-opacity hover:opacity-85 disabled:opacity-40"
       style={styles[variante]}
     >
       {icone && <Icone nom={icone} taille={15} />}

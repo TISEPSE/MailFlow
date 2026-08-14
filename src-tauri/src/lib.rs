@@ -12,6 +12,7 @@ use tauri::Manager;
 
 pub mod auth;
 pub mod commands;
+pub mod comptes;
 pub mod config;
 pub mod error;
 pub mod gmail;
@@ -65,6 +66,10 @@ pub fn run() {
             commands::boite_lister,
             commands::compte_adresse,
             commands::compte_profil,
+            commands::comptes_lister,
+            commands::compte_basculer,
+            commands::compte_ajouter,
+            commands::compte_oublier,
             commands::logos_expediteurs,
         ])
         .run(tauri::generate_context!())

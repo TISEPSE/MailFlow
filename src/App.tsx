@@ -16,7 +16,11 @@ import { LogoGoogle } from './composants/LogoGoogle'
 import {
   appHealth,
   boiteLister,
+  compteAjouter,
+  compteBasculer,
+  compteOublier,
   compteProfil,
+  comptesLister,
   logosExpediteurs,
   gmailSynchroniser,
   googleConnecter,
@@ -32,6 +36,7 @@ import type {
   EtatApplication,
   JeuDeRegles,
   MessageAffiche,
+  CompteConnu,
   ProfilCompte,
 } from './types/backend'
 
@@ -86,6 +91,7 @@ export default function App() {
   const [vue, setVue] = useState<Vue>('humain')
   const [prefs, setPrefs] = useState(DEFAUTS)
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
+  const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [logos, setLogos] = useState<Record<string, string>>({})
 
   /** Messages ouverts pendant cette session.
@@ -119,9 +125,14 @@ export default function App() {
 
   const rafraichir = useCallback(async () => {
     try {
-      const [sante, jeu] = await Promise.all([appHealth(), reglesLister()])
+      const [sante, jeu, connus] = await Promise.all([
+        appHealth(),
+        reglesLister(),
+        comptesLister().catch(() => [] as CompteConnu[]),
+      ])
       setEtat(sante)
       setRegles(jeu)
+      setComptes(connus)
       if (!sante.compteConnecte) setProfil(null)
       return sante
     } catch (e) {
@@ -375,18 +386,32 @@ export default function App() {
                   return 'Compte déconnecté et autorisation révoquée.'
                 })
               }
-              onChangerDeCompte={() =>
-                // Les deux étapes dans une seule opération : enchaîner deux
-                // appels à `agir` les ferait courir l'un contre l'autre, et
-                // l'utilisateur pourrait se retrouver révoqué sans être
-                // reconnecté.
+              comptes={comptes}
+              onBasculer={(adresse) =>
                 void agir(async () => {
-                  await googleDeconnecter()
+                  await compteBasculer(adresse)
+                  // La boîte affichée est celle du compte précédent : la vider
+                  // avant le relevé évite de montrer les messages de l'un sous
+                  // l'adresse de l'autre.
                   setBoite([])
-                  setProfil(null)
-                  await googleConnecter()
+                  setConsultes(new Set())
                   setProfil(await compteProfil().catch(() => null))
-                  return 'Compte changé.'
+                  return `Compte actif : ${adresse}.`
+                })
+              }
+              onAjouterCompte={() =>
+                void agir(async () => {
+                  await compteAjouter()
+                  setBoite([])
+                  setConsultes(new Set())
+                  setProfil(await compteProfil().catch(() => null))
+                  return 'Compte ajouté.'
+                })
+              }
+              onOublierCompte={(adresse) =>
+                void agir(async () => {
+                  await compteOublier(adresse)
+                  return `Compte ${adresse} retiré.`
                 })
               }
             />

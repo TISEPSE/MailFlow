@@ -128,6 +128,29 @@ impl<S: SecretStore> SessionAuth<S> {
     /// Sert après un `401` de Gmail : notre calcul d'expiration disait le jeton
     /// valable, Google dit le contraire. C'est Google qui a raison — il a pu être
     /// révoqué, ou les horloges divergent. Le prochain appel en redemandera un.
+    /// Applique un changement au trousseau, puis oublie le jeton en mémoire.
+    ///
+    /// Tout déplacement du `refresh_token` doit passer par ici. L'`access_token`
+    /// gardé en mémoire appartient au compte précédent : le conserver ferait
+    /// lire la boîte du mauvais compte jusqu'à son expiration — une heure
+    /// pendant laquelle l'interface montrerait une adresse et le contenu d'une
+    /// autre. Il est donc jeté même si le changement échoue.
+    pub fn basculer<T>(&mut self, travail: impl FnOnce(&S) -> Resultat<T>) -> Resultat<T> {
+        let resultat = travail(&self.secrets);
+        self.jetons = None;
+        resultat
+    }
+
+    /// Lecture d'une entrée du trousseau applicatif, pour les comptes en
+    /// réserve. La session ne les interprète pas : elle ne fait que passer.
+    pub fn secret(&self, cle: &str) -> Resultat<Option<String>> {
+        self.secrets.get(cle)
+    }
+
+    pub fn effacer_secret(&self, cle: &str) -> Resultat<()> {
+        self.secrets.delete(cle)
+    }
+
     pub fn oublier_le_jeton_courant(&mut self) {
         self.jetons = None;
     }
