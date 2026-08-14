@@ -16,6 +16,7 @@ pub mod comptes;
 pub mod config;
 pub mod error;
 pub mod gmail;
+pub mod html;
 pub mod llm;
 pub mod rules;
 pub mod secrets;

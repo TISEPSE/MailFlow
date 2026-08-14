@@ -79,11 +79,24 @@ pub struct Charge {
 }
 
 /// Contenu d'une partie MIME, encodé en `base64url`.
+///
+/// Gmail met les petites parties en ligne dans `data` et les grosses derrière
+/// un `attachmentId`, à récupérer par un appel séparé. Les images intégrées à
+/// un message sont presque toujours dans le second cas.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpsPartie {
     #[serde(default)]
     pub data: Option<String>,
+
+    #[serde(default)]
+    pub attachment_id: Option<String>,
+}
+
+/// Réponse de `users.messages.attachments.get`.
+#[derive(Debug, Deserialize)]
+pub struct PieceJointe {
+    pub data: String,
 }
 
 #[derive(Debug, Deserialize)]

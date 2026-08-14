@@ -38,9 +38,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::error::Resultat;
+use crate::html::valeur_attribut;
 
 /// Au-delà, ce n'est pas une icône de site.
 const TAILLE_MAX: usize = 100 * 1024;
+
+/// Plafond des images d'un corps de message, autrement plus lourdes qu'une
+/// icône : une bannière commerciale dépasse couramment cent kilo-octets.
+pub const TAILLE_MAX_IMAGE: usize = 2 * 1024 * 1024;
 
 /// De quoi couvrir le `<head>` d'une page d'accueil, pas la page entière.
 ///
@@ -172,48 +177,16 @@ fn est_un_svg(octets: &[u8]) -> bool {
 /// signature et de taille bornée. Un serveur qui répond une page HTML d'erreur
 /// en 200 — cas courant — ne doit pas produire une image cassée dans
 /// l'interface.
-pub fn en_data_uri(octets: &[u8]) -> Option<String> {
+pub fn en_data_uri(octets: &[u8], plafond: usize) -> Option<String> {
     use base64::Engine;
 
-    if octets.is_empty() || octets.len() > TAILLE_MAX {
+    if octets.is_empty() || octets.len() > plafond {
         return None;
     }
     let type_contenu = type_image(octets)?;
 
     let encode = base64::engine::general_purpose::STANDARD.encode(octets);
     Some(format!("data:{type_contenu};base64,{encode}"))
-}
-
-/// Valeur d'un attribut dans une balise HTML.
-///
-/// Écrit à la main plutôt qu'avec un analyseur complet : on ne lit qu'une
-/// balise `<link>`, et rien de ce qui en sort n'est interprété comme du HTML.
-fn valeur_attribut(balise: &str, nom: &str) -> Option<String> {
-    let bas = balise.to_lowercase();
-    let mut depuis = 0;
-
-    while let Some(pos) = bas[depuis..].find(nom) {
-        let debut = depuis + pos;
-        depuis = debut + nom.len();
-
-        // Sans quoi `rel` serait trouvé dans `data-rel` ou `hreflang`.
-        let separe = debut == 0 || bas[..debut].ends_with([' ', '\t', '\n', '\r', '/']);
-        let apres = balise[debut + nom.len()..].trim_start();
-
-        if separe && let Some(valeur) = apres.strip_prefix('=') {
-            let valeur = valeur.trim_start();
-            let brute = if let Some(r) = valeur.strip_prefix('"') {
-                r.split('"').next()?
-            } else if let Some(r) = valeur.strip_prefix('\'') {
-                r.split('\'').next()?
-            } else {
-                valeur.split([' ', '\t', '\n', '\r', '>']).next()?
-            };
-            return Some(brute.trim().to_string());
-        }
-    }
-
-    None
 }
 
 /// Transforme un `href` de page en URL absolue, ou refuse.
@@ -412,13 +385,13 @@ async fn icones_de_la_page(http: &reqwest::Client, domaine: &str) -> Vec<String>
 /// L'interface tourne sous une politique de sécurité qui interdit les origines
 /// externes : une `<img src="https://…">` serait bloquée. Toute image affichée
 /// doit donc passer par ici, y compris la photo du compte Google.
-pub async fn image_distante(http: &reqwest::Client, url: &str) -> Option<String> {
-    telecharger_image(http, url).await
+pub async fn image_distante(http: &reqwest::Client, url: &str, plafond: usize) -> Option<String> {
+    let octets = telecharger(http, url, plafond, Trop::Refuser).await?;
+    en_data_uri(&octets, plafond)
 }
 
 async fn telecharger_image(http: &reqwest::Client, url: &str) -> Option<String> {
-    let octets = telecharger(http, url, TAILLE_MAX, Trop::Refuser).await?;
-    en_data_uri(&octets)
+    image_distante(http, url, TAILLE_MAX).await
 }
 
 /// Que faire d'une réponse qui dépasse le plafond.
@@ -535,22 +508,26 @@ mod tests {
         // Mesuré : `ouigo.com` sert son icône en `application/octet-stream`.
         // Se fier au type déclaré revenait à jeter une icône parfaitement
         // valide.
-        let uri = en_data_uri(ICO).unwrap();
+        let uri = en_data_uri(ICO, TAILLE_MAX).unwrap();
 
         assert!(uri.starts_with("data:image/x-icon;base64,"), "{uri}");
-        assert!(en_data_uri(PNG).unwrap().starts_with("data:image/png;"));
         assert!(
-            en_data_uri(b"GIF89a...")
+            en_data_uri(PNG, TAILLE_MAX)
+                .unwrap()
+                .starts_with("data:image/png;")
+        );
+        assert!(
+            en_data_uri(b"GIF89a...", TAILLE_MAX)
                 .unwrap()
                 .starts_with("data:image/gif;")
         );
         assert!(
-            en_data_uri(b"\xff\xd8\xff\xe0..")
+            en_data_uri(b"\xff\xd8\xff\xe0..", TAILLE_MAX)
                 .unwrap()
                 .starts_with("data:image/jpeg;")
         );
         assert!(
-            en_data_uri(b"RIFF\x00\x00\x00\x00WEBPVP8 ")
+            en_data_uri(b"RIFF\x00\x00\x00\x00WEBPVP8 ", TAILLE_MAX)
                 .unwrap()
                 .starts_with("data:image/webp;")
         );
@@ -559,20 +536,20 @@ mod tests {
     #[test]
     fn un_svg_est_accepte_meme_precede_d_une_declaration_xml() {
         assert!(
-            en_data_uri(br#"<?xml version="1.0"?><svg xmlns="..."/>"#)
+            en_data_uri(br#"<?xml version="1.0"?><svg xmlns="..."/>"#, TAILLE_MAX)
                 .unwrap()
                 .starts_with("data:image/svg+xml;")
         );
-        assert!(en_data_uri(b"  <svg viewBox='0 0 1 1'/>").is_some());
+        assert!(en_data_uri(b"  <svg viewBox='0 0 1 1'/>", TAILLE_MAX).is_some());
     }
 
     #[test]
     fn une_reponse_qui_n_est_pas_une_image_est_refusee() {
         // Beaucoup de sites répondent 200 avec une page d'erreur HTML.
-        assert!(en_data_uri(b"<!doctype html><html>").is_none());
-        assert!(en_data_uri(b"{\"erreur\":\"absent\"}").is_none());
-        assert!(en_data_uri(b"").is_none());
-        assert!(en_data_uri(b"ab").is_none());
+        assert!(en_data_uri(b"<!doctype html><html>", TAILLE_MAX).is_none());
+        assert!(en_data_uri(b"{\"erreur\":\"absent\"}", TAILLE_MAX).is_none());
+        assert!(en_data_uri(b"", TAILLE_MAX).is_none());
+        assert!(en_data_uri(b"ab", TAILLE_MAX).is_none());
     }
 
     #[test]
@@ -580,7 +557,7 @@ mod tests {
         let mut enorme = PNG.to_vec();
         enorme.resize(TAILLE_MAX + 1, 0);
 
-        assert!(en_data_uri(&enorme).is_none());
+        assert!(en_data_uri(&enorme, TAILLE_MAX).is_none());
     }
 
     #[test]

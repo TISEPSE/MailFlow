@@ -26,10 +26,19 @@
 //!    la barrière principale : un nettoyeur écrit à la main se contourne, un
 //!    bac à sable non. Il ne faut donc jamais rien lui faire porter seul.
 
+use std::collections::HashMap;
+
 use crate::gmail::modele::Charge;
+use crate::html::{fin_de_balise, valeur_attribut};
 
 /// Au-delà, on n'affiche pas : ce n'est plus une lettre, c'est un document.
 const TAILLE_MAX: usize = 2 * 1024 * 1024;
+
+/// Nombre d'images qu'on veut bien rapatrier pour un message.
+///
+/// Une lettre commerciale en compte une trentaine ; au-delà, on est face à un
+/// document qui ferait attendre l'utilisateur sans rien lui apprendre de plus.
+pub const IMAGES_MAX: usize = 40;
 
 /// Ce qu'on a su tirer d'un message.
 #[derive(Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -95,6 +104,114 @@ fn collecter(charge: &Charge, corps: &mut CorpsMessage) {
     }
 }
 
+/// Les `src` d'images d'un document, dans l'ordre d'apparition, sans doublon.
+///
+/// Sert deux besoins : relier un `cid:` à la pièce jointe qui le porte, et
+/// dresser la liste des adresses distantes à rapatrier côté Rust — le cadre
+/// d'affichage, lui, n'a le droit d'émettre aucune requête.
+pub fn sources_d_images(html: &str) -> Vec<String> {
+    let bas = html.to_lowercase();
+    let mut trouvees: Vec<String> = Vec::new();
+    let mut depuis = 0;
+
+    while let Some(pos) = bas[depuis..].find("<img") {
+        let debut = depuis + pos;
+        let fin = fin_de_balise(&bas, debut);
+        depuis = fin.max(debut + 4);
+
+        // `<image>` n'est pas `<img>` ; sans ce contrôle, on capturerait des
+        // balises qui n'en sont pas.
+        if bas[debut + 4..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric())
+        {
+            continue;
+        }
+
+        let Some(src) = valeur_attribut(&html[debut..fin], "src") else {
+            continue;
+        };
+        let src = src.trim().to_string();
+
+        if src.is_empty() || src.starts_with("data:") || trouvees.contains(&src) {
+            continue;
+        }
+        if trouvees.len() == IMAGES_MAX {
+            break;
+        }
+        trouvees.push(src);
+    }
+
+    trouvees
+}
+
+/// Remplace les `src` d'images par les URI de données fournies.
+///
+/// Ce qui manque à la table reste tel quel : le cadre d'affichage n'a pas le
+/// droit d'aller le chercher, et l'image montrera son texte de remplacement.
+/// C'est préférable à une image vide sans explication.
+pub fn substituer_images(html: &str, table: &HashMap<String, String>) -> String {
+    if table.is_empty() {
+        return html.to_string();
+    }
+
+    let mut sortie = String::with_capacity(html.len());
+    let bas = html.to_lowercase();
+    let mut i = 0;
+
+    while let Some(pos) = bas[i..].find("<img") {
+        let debut = i + pos;
+        let fin = fin_de_balise(&bas, debut);
+        sortie.push_str(&html[i..debut]);
+        i = fin;
+
+        let balise = &html[debut..fin];
+        match valeur_attribut(balise, "src")
+            .and_then(|src| table.get(src.trim()).map(|uri| (src, uri)))
+        {
+            Some((src, uri)) => sortie.push_str(&balise.replace(&src, uri)),
+            None => sortie.push_str(balise),
+        }
+    }
+
+    sortie.push_str(&html[i..]);
+    sortie
+}
+
+/// Identifiants de pièces jointes, indexés par la référence `cid:` qui les
+/// désigne dans le HTML.
+///
+/// Un `Content-ID` s'écrit `<abc@def>` dans l'en-tête et `cid:abc@def` dans le
+/// document : les chevrons sont à retirer, sans quoi rien ne se relie.
+pub fn pieces_par_cid(charge: &Charge) -> HashMap<String, String> {
+    let mut table = HashMap::new();
+    collecter_cid(charge, &mut table);
+    table
+}
+
+fn collecter_cid(charge: &Charge, table: &mut HashMap<String, String>) {
+    let identifiant = charge
+        .headers
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("content-id"))
+        .map(|e| e.value.trim().trim_start_matches('<').trim_end_matches('>'));
+
+    if let Some(cid) = identifiant
+        && !cid.is_empty()
+        && let Some(piece) = charge
+            .body
+            .as_ref()
+            .and_then(|b| b.attachment_id.as_deref())
+    {
+        table.insert(format!("cid:{cid}"), piece.to_string());
+    }
+
+    for partie in &charge.parts {
+        collecter_cid(partie, table);
+    }
+}
+
 /// Retire d'un HTML de tiers ce qui n'a rien à faire dans une lettre.
 ///
 /// Précaution de plus, jamais la barrière principale : voir la documentation du
@@ -138,10 +255,6 @@ fn balise_a_supprimer(reste: &str) -> Option<&'static str> {
         }
     }
     None
-}
-
-fn fin_de_balise(bas: &str, debut: usize) -> usize {
-    bas[debut..].find('>').map_or(bas.len(), |f| debut + f + 1)
 }
 
 fn fin_de_bloc(bas: &str, debut: usize, nom: &str) -> usize {
@@ -251,6 +364,7 @@ mod tests {
             mime_type: Some(mime.into()),
             body: Some(CorpsPartie {
                 data: Some(encoder(contenu)),
+                ..Default::default()
             }),
             ..Default::default()
         }
@@ -417,6 +531,93 @@ mod tests {
             <a href="https://exemple.fr">Voir</a><img src="cid:logo"></td></tr></table>"#;
 
         assert_eq!(assainir(sain), sain);
+    }
+
+    #[test]
+    fn les_sources_d_images_sont_relevees_dans_l_ordre_sans_doublon() {
+        let html = r#"<img src="cid:logo"><p>x</p><img src='https://a.fr/1.png'>
+            <img src="cid:logo"><img src="data:image/png;base64,AA">"#;
+
+        assert_eq!(sources_d_images(html), ["cid:logo", "https://a.fr/1.png"]);
+    }
+
+    #[test]
+    fn le_nombre_d_images_relevees_est_borne() {
+        // Sans borne, un document de mille images ferait attendre l'utilisateur
+        // sans rien lui apprendre de plus.
+        let html: String = (0..IMAGES_MAX + 20)
+            .map(|i| format!(r#"<img src="https://a.fr/{i}.png">"#))
+            .collect();
+
+        assert_eq!(sources_d_images(&html).len(), IMAGES_MAX);
+    }
+
+    #[test]
+    fn une_balise_qui_commence_comme_img_n_est_pas_relevee() {
+        assert!(sources_d_images(r#"<image src="https://a.fr/1.png"/>"#).is_empty());
+    }
+
+    #[test]
+    fn les_images_connues_sont_substituees_et_les_autres_laissees() {
+        let html = r#"<img src="cid:logo" alt="a"><img src="https://a.fr/2.png">"#;
+        let table = HashMap::from([(
+            "cid:logo".to_string(),
+            "data:image/png;base64,AA".to_string(),
+        )]);
+
+        let sortie = substituer_images(html, &table);
+
+        assert!(sortie.contains(r#"src="data:image/png;base64,AA" alt="a""#));
+        // Celle qu'on n'a pas su rapatrier garde son adresse : le cadre ne la
+        // chargera pas, mais son texte de remplacement s'affichera.
+        assert!(sortie.contains(r#"src="https://a.fr/2.png""#));
+    }
+
+    #[test]
+    fn un_content_id_est_debarrasse_de_ses_chevrons() {
+        // L'en-tête écrit `<abc@def>`, le document écrit `cid:abc@def`.
+        let charge = Charge {
+            mime_type: Some("multipart/related".into()),
+            parts: vec![Charge {
+                mime_type: Some("image/png".into()),
+                headers: vec![crate::gmail::modele::Entete {
+                    name: "Content-ID".into(),
+                    value: "<abc@def>".into(),
+                }],
+                body: Some(CorpsPartie {
+                    attachment_id: Some("piece-1".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let table = pieces_par_cid(&charge);
+
+        assert_eq!(
+            table.get("cid:abc@def").map(String::as_str),
+            Some("piece-1")
+        );
+    }
+
+    #[test]
+    fn une_partie_sans_piece_jointe_n_entre_pas_dans_la_table() {
+        // Le corps HTML lui-même porte parfois un `Content-ID` ; le prendre pour
+        // une image produirait une substitution absurde.
+        let charge = Charge {
+            headers: vec![crate::gmail::modele::Entete {
+                name: "Content-ID".into(),
+                value: "<corps>".into(),
+            }],
+            body: Some(CorpsPartie {
+                data: Some("AA".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert!(pieces_par_cid(&charge).is_empty());
     }
 
     #[test]

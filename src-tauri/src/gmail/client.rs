@@ -121,6 +121,16 @@ fn url_complet(id: &str) -> String {
     format!("{BASE_API}/users/me/messages/{id}?format=full")
 }
 
+/// URL de `users.messages.attachments.get`.
+fn url_piece_jointe(message: &str, piece: &str) -> String {
+    let encoder = |v: &str| url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>();
+    format!(
+        "{BASE_API}/users/me/messages/{}/attachments/{}",
+        encoder(message),
+        encoder(piece)
+    )
+}
+
 fn url_batch_modify() -> String {
     format!("{BASE_API}/users/me/messages/batchModify")
 }
@@ -315,6 +325,25 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
             .await
             .map(|_| ())
+    }
+
+    /// Contenu d'une pièce jointe, décodé.
+    ///
+    /// Gmail ne met en ligne que les petites parties ; les images intégrées à un
+    /// message demandent presque toujours cet appel supplémentaire.
+    pub async fn piece_jointe(&self, message: &str, piece: &str) -> Resultat<Vec<u8>> {
+        use base64::Engine;
+
+        let corps = self
+            .appeler(Methode::Get, &url_piece_jointe(message, piece), None)
+            .await?;
+
+        let reponse: crate::gmail::modele::PieceJointe = serde_json::from_str(&corps)
+            .map_err(|e| AppError::Reseau(format!("pièce jointe illisible : {e}")))?;
+
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(reponse.data.trim_end_matches('='))
+            .map_err(|e| AppError::Reseau(format!("pièce jointe mal encodée : {e}")))
     }
 
     /// Message complet, corps compris.

@@ -363,6 +363,17 @@ pub async fn message_corps(
 
     trouve.html = trouve.html.as_deref().map(corps::assainir);
 
+    if let Some(html) = trouve.html.as_deref() {
+        let pieces = message
+            .payload
+            .as_ref()
+            .map(corps::pieces_par_cid)
+            .unwrap_or_default();
+
+        let table = rapatrier_les_images(&client, &id, html, &pieces).await;
+        trouve.html = Some(corps::substituer_images(html, &table));
+    }
+
     log::info!(
         "corps lu : {}",
         match (&trouve.html, &trouve.texte) {
@@ -373,6 +384,81 @@ pub async fn message_corps(
     );
     Ok(trouve)
 }
+
+/// Rapatrie les images d'un message et les rend indexées par leur `src`.
+///
+/// Tout passe par Rust, jamais par le webview. Deux raisons : la politique de
+/// sécurité du cadre d'affichage lui interdit toute requête sortante, et une
+/// requête émise depuis le webview emporterait cookies et empreinte de
+/// navigateur — le serveur d'en face en apprendrait bien plus que l'ouverture
+/// du message.
+///
+/// Ce que ça coûte reste réel : l'expéditeur apprend l'adresse IP et l'heure de
+/// lecture. C'est le comportement d'un client mail ordinaire, choisi
+/// explicitement.
+///
+/// Une image qu'on ne sait pas rapatrier n'entre pas dans la table : son texte
+/// de remplacement s'affichera, ce qui vaut mieux qu'un cadre vide.
+async fn rapatrier_les_images<T, J>(
+    client: &ClientGmail<T, J>,
+    message: &str,
+    html: &str,
+    pieces: &std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, String>
+where
+    T: crate::gmail::client::Transport,
+    J: SourceJeton,
+{
+    use crate::gmail::logos::{TAILLE_MAX_IMAGE, en_data_uri, image_distante};
+
+    let sources = crate::gmail::corps::sources_d_images(html);
+    if sources.is_empty() {
+        return std::collections::HashMap::new();
+    }
+
+    let mut table = std::collections::HashMap::new();
+    let mut distantes = Vec::new();
+
+    for source in sources {
+        match pieces.get(&source) {
+            // Jointe au message : rien de tiers n'est contacté.
+            Some(piece) => {
+                if let Ok(octets) = client.piece_jointe(message, piece).await
+                    && let Some(uri) = en_data_uri(&octets, TAILLE_MAX_IMAGE)
+                {
+                    table.insert(source, uri);
+                }
+            }
+            None if source.starts_with("https://") => distantes.push(source),
+            // `http://` en clair et `cid:` sans pièce : rien à aller chercher.
+            None => {}
+        }
+    }
+
+    // Un client HTTP indisponible n'est pas une raison de perdre les images
+    // déjà intégrées : on rend ce qu'on a.
+    if let (false, Ok(http)) = (distantes.is_empty(), client_http()) {
+        for paquet in distantes.chunks(IMAGES_DE_FRONT) {
+            let mut travaux = tokio::task::JoinSet::new();
+            for url in paquet {
+                let (http, url) = (http.clone(), url.clone());
+                travaux.spawn(async move {
+                    let uri = image_distante(&http, &url, TAILLE_MAX_IMAGE).await;
+                    (url, uri)
+                });
+            }
+            while let Some(Ok((url, Some(uri)))) = travaux.join_next().await {
+                table.insert(url, uri);
+            }
+        }
+    }
+
+    log::info!("{} image(s) intégrée(s) au message", table.len());
+    table
+}
+
+/// Images distantes demandées de front. Bornées : ce sont des serveurs tiers.
+const IMAGES_DE_FRONT: usize = 6;
 
 /// Signale un message comme indésirable.
 ///
@@ -579,7 +665,8 @@ pub async fn compte_profil(
     let photo = match infos.picture.as_deref() {
         Some(url) => {
             let http = client_http()?;
-            crate::gmail::logos::image_distante(&http, url).await
+            crate::gmail::logos::image_distante(&http, url, crate::gmail::logos::TAILLE_MAX_IMAGE)
+                .await
         }
         None => None,
     };
