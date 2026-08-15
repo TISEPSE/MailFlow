@@ -72,7 +72,7 @@ pub fn run() {
             commands::libelles_lister,
             commands::libelle_creer,
             commands::repondre_au_message,
-            commands::message_signaler_spam,
+            commands::message_corbeille,
             commands::message_marquer_lu,
             commands::compte_adresse,
             commands::compte_profil,

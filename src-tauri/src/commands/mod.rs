@@ -592,8 +592,15 @@ pub async fn message_ranger(
 /// s'écrit donc là où l'utilisateur écrit déjà son courrier, et part de son
 /// compte, pas du nôtre.
 #[tauri::command]
-pub async fn repondre_au_message(destinataire: String, sujet: String) -> Resultat<()> {
-    let url = url_mailto(&destinataire, &sujet)?;
+pub async fn repondre_au_message(
+    destinataire: String,
+    sujet: String,
+    // Renseignée par « Répondre à tous », vide par « Répondre ». Le frontend a
+    // seul de quoi la calculer : il sait quelle adresse est celle du compte, et
+    // ne doit pas se répondre à lui-même.
+    copies: Option<Vec<String>>,
+) -> Resultat<()> {
+    let url = url_mailto(&destinataire, &sujet, &copies.unwrap_or_default())?;
 
     tauri_plugin_opener::open_url(&url, None::<&str>)
         .map_err(|e| AppError::Config(format!("aucun client de courrier joignable : {e}")))?;
@@ -602,14 +609,24 @@ pub async fn repondre_au_message(destinataire: String, sujet: String) -> Resulta
     Ok(())
 }
 
-/// Construit un `mailto:` à partir d'une adresse et d'un sujet.
+/// Vrai quand la chaîne peut servir d'adresse dans un `mailto:`.
+///
+/// Les chevrons sont refusés parce qu'ils marquent la frontière entre nom
+/// affiché et adresse : les laisser passer permettrait de glisser une seconde
+/// adresse dans un champ qui n'en attend qu'une.
+fn adresse_utilisable(adresse: &str) -> bool {
+    !adresse.is_empty() && adresse.contains('@') && !adresse.contains(['<', '>'])
+}
+
+/// Construit un `mailto:` à partir d'une adresse, d'un sujet et des copies.
 ///
 /// Le sujet vient d'un tiers : il passe par l'encodage de requête, sans quoi un
 /// `&` ou un saut de ligne y ajouterait des champs — `bcc`, `body` — que
-/// l'utilisateur n'a pas voulus.
-fn url_mailto(destinataire: &str, sujet: &str) -> Resultat<String> {
+/// l'utilisateur n'a pas voulus. Les adresses en copie viennent du même endroit
+/// et subissent le même traitement.
+fn url_mailto(destinataire: &str, sujet: &str, copies: &[String]) -> Resultat<String> {
     let destinataire = destinataire.trim();
-    if destinataire.is_empty() || !destinataire.contains('@') || destinataire.contains(['<', '>']) {
+    if !adresse_utilisable(destinataire) {
         return Err(AppError::Config("adresse de réponse inutilisable".into()));
     }
 
@@ -621,25 +638,41 @@ fn url_mailto(destinataire: &str, sujet: &str) -> Resultat<String> {
         "Re: ".to_string()
     };
 
-    Ok(format!(
+    let mut url = format!(
         "mailto:{}?subject={}",
         encoder(destinataire),
         encoder(&format!("{prefixe}{sujet}"))
-    ))
+    );
+
+    // Une adresse illisible est écartée plutôt que de faire échouer la réponse
+    // entière : mieux vaut un destinataire en copie de moins qu'un bouton qui
+    // ne fait rien.
+    let copies: Vec<&str> = copies
+        .iter()
+        .map(|c| c.trim())
+        .filter(|c| adresse_utilisable(c) && !c.eq_ignore_ascii_case(destinataire))
+        .collect();
+
+    if !copies.is_empty() {
+        url.push_str("&cc=");
+        url.push_str(&encoder(&copies.join(",")));
+    }
+
+    Ok(url)
 }
 
-/// Signale un message comme indésirable.
+/// Met un message à la corbeille.
 ///
-/// Même geste que dans Gmail : le message rejoint les indésirables et quitte la
-/// boîte de réception. Aucune règle locale n'est créée — Google apprend du
-/// signalement, et deux mécanismes qui filtrent le même expéditeur finiraient
-/// par se contredire.
+/// Le geste du bouton Supprimer de Gmail : le message quitte la boîte et reste
+/// récupérable trente jours. Rien n'est détruit — la suppression définitive
+/// demanderait une autorisation Google bien plus large, pour un geste sur
+/// lequel on ne peut pas revenir.
 #[tauri::command]
-pub async fn message_signaler_spam(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
+pub async fn message_corbeille(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-    client.marquer_spam(&[id]).await?;
+    client.mettre_a_la_corbeille(&id).await?;
 
-    log::info!("message signalé comme indésirable");
+    log::info!("message mis à la corbeille");
     Ok(())
 }
 
@@ -955,13 +988,22 @@ pub async fn logos_expediteurs(
 mod tests {
     use super::url_mailto;
 
+    /// Réponse simple : sans personne en copie.
+    fn mailto(destinataire: &str, sujet: &str) -> crate::error::Resultat<String> {
+        url_mailto(destinataire, sujet, &[])
+    }
+
+    fn copies(liste: &[&str]) -> Vec<String> {
+        liste.iter().map(|c| c.to_string()).collect()
+    }
+
     #[test]
     fn le_sujet_est_prefixe_une_seule_fois() {
-        let url = url_mailto("a@b.fr", "Disponibilités").unwrap();
+        let url = mailto("a@b.fr", "Disponibilités").unwrap();
 
         assert!(url.contains("subject=Re%3A+Disponibilit"), "{url}");
         assert!(
-            !url_mailto("a@b.fr", "Re: déjà")
+            !mailto("a@b.fr", "Re: déjà")
                 .unwrap()
                 .contains("Re%3A+Re%3A")
         );
@@ -971,7 +1013,7 @@ mod tests {
     fn un_sujet_hostile_n_ajoute_pas_de_champs() {
         // Sans encodage, ce sujet glisserait une copie cachée dans le brouillon
         // que l'utilisateur s'apprête à envoyer.
-        let url = url_mailto("a@b.fr", "Bonjour&bcc=espion@ailleurs.fr").unwrap();
+        let url = mailto("a@b.fr", "Bonjour&bcc=espion@ailleurs.fr").unwrap();
 
         assert!(!url.contains("&bcc="), "{url}");
     }
@@ -979,8 +1021,41 @@ mod tests {
     #[test]
     fn une_adresse_inutilisable_est_refusee() {
         // Mieux vaut le dire que d'ouvrir un client de courrier sur un vide.
-        assert!(url_mailto("", "x").is_err());
-        assert!(url_mailto("sans-arobase", "x").is_err());
-        assert!(url_mailto("Nom <a@b.fr>", "x").is_err());
+        assert!(mailto("", "x").is_err());
+        assert!(mailto("sans-arobase", "x").is_err());
+        assert!(mailto("Nom <a@b.fr>", "x").is_err());
+    }
+
+    #[test]
+    fn repondre_a_tous_place_les_autres_en_copie() {
+        let url = url_mailto("a@b.fr", "Réunion", &copies(&["c@d.fr", "e@f.fr"])).unwrap();
+
+        assert!(url.starts_with("mailto:a%40b.fr?"), "{url}");
+        assert!(url.contains("&cc=c%40d.fr%2Ce%40f.fr"), "{url}");
+    }
+
+    #[test]
+    fn le_destinataire_principal_ne_se_retrouve_pas_aussi_en_copie() {
+        // Il est souvent dans le `To` d'origine : l'y laisser lui enverrait deux
+        // fois la même réponse.
+        let url = url_mailto("a@b.fr", "x", &copies(&["A@B.fr", "c@d.fr"])).unwrap();
+
+        assert_eq!(url.matches("a%40b.fr").count(), 1, "{url}");
+        assert!(url.contains("&cc=c%40d.fr"), "{url}");
+    }
+
+    #[test]
+    fn une_copie_illisible_est_ecartee_sans_faire_echouer_la_reponse() {
+        let url = url_mailto("a@b.fr", "x", &copies(&["Nom <c@d.fr>", "e@f.fr"])).unwrap();
+
+        assert!(url.contains("&cc=e%40f.fr"), "{url}");
+        assert!(!url.contains("Nom"), "{url}");
+    }
+
+    #[test]
+    fn sans_copie_valable_aucun_champ_cc_n_est_ajoute() {
+        let url = url_mailto("a@b.fr", "x", &copies(&["a@b.fr"])).unwrap();
+
+        assert!(!url.contains("&cc="), "{url}");
     }
 }

@@ -40,7 +40,7 @@ pub mod transport;
 pub const BASE_API: &str = "https://gmail.googleapis.com/gmail/v1";
 
 /// En-têtes suffisants au tri, pour éviter de charger les corps de messages.
-pub const ENTETES_TRI: &[&str] = &["From", "Subject", "Date", "List-Unsubscribe"];
+pub const ENTETES_TRI: &[&str] = &["From", "To", "Cc", "Subject", "Date", "List-Unsubscribe"];
 
 /// Libelles système Gmail utilises par les règles.
 pub mod libelles {

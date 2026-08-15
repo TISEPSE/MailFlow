@@ -336,6 +336,23 @@ button:not(:disabled),
   }
 }
 
+/* Adresse d'un correspondant, dans l'en-tête de lecture.
+
+   Rien ne dit qu'elle est cliquable tant qu'on ne la survole pas : le fond qui
+   apparaît alors l'annonce, sans meubler la ligne d'un bouton de plus. */
+.adresse {
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.adresse:hover {
+  background: var(--faint);
+}
+
+.adresse:active {
+  background: var(--line);
+}
+
 /* Segment d'un groupe de choix : le survol dit lequel on vise.
 
    Sans lui, trois libellés côte à côte ne réagissaient à rien tant qu'on

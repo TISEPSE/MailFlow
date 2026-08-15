@@ -58,7 +58,8 @@ export function Courrier({
   onOuvrir,
   corpsConnus,
   onCorpsCharge,
-  onSignalerSpam,
+  onSupprimer,
+  onCopier,
   onRepondre,
   onRanger,
   onCreerLibelle,
@@ -82,10 +83,12 @@ export function Courrier({
   /** Corps déjà chargés, tenus par `App` pour survivre au changement de vue. */
   corpsConnus: ReadonlyMap<string, CorpsMessage>
   onCorpsCharge: (id: string, corps: CorpsMessage) => void
-  /** Absent pour les vues où le signalement n'a pas de sens. */
-  onSignalerSpam?: (id: string) => void
+  /** Présent partout : tout message peut aller à la corbeille. */
+  onSupprimer: (id: string) => void
+  /** Annonce la copie d'une adresse dans le presse-papiers. */
+  onCopier?: (adresse: string) => void
   /** Absents hors des mails directs, où répondre n'aurait pas de sens. */
-  onRepondre?: (message: MessageAffiche) => void
+  onRepondre?: (message: MessageAffiche, tous?: boolean) => void
   onRanger?: (id: string, libelle?: string) => void
   onCreerLibelle?: (nom: string) => Promise<void>
   libelles?: LibelleGmail[]
@@ -194,6 +197,7 @@ export function Courrier({
         chargement={chargementCorps}
         attente={attenteCorps}
         logos={logos}
+        onCopier={onCopier}
         actions={
           <>
             {onRepondre && onRanger && (
@@ -207,32 +211,30 @@ export function Courrier({
               />
             )}
 
-            {onSignalerSpam ? (
+            {proposition && choisi.adresse && !regleExistante && (
               <Bouton
                 compact
                 variante="principal"
-                icone="report"
-                onClick={() => onSignalerSpam(choisi.id)}
+                icone={proposition.icone}
+                onClick={() => void poser()}
                 disabled={enCours}
+                titre={proposition.effet(choisi.nom)}
               >
-                Signaler comme spam
+                {enCours ? 'Enregistrement…' : proposition.libelle}
               </Bouton>
-            ) : (
-              proposition &&
-              choisi.adresse &&
-              !regleExistante && (
-                <Bouton
-                  compact
-                  variante="principal"
-                  icone={proposition.icone}
-                  onClick={() => void poser()}
-                  disabled={enCours}
-                  titre={proposition.effet(choisi.nom)}
-                >
-                  {enCours ? 'Enregistrement…' : proposition.libelle}
-                </Bouton>
-              )
             )}
+
+            {/* Partout, y compris sur les mails directs : le geste du bouton
+                Supprimer de Gmail, corbeille comprise. */}
+            <Bouton
+              compact
+              icone="delete"
+              onClick={() => onSupprimer(choisi.id)}
+              disabled={enCours}
+              titre="Mettre à la corbeille — récupérable 30 jours"
+            >
+              Supprimer
+            </Bouton>
 
             {regleExistante && (
               <span
@@ -272,11 +274,16 @@ function BarreDeReponse({
   message: MessageAffiche
   libelles: LibelleGmail[]
   enCours: boolean
-  onRepondre: (message: MessageAffiche) => void
+  onRepondre: (message: MessageAffiche, tous?: boolean) => void
   onRanger: (id: string, libelle?: string) => void
   onCreerLibelle: (nom: string) => Promise<void>
 }) {
   const [rangement, setRangement] = useState(false)
+
+  // « Répondre à tous » n'a de sens qu'à plusieurs. Sur un message adressé à
+  // vous seul, les deux boutons feraient exactement la même chose.
+  const aPlusieurs =
+    message.destinataires.length + message.copies.length > 1
 
   return (
     <>
@@ -289,6 +296,18 @@ function BarreDeReponse({
       >
         Répondre
       </Bouton>
+
+      {aPlusieurs && (
+        <Bouton
+          compact
+          icone="reply_all"
+          onClick={() => onRepondre(message, true)}
+          disabled={enCours}
+          titre="Répondre à l'expéditeur et à tous les destinataires"
+        >
+          Répondre à tous
+        </Bouton>
+      )}
 
       <Bouton
         compact

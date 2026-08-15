@@ -307,6 +307,19 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
             .map(|_| ())
     }
 
+    /// Met un message à la corbeille.
+    ///
+    /// `trash` et non `delete` : le message reste récupérable trente jours,
+    /// exactement comme le bouton Supprimer de Gmail. La suppression définitive
+    /// existe chez Google, mais elle exige le scope total `mail.google.com` —
+    /// une autorisation bien plus large pour un geste qu'on ne peut pas
+    /// reprendre.
+    pub async fn mettre_a_la_corbeille(&self, id: &str) -> Resultat<()> {
+        self.appeler(Methode::Post, &url_trash(id), Some("{}".into()))
+            .await
+            .map(|_| ())
+    }
+
     /// Signale des messages comme indésirables.
     ///
     /// Reproduit exactement ce que fait Gmail : le libellé `SPAM` est posé, et

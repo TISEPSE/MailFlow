@@ -187,6 +187,19 @@ impl MessageMetadata {
         self.entete("Subject").unwrap_or_default()
     }
 
+    /// En-tête `To` brut, ou chaîne vide s'il manque.
+    pub fn to(&self) -> &str {
+        self.entete("To").unwrap_or_default()
+    }
+
+    /// En-tête `Cc` brut, ou chaîne vide s'il manque.
+    ///
+    /// `Bcc` n'est délibérément pas lu : la copie cachée est cachée, et Gmail ne
+    /// la rend d'ailleurs qu'à l'expéditeur.
+    pub fn cc(&self) -> &str {
+        self.entete("Cc").unwrap_or_default()
+    }
+
     /// Date de réception selon Gmail.
     pub fn date(&self) -> Option<DateTime<Utc>> {
         let millisecondes: i64 = self.internal_date.as_ref()?.parse().ok()?;

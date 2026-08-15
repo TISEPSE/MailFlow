@@ -119,6 +119,7 @@ export function Lecture({
   attente = false,
   actions,
   logos,
+  onCopier,
 }: {
   message: MessageAffiche | null
   corps: CorpsMessage | null
@@ -128,6 +129,8 @@ export function Lecture({
   attente?: boolean
   actions?: React.ReactNode
   logos: Record<string, string>
+  /** Appelé après avoir copié une adresse, pour l'annoncer. */
+  onCopier?: (adresse: string) => void
 }) {
   if (!message) {
     return (
@@ -168,29 +171,20 @@ export function Lecture({
           </span>
         </div>
 
-        {/* Sans retour à la ligne : c'est l'identité qui se tronque, pas le
-            bouton qui descend d'un cran. Le nom se réduit lui aussi — laissé
-            entier, un expéditeur bavard poussait les actions hors du cadre, et
-            le message se recadrait autrement que ses voisins. */}
+        {/* Le nom seul sur cette ligne : elle a une hauteur fixe, et une
+            adresse entière n'y tiendrait pas sans être coupée. Les adresses
+            sont plus bas, où elles ont la place de passer à la ligne. */}
         <div className="mt-1.5 flex items-center gap-2 pl-[40px]">
-          <span className="flex min-w-0 flex-1 items-baseline gap-2">
-            {/* Plafonné à la moitié : sans cela, un nom à rallonge prenait
-                toute la ligne et ne laissait à l'adresse que trois lettres. */}
-            <span className="min-w-0 max-w-[50%] truncate text-[12.5px] font-semibold">
-              {message.nom}
-            </span>
-            <span
-              className="min-w-0 flex-1 truncate font-mono text-[11px]"
-              style={{ color: 'var(--sub)' }}
-            >
-              {message.adresse}
-            </span>
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+            {message.nom}
           </span>
           {actions && (
             <span className="flex flex-none items-center gap-2">{actions}</span>
           )}
         </div>
       </div>
+
+      <Destinataires message={message} onCopier={onCopier} />
 
       <Corps
         message={message}
@@ -199,6 +193,94 @@ export function Lecture({
         attente={attente}
       />
     </div>
+  )
+}
+
+/**
+ * Qui a écrit, à qui, et qui est en copie.
+ *
+ * Les adresses sont montrées en entier et passent à la ligne plutôt que d'être
+ * coupées : une adresse à moitié affichée ne sert à rien, ni pour reconnaître
+ * un correspondant, ni pour la recopier. Le bloc défile au-delà de quelques
+ * lignes, ce qui arrive sur les envois groupés.
+ */
+function Destinataires({
+  message,
+  onCopier,
+}: {
+  message: MessageAffiche
+  onCopier?: (adresse: string) => void
+}) {
+  const lignes: { role: string; contacts: { nom: string; adresse: string }[] }[] = [
+    { role: 'De', contacts: [{ nom: message.nom, adresse: message.adresse }] },
+    { role: 'À', contacts: message.destinataires },
+    { role: 'Copie', contacts: message.copies },
+  ].filter((l) => l.contacts.some((c) => c.adresse))
+
+  return (
+    <div
+      className="flex max-h-28 flex-none flex-col gap-1 overflow-y-auto border-b px-6 py-2.5"
+      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+    >
+      {lignes.map(({ role, contacts }) => (
+        <div key={role} className="flex items-baseline gap-2">
+          <span
+            className="w-[42px] flex-none text-right text-[11px] font-semibold"
+            style={{ color: 'var(--sub)' }}
+          >
+            {role}
+          </span>
+          {/* `flex-wrap` et non `truncate` : c'est tout l'objet de ce bloc. */}
+          <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1">
+            {contacts
+              .filter((c) => c.adresse)
+              .map((c) => (
+                <AdresseCopiable key={c.adresse} contact={c} onCopier={onCopier} />
+              ))}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Une adresse entière, que le clic recopie dans le presse-papiers. */
+function AdresseCopiable({
+  contact,
+  onCopier,
+}: {
+  contact: { nom: string; adresse: string }
+  onCopier?: (adresse: string) => void
+}) {
+  const copier = async () => {
+    try {
+      await navigator.clipboard.writeText(contact.adresse)
+      onCopier?.(contact.adresse)
+    } catch {
+      // Presse-papiers refusé par le système : mieux vaut ne rien annoncer que
+      // de prétendre avoir copié.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copier()}
+      title={`Copier ${contact.adresse}`}
+      className="adresse inline-flex max-w-full items-baseline gap-1.5 rounded px-1 py-0.5 text-left"
+    >
+      {contact.nom && contact.nom !== contact.adresse && (
+        <span className="text-[12px] font-medium">{contact.nom}</span>
+      )}
+      {/* `break-all` : une adresse longue se poursuit à la ligne suivante au
+          lieu de déborder du cadre. */}
+      <span
+        className="font-mono text-[11px] break-all"
+        style={{ color: 'var(--sub)' }}
+      >
+        {contact.adresse}
+      </span>
+    </button>
   )
 }
 

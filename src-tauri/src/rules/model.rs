@@ -215,6 +215,50 @@ pub fn nom_affiche(entete_from: &str) -> String {
         .unwrap_or_else(|| brut.to_string())
 }
 
+/// Découpe un en-tête `To` ou `Cc` en adresses individuelles.
+///
+/// Ce n'est pas un `split(',')` : la RFC 5322 autorise la virgule à l'intérieur
+/// d'un nom affiché entre guillemets, et `"Belhadj, Karim" <k@x.fr>` est un
+/// destinataire, pas deux. Les chevrons sont surveillés pour la même raison —
+/// une adresse commentée peut en contenir une.
+///
+/// Ce qui ne porte pas d'adresse exploitable est écarté : un en-tête `To:` peut
+/// contenir `undisclosed-recipients:;`, qui ne désigne personne.
+pub fn decouper_destinataires(entete: &str) -> Vec<String> {
+    let mut morceaux = Vec::new();
+    let mut courant = String::new();
+    let mut entre_guillemets = false;
+    let mut entre_chevrons = false;
+
+    for c in entete.chars() {
+        match c {
+            '"' => {
+                entre_guillemets = !entre_guillemets;
+                courant.push(c);
+            }
+            '<' if !entre_guillemets => {
+                entre_chevrons = true;
+                courant.push(c);
+            }
+            '>' if !entre_guillemets => {
+                entre_chevrons = false;
+                courant.push(c);
+            }
+            ',' if !entre_guillemets && !entre_chevrons => {
+                morceaux.push(std::mem::take(&mut courant));
+            }
+            _ => courant.push(c),
+        }
+    }
+    morceaux.push(courant);
+
+    morceaux
+        .into_iter()
+        .map(|m| m.trim().to_string())
+        .filter(|m| normaliser_adresse(m).is_some())
+        .collect()
+}
+
 /// `chrono` sérialise `NaiveTime` en `HH:MM:SS`, alors que le cahier des charges
 /// spécifie `HH:MM`. Ce module fait la conversion dans les deux sens.
 mod serde_heure_hhmm {
@@ -477,5 +521,30 @@ mod tests {
         assert_eq!(normaliser_adresse(""), None);
         assert_eq!(normaliser_adresse("@domaine.fr"), None);
         assert_eq!(normaliser_adresse("locale@"), None);
+    }
+
+    #[test]
+    fn une_liste_de_destinataires_se_decoupe_sur_les_virgules() {
+        let liste = decouper_destinataires("a@x.fr, Bruno <b@y.fr> , c@z.fr");
+
+        assert_eq!(liste, vec!["a@x.fr", "Bruno <b@y.fr>", "c@z.fr"]);
+    }
+
+    #[test]
+    fn une_virgule_dans_un_nom_affiche_ne_coupe_pas_le_destinataire() {
+        // « Belhadj, Karim » est un destinataire, pas deux. Un split naïf en
+        // aurait fait deux entrées, dont une sans adresse.
+        let liste = decouper_destinataires("\"Belhadj, Karim\" <k@x.fr>, c@z.fr");
+
+        assert_eq!(liste, vec!["\"Belhadj, Karim\" <k@x.fr>", "c@z.fr"]);
+    }
+
+    #[test]
+    fn ce_qui_ne_porte_pas_d_adresse_est_ecarte() {
+        // Un en-tête `To:` sans destinataire visible : il ne désigne personne,
+        // et l'afficher tel quel n'apprendrait rien à l'utilisateur.
+        assert!(decouper_destinataires("undisclosed-recipients:;").is_empty());
+        assert!(decouper_destinataires("").is_empty());
+        assert_eq!(decouper_destinataires("a@x.fr, , b@y.fr").len(), 2);
     }
 }

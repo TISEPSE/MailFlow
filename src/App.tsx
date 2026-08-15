@@ -15,6 +15,7 @@ import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
 import { initiales, ton } from './lib/presentation'
 import { creerCache, ranger, type CacheCorps } from './lib/corps'
+import { autresQueMoi } from './lib/reponse'
 import {
   DEFAUTS,
   MINUTES,
@@ -46,7 +47,7 @@ import {
   messageMarquerLu,
   messageRanger,
   repondreAuMessage,
-  messageSignalerSpam,
+  messageCorbeille,
   regleAjouter,
   regleBasculer,
   regleSupprimer,
@@ -720,9 +721,13 @@ export default function App() {
               libelles={vue === 'humain' ? libelles : undefined}
               onRepondre={
                 vue === 'humain'
-                  ? (m) =>
+                  ? (m, tous) =>
                       void agir(async () => {
-                        await repondreAuMessage(m.adresse, m.sujet)
+                        await repondreAuMessage(
+                          m.adresse,
+                          m.sujet,
+                          tous ? autresQueMoi(m, profil?.adresse) : [],
+                        )
                         return null
                       })
                   : undefined
@@ -743,15 +748,13 @@ export default function App() {
                       })
                   : undefined
               }
-              onSignalerSpam={
-                vue === 'publicite'
-                  ? (id) =>
-                      void agir(async () => {
-                        await messageSignalerSpam(id)
-                        return 'Message signalé comme indésirable.'
-                      })
-                  : undefined
+              onSupprimer={(id) =>
+                void agir(async () => {
+                  await messageCorbeille(id)
+                  return 'Message mis à la corbeille.'
+                })
               }
+              onCopier={(adresse) => annoncer(`${adresse} copiée.`)}
               onCreerRegle={(r) =>
                 agir(async () => {
                   setRegles(await regleAjouter(r))

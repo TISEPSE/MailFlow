@@ -133,8 +133,13 @@ export function messageRanger(id: string, libelle?: string): Promise<void> {
  * MailFlow n'a pas le droit d'envoyer du courrier en votre nom : la portee
  * `gmail.send` est ecartee depuis le debut.
  */
-export function repondreAuMessage(destinataire: string, sujet: string): Promise<void> {
-  return invoke<void>('repondre_au_message', { destinataire, sujet })
+export function repondreAuMessage(
+  destinataire: string,
+  sujet: string,
+  /** Renseignee par « Repondre a tous » ; vide par « Repondre ». */
+  copies: string[] = [],
+): Promise<void> {
+  return invoke<void>('repondre_au_message', { destinataire, sujet, copies })
 }
 
 /** Avancement du prechargement, tel que l'evenement le porte. */
@@ -160,14 +165,13 @@ export function corpsPrecharger(ids: string[]): Promise<number> {
 }
 
 /**
- * Signale un message comme indesirable.
+ * Met un message a la corbeille.
  *
- * Meme geste que dans Gmail : le message rejoint les indesirables et quitte la
- * boite de reception. Aucune regle locale n'est creee — Google apprend du
- * signalement.
+ * Le geste du bouton Supprimer de Gmail : le message quitte la boite et reste
+ * recuperable trente jours. Rien n'est detruit.
  */
-export function messageSignalerSpam(id: string): Promise<void> {
-  return invoke<void>('message_signaler_spam', { id })
+export function messageCorbeille(id: string): Promise<void> {
+  return invoke<void>('message_corbeille', { id })
 }
 
 /**

@@ -18,13 +18,43 @@ use super::client::{ClientGmail, SourceJeton, Transport};
 use super::libelles;
 use super::modele::MessageMetadata;
 use crate::error::Resultat;
-use crate::rules::{RuleSet, nom_affiche, normaliser_adresse};
+use crate::rules::{RuleSet, decouper_destinataires, nom_affiche, normaliser_adresse};
 
 /// Nombre de messages remontés à l'ouverture.
 ///
 /// De quoi remplir les vues sans transformer chaque lancement en relevé complet
 /// d'une boîte de plusieurs milliers de messages.
 pub const PLAFOND_BOITE: usize = 60;
+
+/// Une personne désignée par un en-tête d'adresse.
+///
+/// Le nom est cosmétique et l'adresse fait foi, pour la raison habituelle : le
+/// nom affiché est écrit par l'expéditeur.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Contact {
+    pub nom: String,
+    pub adresse: String,
+}
+
+impl Contact {
+    /// Lit une entrée d'en-tête de la forme `"Nom" <adresse@x.fr>`.
+    ///
+    /// Rend `None` quand rien d'exploitable n'en sort : mieux vaut un
+    /// destinataire de moins qu'une ligne vide dans l'en-tête de lecture.
+    fn depuis(entree: &str) -> Option<Self> {
+        Some(Self {
+            nom: nom_affiche(entree),
+            adresse: normaliser_adresse(entree)?,
+        })
+    }
+
+    fn liste(entete: &str) -> Vec<Self> {
+        decouper_destinataires(entete)
+            .iter()
+            .filter_map(|e| Self::depuis(e))
+            .collect()
+    }
+}
 
 /// Un message tel que les vues l'affichent.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -37,6 +67,12 @@ pub struct MessageAffiche {
 
     /// Adresse normalisée. C'est elle qui sert à créer une règle.
     pub adresse: String,
+
+    /// Destinataires visibles, en-tête `To`.
+    pub destinataires: Vec<Contact>,
+
+    /// Personnes en copie, en-tête `Cc`. La copie cachée n'y figure pas.
+    pub copies: Vec<Contact>,
 
     pub sujet: String,
 
@@ -56,6 +92,8 @@ impl MessageAffiche {
             id: m.id.clone(),
             nom: nom_affiche(m.from()),
             adresse: normaliser_adresse(m.from()).unwrap_or_default(),
+            destinataires: Contact::liste(m.to()),
+            copies: Contact::liste(m.cc()),
             sujet: m.sujet().to_string(),
             extrait: m.snippet.clone(),
             date: m.date().map(|d| d.to_rfc3339()),
@@ -149,6 +187,45 @@ mod tests {
             "id": "m2", "threadId": "t1", "labelIds": ["INBOX"]
         }));
         assert!(!MessageAffiche::depuis(&lu, &RuleSet::default()).non_lu);
+    }
+
+    #[test]
+    fn les_destinataires_et_les_copies_sont_rendus_separement() {
+        let m = metadonnees(serde_json::json!({
+            "id": "m1", "threadId": "t1",
+            "payload": {"headers": [
+                {"name": "From", "value": "karim@atelier.fr"},
+                {"name": "To", "value": "\"Dupont, Marie\" <marie@ecole.fr>, paul@ecole.fr"},
+                {"name": "Cc", "value": "Direction <direction@ecole.fr>"}
+            ]}
+        }));
+
+        let a = MessageAffiche::depuis(&m, &RuleSet::default());
+
+        assert_eq!(a.destinataires.len(), 2);
+        assert_eq!(a.destinataires[0].nom, "Dupont, Marie");
+        assert_eq!(a.destinataires[0].adresse, "marie@ecole.fr");
+        assert_eq!(a.destinataires[1].adresse, "paul@ecole.fr");
+        assert_eq!(a.copies.len(), 1);
+        assert_eq!(a.copies[0].adresse, "direction@ecole.fr");
+    }
+
+    #[test]
+    fn un_message_sans_destinataire_lisible_rend_des_listes_vides() {
+        // Une liste de diffusion masque souvent ses destinataires. La vue doit
+        // afficher le message sans prétendre qu'il n'a pas été adressé.
+        let m = metadonnees(serde_json::json!({
+            "id": "m1", "threadId": "t1",
+            "payload": {"headers": [
+                {"name": "From", "value": "info@lettre.fr"},
+                {"name": "To", "value": "undisclosed-recipients:;"}
+            ]}
+        }));
+
+        let a = MessageAffiche::depuis(&m, &RuleSet::default());
+
+        assert!(a.destinataires.is_empty());
+        assert!(a.copies.is_empty());
     }
 
     #[test]

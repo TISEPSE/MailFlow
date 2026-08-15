@@ -57,6 +57,14 @@ export interface CompteConnu {
 /** Miroir de `gmail::classement::CategorieMessage`. */
 export type CategorieMessage = 'humain' | 'publicite' | 'newsletter' | 'formation'
 
+/** Miroir de `gmail::boite::Contact`. */
+export interface Contact {
+  /** Nom choisi par l'expediteur du message. Cosmetique. */
+  nom: string
+  /** Adresse normalisee, en minuscules. */
+  adresse: string
+}
+
 /** Miroir de `gmail::boite::MessageAffiche`. */
 export interface MessageAffiche {
   id: string
@@ -64,6 +72,10 @@ export interface MessageAffiche {
   nom: string
   /** Adresse normalisee. C'est elle qui sert a creer une regle. */
   adresse: string
+  /** Destinataires visibles, en-tete `To`. */
+  destinataires: Contact[]
+  /** Personnes en copie, en-tete `Cc`. La copie cachee n'y figure pas. */
+  copies: Contact[]
   sujet: string
   /** Extrait fourni par Gmail. Du texte, jamais du balisage. */
   extrait: string
