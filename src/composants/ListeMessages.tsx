@@ -21,7 +21,7 @@ import {
   initiales,
   palette,
 } from '../lib/presentation'
-import type { CorpsMessage, MessageAffiche } from '../types/backend'
+import type { CompteConnu, CorpsMessage, MessageAffiche } from '../types/backend'
 
 export function ListeMessages({
   messages,
@@ -34,9 +34,9 @@ export function ListeMessages({
   selection: string | null
   onSelect: (id: string) => void
   logos: Record<string, string>
-  /** Renseignés dans la vue mélangée seulement : chaque tuile porte alors
-   *  l'adresse dont le message vient, et un liseré de la couleur du compte. */
-  comptes?: readonly string[]
+  /** Renseignés dans la vue mélangée seulement : chaque tuile porte alors la
+   *  photo du compte qui a reçu le message, et un liseré de sa couleur. */
+  comptes?: readonly CompteConnu[]
 }) {
   return (
     <div
@@ -54,7 +54,13 @@ export function ListeMessages({
         const [fond, encre] = palette(i)
         const choisi = m.id === selection
         const neuf = m.nonLu
-        const teinteDuCompte = comptes ? couleurDuCompte(m.compte, comptes) : null
+        const teinteDuCompte = comptes
+          ? couleurDuCompte(
+              m.compte,
+              comptes.map((c) => c.adresse),
+            )
+          : null
+        const compteRecepteur = comptes?.find((c) => c.adresse === m.compte)
         return (
           <button
             key={m.id}
@@ -105,14 +111,37 @@ export function ListeMessages({
                   {m.nom}
                 </span>
                 {teinteDuCompte && (
-                  // L'adresse de réception, et non le nom du compte : c'est
-                  // elle qui distingue deux boîtes du même propriétaire.
+                  // La photo du compte plutôt que son adresse en toutes
+                  // lettres : elle se reconnaît d'un coup d'œil et ne mange
+                  // pas la ligne du nom, qui est l'information principale.
+                  // L'adresse reste en infobulle pour lever un doute.
                   <span
-                    className="max-w-[42%] flex-none truncate rounded px-1.5 py-px font-mono text-[9.5px] font-semibold"
-                    style={{ background: teinteDuCompte[0], color: teinteDuCompte[1] }}
-                    title={m.compte}
+                    className="flex flex-none items-center justify-center rounded-full"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      background: teinteDuCompte[0],
+                      // Un anneau de la couleur du compte : la photo Google
+                      // est ronde et neutre, l'anneau la rattache au liseré de
+                      // la tuile.
+                      boxShadow: `0 0 0 1.5px ${teinteDuCompte[1]}`,
+                    }}
+                    title={`Reçu sur ${m.compte}`}
                   >
-                    {m.compte}
+                    {compteRecepteur?.photo ? (
+                      <img
+                        src={compteRecepteur.photo}
+                        alt=""
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        className="text-[8.5px] font-bold"
+                        style={{ color: teinteDuCompte[1] }}
+                      >
+                        {initiales(m.compte)}
+                      </span>
+                    )}
                   </span>
                 )}
                 <span
@@ -427,7 +456,7 @@ export function CorpsIsole({
         sandbox=""
         srcDoc={documentIsole(corps.html)}
         className="min-h-0 w-full flex-1"
-        style={{ border: 0, background: '#FFFFFF', minHeight: '100%' }}
+        style={{ border: 0, background: '#FFFFFF', height: '100%' }}
       />
     )
   }
@@ -477,6 +506,10 @@ function documentIsole(html: string): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
 <style>
   html { background: #ffffff; }
+  /* La barre de défilement du message est masquée : le cadre a la sienne, et
+     deux barres côte à côte n'en font pas une meilleure. Le contenu défile
+     toujours, à la molette comme au clavier. */
+  body::-webkit-scrollbar { width: 0; height: 0; }
   body {
     margin: 0; padding: 20px 24px;
     /* Un message bâti sur un tableau large défile ici, au lieu d'élargir le

@@ -23,6 +23,7 @@ import { nouvelleRegle } from '../lib/regles'
 import { messageCorps } from '../lib/tauri'
 import type {
   ActionRegle,
+  CompteConnu,
   CorpsMessage,
   CategorieMessage,
   LibelleGmail,
@@ -98,7 +99,7 @@ export function Courrier({
   /** Vrai tant que le premier relevé n'a pas abouti. */
   chargement?: boolean
   /** Renseignés dans la vue mélangée seulement. */
-  comptes?: readonly string[]
+  comptes?: readonly CompteConnu[]
   /** Message désigné par la recherche, à ouvrir sans attendre un clic. */
   vise?: string | null
   /** Prévient que la désignation a été honorée, pour qu'elle ne se répète pas. */

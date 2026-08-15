@@ -424,7 +424,12 @@ pub async fn message_restaurer(etat: State<'_, EtatAuth>, id: String) -> Resulta
 #[tauri::command]
 pub async fn boite_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     let racine = dossier_cache(&app)?;
-    let boite = cache::lire_boite(&racine, &compte_actif(&app)).unwrap_or_default();
+    let mut boite = cache::lire_boite(&racine, &compte_actif(&app)).unwrap_or_default();
+
+    // Les règles sont rejouées à la lecture : sans cela, une règle créée depuis
+    // le dernier relevé resterait sans effet jusqu'au suivant.
+    let regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+    cache::reclasser(&mut boite, &regles);
 
     log::info!("{} message(s) relus du cache", boite.len());
     Ok(boite)
@@ -446,6 +451,11 @@ pub async fn boite_melangee(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
         .filter_map(|c| cache::lire_boite(&racine, &c.adresse))
         .flatten()
         .collect();
+
+    // Comme pour une boîte seule : les règles valent pour tous les comptes, et
+    // doivent s'appliquer sans attendre un relevé de chacun.
+    let regles = RulesStore::new(&dossier).charger()?;
+    cache::reclasser(&mut tout, &regles);
 
     // Décroissant : le plus récent en tête, comme dans chaque boîte prise
     // séparément. Une date absente part en fin de liste plutôt que de prendre

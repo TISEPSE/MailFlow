@@ -53,14 +53,19 @@ export function ChampAdresse({
             <span className="font-mono text-[12.5px] leading-5 font-semibold break-all">
               {adresse}
             </span>
+            {/* Une cible carrée de 20 pixels, centrée sur elle-même : la croix
+                flottait auparavant sur la ligne de texte, calée par une marge
+                d'un demi-pixel, et l'opacité au survol faisait pâlir le dessin
+                — ce qui se lit comme un bouton qui se désactive. Un fond qui
+                apparaît dit l'inverse. */}
             <button
               type="button"
               onClick={() => onChange('')}
               aria-label="Changer d'adresse"
-              className="mt-0.5 flex-none rounded-md transition-opacity hover:opacity-70"
+              className="croix-etiquette flex h-5 w-5 flex-none items-center justify-center self-center rounded-md"
               style={{ color: encre }}
             >
-              <Icone nom="close" taille={14} />
+              <Icone nom="close" taille={13} />
             </button>
           </span>
         </div>

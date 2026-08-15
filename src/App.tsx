@@ -753,20 +753,41 @@ export default function App() {
               className={`survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1.5 ${
                 repliee ? 'justify-center px-0' : 'px-1.5 text-left'
               }`}
-              title={profil?.adresse ?? undefined}
+              title={
+                compteAffiche === TOUS_LES_COMPTES
+                  ? 'Toutes vos boîtes réunies'
+                  : (profil?.adresse ?? undefined)
+              }
             >
-              <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
+              {/* La vue mélangée a sa propre marque : sans elle, le profil
+                  affichait le compte actif alors que la liste montrait tout,
+                  et rien ne disait où l'on se trouvait. */}
+              {compteAffiche === TOUS_LES_COMPTES ? (
+                <span
+                  className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+                  style={{ background: 'var(--accent-soft)' }}
+                >
+                  <Icone nom="groups" taille={15} style={{ color: 'var(--accent-fg)' }} />
+                </span>
+              ) : (
+                <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
+              )}
               {!repliee && (
                 <>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12px] font-semibold">
-                      {profil?.nom ?? (etat?.compteConnecte ? 'Compte Google' : 'Non connecté')}
+                      {compteAffiche === TOUS_LES_COMPTES
+                        ? 'Tous les comptes'
+                        : (profil?.nom ??
+                          (etat?.compteConnecte ? 'Compte Google' : 'Non connecté'))}
                     </span>
                     <span
                       className="block truncate font-mono text-[10px]"
                       style={{ color: 'var(--sub)' }}
                     >
-                      {profil?.adresse ?? 'aucun compte relié'}
+                      {compteAffiche === TOUS_LES_COMPTES
+                        ? `${comptes.length} boîtes réunies`
+                        : (profil?.adresse ?? 'aucun compte relié')}
                     </span>
                   </span>
                   <Icone
@@ -832,6 +853,8 @@ export default function App() {
               frequence={prefs.frequence}
               onFrequence={(f: Frequence) => regler({ frequence: f })}
               onRevoirLeGuide={() => regler({ guideVu: false })}
+              melange={compteAffiche === TOUS_LES_COMPTES}
+              onMelanger={() => void afficherLaVueMelangee()}
               onErreur={(m) => annoncer(m, true)}
               enCours={enCours}
               onConnecter={() =>
@@ -905,11 +928,7 @@ export default function App() {
               chargement={premierReleve}
               vise={messageVise}
               onVise={() => setMessageVise(null)}
-              comptes={
-                compteAffiche === TOUS_LES_COMPTES
-                  ? comptes.map((c) => c.adresse)
-                  : undefined
-              }
+              comptes={compteAffiche === TOUS_LES_COMPTES ? comptes : undefined}
               regles={regles?.automations ?? []}
               proposition={PROPOSITIONS[vue]}
               logos={logos}

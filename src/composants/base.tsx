@@ -469,9 +469,16 @@ export function Modale({
 
         {/* Défilement interne : les suggestions d'adresse débordaient de la
             fenêtre au lieu de la faire défiler. */}
+        {/* Sans rembourrage, le contenu touche les bords : il doit donc
+            reprendre l'arrondi du bas de la fenêtre, sans quoi ses coins
+            carrés dépassent de la carte. Le défilement lui est laissé — deux
+            barres imbriquées, l'une pour la fenêtre et l'autre pour le
+            message, se disputaient la molette. */}
         <div
-          className={`overflow-y-auto ${large ? 'h-[72vh]' : 'max-h-[70vh]'} ${
-            sansRembourrage ? '' : 'px-6 py-5'
+          className={`${large ? 'h-[72vh]' : 'max-h-[70vh]'} ${
+            sansRembourrage
+              ? 'overflow-hidden rounded-b-2xl'
+              : 'overflow-y-auto px-6 py-5'
           }`}
         >
           {children}

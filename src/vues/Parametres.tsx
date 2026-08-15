@@ -53,6 +53,8 @@ export function Parametres({
   onOublierCompte,
   onRevoirLeGuide,
   onErreur,
+  melange,
+  onMelanger,
   enCours,
 }: {
   etat: EtatApplication
@@ -75,6 +77,10 @@ export function Parametres({
   onRevoirLeGuide: () => void
   /** Annonce une panne réseau sans faire disparaître la page. */
   onErreur: (message: string) => void
+  /** Vrai quand la vue mélangée est celle qu'on regarde. */
+  melange: boolean
+  /** Ouvre la vue qui réunit les boîtes de tous les comptes. */
+  onMelanger: () => void
   enCours: boolean
 }) {
   return (
@@ -97,6 +103,51 @@ export function Parametres({
           onAjouterCompte={onAjouterCompte}
           onOublierCompte={onOublierCompte}
         />
+
+        {/* Le compte fictif a sa carte, comme les vrais : c'est ici qu'on
+            regarde quel compte est actif, et la vue mélangée n'y figurait pas
+            alors même qu'elle pouvait être celle qu'on regardait. */}
+        {comptes.length > 1 && (
+          <div
+            className="mb-4 flex items-center gap-4 rounded-2xl border px-5 py-4"
+            style={{
+              borderColor: melange
+                ? 'color-mix(in oklab, var(--accent) 45%, var(--line))'
+                : 'var(--line)',
+              background: melange ? 'var(--accent-soft)' : 'var(--card)',
+            }}
+          >
+            <span
+              className="flex h-11 w-11 flex-none items-center justify-center rounded-full"
+              style={{ background: melange ? 'var(--card)' : 'var(--accent-soft)' }}
+            >
+              <Icone nom="groups" taille={22} style={{ color: 'var(--accent-fg)' }} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[15px] font-semibold tracking-tight">
+                Tous les comptes
+              </div>
+              <div className="pt-0.5 text-[13px]" style={{ color: 'var(--sub)' }}>
+                {melange
+                  ? `Vue active — ${comptes.length} boîtes réunies dans les mêmes pages.`
+                  : `Réunit vos ${comptes.length} boîtes dans les mêmes pages, chaque message marqué de son compte.`}
+              </div>
+            </div>
+            {melange ? (
+              <span
+                className="flex flex-none items-center gap-1.5 text-[13px] font-semibold"
+                style={{ color: 'var(--accent-fg)' }}
+              >
+                <Icone nom="check_circle" taille={17} rempli />
+                Vue active
+              </span>
+            ) : (
+              <BoutonCarte principal onClick={onMelanger} icone="groups">
+                Afficher
+              </BoutonCarte>
+            )}
+          </div>
+        )}
 
         <Bloc titre="Apparence">
           <Reglage
@@ -546,7 +597,11 @@ function BoutonCarte({
       // sa taille et les deux boutons voisins ne faisaient pas la même hauteur.
       className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex h-11 flex-none items-center justify-center gap-2 rounded-xl px-5 text-[14px] leading-none font-semibold`}
     >
-      {icone && <Icone nom={icone} taille={15} compenser />}
+      {/* 18 et non 15 : dans un bouton de 44 pixels, un dessin de 15 se perd
+          à côté d'un texte de 14. Sans `compenser` : sa correction verticale
+          d'un pixel, faite pour les petits boutons, se lisait ici comme un
+          défaut d'alignement. */}
+      {icone && <Icone nom={icone} taille={18} />}
       {children}
     </button>
   )

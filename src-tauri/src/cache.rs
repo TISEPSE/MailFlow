@@ -30,6 +30,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::Resultat;
 use crate::gmail::boite::MessageAffiche;
+use crate::rules::RuleSet;
 
 /// Nom de dossier sûr pour une adresse de compte.
 ///
@@ -101,6 +102,26 @@ pub fn ranger_boite(racine: &Path, compte: &str, boite: &[MessageAffiche]) {
 pub fn lire_boite(racine: &Path, compte: &str) -> Option<Vec<MessageAffiche>> {
     let texte = std::fs::read_to_string(fichier_releve(racine, compte)).ok()?;
     serde_json::from_str(&texte).ok()
+}
+
+/// Réapplique les règles à un relevé sorti du cache.
+///
+/// La catégorie d'un message est calculée au moment du relevé, et rangée avec
+/// lui. Une règle ajoutée après coup ne s'y appliquait donc pas : on créait une
+/// règle « Formation » et la page restait vide jusqu'au prochain relevé
+/// complet — au mieux, car l'affichage repart du cache. Le geste central du
+/// produit paraissait sans effet.
+///
+/// Seules les règles sont rejouées, et c'est suffisant : dans `classer`, elles
+/// passent avant tout le reste. Ce qu'on ne peut pas rejouer ici — les libellés
+/// Gmail, l'en-tête de désabonnement — n'entre en compte que si aucune règle ne
+/// vise l'expéditeur, auquel cas la catégorie rangée est déjà la bonne.
+pub fn reclasser(boite: &mut [MessageAffiche], regles: &RuleSet) {
+    for message in boite {
+        if let Some(regle) = regles.regles_pour(&message.adresse).first() {
+            message.categorie = regle.categorie.into();
+        }
+    }
 }
 
 /// Efface tout le cache, tous comptes confondus.
@@ -238,6 +259,58 @@ mod tests {
         assert_eq!(lire_boite(d.path(), "un@gmail.com"), None);
         assert_eq!(lire_boite(d.path(), "deux@gmail.com"), None);
         assert_eq!(taille(d.path()), 0);
+    }
+
+    fn regle_formation(active: bool) -> RuleSet {
+        use crate::rules::{Action, Categorie, Rule};
+
+        let mut regles = RuleSet::default();
+        regles.automations.push(Rule {
+            id: "r1".into(),
+            expediteur: "karim@atelier.fr".into(),
+            nom_affichage: "Karim".into(),
+            categorie: Categorie::Formation,
+            action: Action::ClasserSeulement,
+            active,
+            date_ajout: chrono::NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(),
+            libelle: None,
+            frequence: None,
+            heure_execution: None,
+        });
+        regles
+    }
+
+    #[test]
+    fn une_regle_ajoutee_apres_le_releve_reclasse_le_cache() {
+        // Le bug qu'on corrige : on crée une règle « Formation », et la page
+        // reste vide parce que le cache garde la catégorie d'avant.
+        let mut boite = vec![message("m1")];
+        assert_eq!(boite[0].categorie, CategorieMessage::Humain);
+
+        reclasser(&mut boite, &regle_formation(true));
+
+        assert_eq!(boite[0].categorie, CategorieMessage::Formation);
+    }
+
+    #[test]
+    fn une_regle_desactivee_ne_reclasse_rien() {
+        let mut boite = vec![message("m1")];
+
+        reclasser(&mut boite, &regle_formation(false));
+
+        assert_eq!(boite[0].categorie, CategorieMessage::Humain);
+    }
+
+    #[test]
+    fn un_message_sans_regle_garde_sa_categorie() {
+        // Le classement automatique — publicité, newsletter — ne se rejoue pas
+        // ici, et n'a pas à l'être : il ne dépend pas des règles.
+        let mut boite = vec![message("m1")];
+        boite[0].categorie = CategorieMessage::Publicite;
+
+        reclasser(&mut boite, &RuleSet::default());
+
+        assert_eq!(boite[0].categorie, CategorieMessage::Publicite);
     }
 
     #[test]
