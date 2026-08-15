@@ -19,7 +19,7 @@ use crate::auth::{DELAI_AUTORISATION, connecter};
 use crate::comptes::{self, Annuaire};
 use crate::config;
 use crate::error::{AppError, Resultat};
-use crate::gmail::boite::{MessageAffiche, charger_boite};
+use crate::gmail::boite::{MessageAffiche, charger_boite_suivi};
 use crate::gmail::client::{ClientGmail, SourceJeton};
 use crate::gmail::execution::RapportExecution;
 use crate::gmail::synchronisation::synchroniser;
@@ -316,6 +316,12 @@ pub async fn regle_basculer(app: AppHandle, id: String) -> Resultat<RuleSet> {
 // Boîte de réception
 // ---------------------------------------------------------------------------
 
+/// Nom de l'événement annonçant l'avancement du relevé.
+///
+/// Le relevé demande un appel par message : c'est la plus longue attente de
+/// l'ouverture, et l'écran de chargement n'avait rien à en dire.
+pub const EVENEMENT_RELEVE: &str = "messages-releves";
+
 /// Relève la boîte et classe les messages par vue.
 ///
 /// Ne rend ni corps de message ni identifiant de fil : le HTML d'un e-mail est
@@ -326,12 +332,16 @@ pub async fn boite_lister(
     app: AppHandle,
     etat: State<'_, EtatAuth>,
 ) -> Resultat<Vec<MessageAffiche>> {
+    use tauri::Emitter;
+
     let regles = RulesStore::new(&dossier_config(&app)?).charger()?;
 
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-    let boite = charger_boite(&client, &regles)
-        .await
-        .inspect_err(|e| log::warn!("relevé de la boîte interrompu : {e}"))?;
+    let boite = charger_boite_suivi(&client, &regles, |faits, total| {
+        let _ = app.emit(EVENEMENT_RELEVE, Avancement { faits, total });
+    })
+    .await
+    .inspect_err(|e| log::warn!("relevé de la boîte interrompu : {e}"))?;
 
     log::info!("{} message(s) relevé(s)", boite.len());
     Ok(boite)

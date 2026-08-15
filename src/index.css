@@ -341,15 +341,33 @@ button:not(:disabled),
    Sans lui, trois libellés côte à côte ne réagissaient à rien tant qu'on
    n'avait pas cliqué — on ne savait pas si l'on visait « 5 min » ou « 15 min ».
    Le segment actif garde son fond de carte : le survol ne doit pas laisser
-   croire qu'on peut le désélectionner. */
+   croire qu'on peut le désélectionner.
+
+   Les couleurs sont ici et non en style en ligne, sans quoi elles
+   l'emporteraient sur les règles de survol — le piège est déjà connu ailleurs
+   dans cette feuille. */
 .segment {
-  transition: background-color 120ms ease, color 120ms ease;
+  background: transparent;
+  color: var(--sub);
+  box-shadow: none;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
 }
 
-.segment:not([aria-checked='true']):hover,
-.segment:not([aria-selected='true']):hover {
+.segment:hover {
   background: var(--faint);
   color: var(--fg);
+}
+
+/* Après le survol, et plus spécifique que lui : le segment choisi garde son
+   fond quand la souris le traverse. */
+.segment[aria-checked='true'],
+.segment[aria-selected='true'] {
+  background: var(--card);
+  color: var(--fg);
+  box-shadow: var(--shadow);
 }
 
 /* Toasts.

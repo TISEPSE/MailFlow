@@ -146,6 +146,9 @@ export interface Avancement {
 /** Nom de l'evenement emis pendant le prechargement. */
 export const EVENEMENT_PRECHARGEMENT = 'corps-precharges'
 
+/** Nom de l'evenement emis pendant le releve de la boite. */
+export const EVENEMENT_RELEVE = 'messages-releves'
+
 /**
  * Charge d'avance le corps de tous les messages donnes.
  *

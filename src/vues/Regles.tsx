@@ -155,12 +155,7 @@ export function Regles({
                 role="tab"
                 aria-selected={actif}
                 onClick={() => setOnglet(o)}
-                className="flex h-8 items-center rounded-lg px-4 text-[13px] leading-none font-semibold whitespace-nowrap transition-colors"
-                style={{
-                  background: actif ? 'var(--card)' : 'transparent',
-                  color: actif ? 'var(--fg)' : 'var(--sub)',
-                  boxShadow: actif ? 'var(--shadow)' : 'none',
-                }}
+                className="segment flex h-8 items-center rounded-lg px-4 text-[13px] leading-none font-semibold whitespace-nowrap"
               >
                 {o}
               </button>

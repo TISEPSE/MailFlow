@@ -6,6 +6,7 @@ import {
   Progression,
   Toasts,
   Vide,
+  type EtapeChargement,
   type Toast,
 } from './composants/base'
 import type { NomIcone } from './composants/glyphes'
@@ -32,6 +33,7 @@ import {
   compteProfil,
   corpsPrecharger,
   EVENEMENT_PRECHARGEMENT,
+  EVENEMENT_RELEVE,
   type Avancement,
   comptesLister,
   logosExpediteurs,
@@ -120,8 +122,21 @@ export default function App() {
    *  n'aurait rien à jouer, et le menu s'effacerait d'un coup. */
   const [menuMonte, setMenuMonte] = useState(false)
 
-  /** Avancement du préchargement, `null` quand il n'est pas en cours. */
-  const [avancement, setAvancement] = useState<Avancement | null>(null)
+  /** Avancement du chargement, `null` quand il n'est pas en cours.
+   *
+   *  L'étape distingue les deux attentes, que l'écran annonce différemment : le
+   *  relevé des messages, puis la préparation de leur contenu. */
+  const [avancement, setAvancement] = useState<
+    (Avancement & { etape: EtapeChargement }) | null
+  >(null)
+
+  /** Vrai pendant un chargement complet, et lui seul.
+   *
+   *  Le relevé périodique passe par la même commande, donc par le même
+   *  événement : sans ce garde-fou, la boîte disparaîtrait toutes les cinq
+   *  minutes derrière l'écran de chargement. Une référence et non un état :
+   *  l'écoute est posée une fois pour toutes et doit lire la valeur du moment. */
+  const chargementComplet = useRef(false)
 
   /** Fenêtre d'ajout d'un expéditeur aux rappels de formation. */
   const [ajoutFormation, setAjoutFormation] = useState(false)
@@ -219,16 +234,18 @@ export default function App() {
     // Total inconnu, mais l'écran doit être là avant le relevé : sans cela, la
     // bascule de compte montrait d'abord un squelette, puis la barre — deux
     // attentes différentes pour un seul clic.
-    setAvancement((en) => en ?? { faits: 0, total: 0 })
-    const messages = await relever()
-    if (!messages?.length) {
-      setAvancement(null)
-      return
-    }
+    chargementComplet.current = true
+    setAvancement((en) => en ?? { faits: 0, total: 0, etape: 'releve' })
+    try {
+      const messages = await relever()
+      if (!messages?.length) return
 
-    setAvancement({ faits: 0, total: messages.length })
-    await corpsPrecharger(messages.map((m) => m.id)).catch(() => null)
-    setAvancement(null)
+      setAvancement({ faits: 0, total: messages.length, etape: 'corps' })
+      await corpsPrecharger(messages.map((m) => m.id)).catch(() => null)
+    } finally {
+      chargementComplet.current = false
+      setAvancement(null)
+    }
   }, [relever])
 
   /**
@@ -264,11 +281,21 @@ export default function App() {
   useEffect(() => {
     // L'écoute est posée avant tout appel : un événement émis pendant qu'on
     // s'abonne serait sinon perdu, et la barre resterait à zéro.
-    const arret = listen<Avancement>(EVENEMENT_PRECHARGEMENT, (e) =>
-      setAvancement(e.payload),
-    )
+    const arrets = [
+      // Le relevé est l'attente la plus longue de l'ouverture : un appel par
+      // message. Il se compte, à condition que ce soit bien un chargement
+      // complet et non le relevé périodique, qui doit rester invisible.
+      listen<Avancement>(EVENEMENT_RELEVE, (e) => {
+        if (chargementComplet.current) {
+          setAvancement({ ...e.payload, etape: 'releve' })
+        }
+      }),
+      listen<Avancement>(EVENEMENT_PRECHARGEMENT, (e) =>
+        setAvancement({ ...e.payload, etape: 'corps' }),
+      ),
+    ]
     return () => {
-      void arret.then((f) => f())
+      for (const arret of arrets) void arret.then((f) => f())
     }
   }, [])
 
@@ -333,7 +360,7 @@ export default function App() {
       async () => {
         // Dès le clic, et non après le relevé : la boîte de l'autre compte
         // n'a rien en cache, l'attente est réelle et doit s'annoncer.
-        setAvancement({ faits: 0, total: 0 })
+        setAvancement({ faits: 0, total: 0, etape: 'releve' })
         await compteBasculer(adresse)
         // La boîte affichée est celle du compte précédent : la vider avant le
         // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
@@ -361,7 +388,7 @@ export default function App() {
   const ajouterUnCompte = () =>
     agir(
       async () => {
-        setAvancement({ faits: 0, total: 0 })
+        setAvancement({ faits: 0, total: 0, etape: 'releve' })
         await compteAjouter()
         setBoite([])
         setPremierReleve(true)
@@ -623,7 +650,11 @@ export default function App() {
 
         <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
           {avancement ? (
-            <Progression faits={avancement.faits} total={avancement.total} />
+            <Progression
+              faits={avancement.faits}
+              total={avancement.total}
+              etape={avancement.etape}
+            />
           ) : !etat ? (
             <Vide icone="hourglass_empty" titre="Démarrage…" detail="Lecture de l'état du backend." />
           ) : vue === 'parametres' ? (

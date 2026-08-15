@@ -187,6 +187,10 @@ export function Interrupteur({
  * seul laissait le texte flotter au-dessus du milieu, jambages compris. Le
  * survol distingue le segment visé — trois libellés côte à côte qui ne
  * réagissent à rien ne disent pas où l'on est.
+ *
+ * Les couleurs vivent dans `.segment`, jamais en style en ligne : un style en
+ * ligne l'emporte sur toute règle de feuille, et le survol n'aurait alors
+ * aucune couleur à poser.
  */
 export function Segments<T extends string>({
   valeurs,
@@ -218,14 +222,9 @@ export function Segments<T extends string>({
             role="radio"
             aria-checked={actif}
             onClick={() => onChange(v)}
-            className={`segment inline-flex h-9 items-center justify-center rounded-lg px-4 text-[13.5px] font-semibold whitespace-nowrap ${
+            className={`segment inline-flex h-[34px] items-center justify-center rounded-lg px-4 text-[13.5px] font-semibold whitespace-nowrap ${
               pleineLargeur ? 'flex-1' : ''
             }`}
-            style={{
-              background: actif ? 'var(--card)' : 'transparent',
-              color: actif ? 'var(--fg)' : 'var(--sub)',
-              boxShadow: actif ? 'var(--shadow)' : 'none',
-            }}
           >
             {v}
           </button>
@@ -538,13 +537,33 @@ export function SqueletteLecture() {
   )
 }
 
+/** Les deux attentes du chargement, dans l'ordre où on les subit. */
+export type EtapeChargement = 'releve' | 'corps'
+
+const INTITULES: Record<EtapeChargement, string> = {
+  releve: 'Relevé de vos messages…',
+  corps: 'Préparation de votre boîte…',
+}
+
 /**
- * Barre de progression du préchargement.
+ * Barre de progression du chargement.
  *
  * Chiffrée autant que dessinée : une barre seule ne dit pas si l'attente sera
  * de trois secondes ou d'une minute, alors que « 12 sur 48 » le laisse estimer.
+ *
+ * Deux étapes se comptent ici, et non plus une seule : le relevé demande un
+ * appel par message, autant que le préchargement des corps. Le laisser muet
+ * revenait à afficher une barre qui n'avance pas pendant la moitié de l'attente.
  */
-export function Progression({ faits, total }: { faits: number; total: number }) {
+export function Progression({
+  faits,
+  total,
+  etape = 'corps',
+}: {
+  faits: number
+  total: number
+  etape?: EtapeChargement
+}) {
   // Total inconnu : la bascule de compte affiche cet écran dès le clic, avant
   // même de savoir combien de messages seront à charger. Une barre à zéro
   // laisserait croire que rien ne se passe.
@@ -569,7 +588,7 @@ export function Progression({ faits, total }: { faits: number; total: number }) 
       </div>
 
       <div className="text-[20px] font-semibold tracking-tight">
-        {indetermine ? 'Ouverture de votre boîte…' : 'Préparation de votre boîte…'}
+        {indetermine ? 'Ouverture de votre boîte…' : INTITULES[etape]}
       </div>
 
       <div className="flex w-80 max-w-full flex-col gap-2">
@@ -596,7 +615,9 @@ export function Progression({ faits, total }: { faits: number; total: number }) 
           style={{ color: 'var(--sub)' }}
         >
           <span>
-            {indetermine ? 'relevé des messages' : `${faits} sur ${total}`}
+            {indetermine
+              ? 'relevé des messages'
+              : `${faits} sur ${total} message${total > 1 ? 's' : ''}`}
           </span>
           <span>{indetermine ? '' : `${part} %`}</span>
         </div>
