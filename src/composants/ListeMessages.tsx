@@ -92,7 +92,7 @@ export function ListeMessages({
                 aux messages lus qui n'en ont pas l'usage. */}
             {neuf && (
               <span
-                className="absolute top-1/2 left-[3px] h-1.5 w-1.5 -translate-y-1/2 rounded-full"
+                className="absolute top-1/2 left-[0.1875rem] h-1.5 w-1.5 -translate-y-1/2 rounded-full"
                 style={{ background: 'var(--accent)' }}
               />
             )}
@@ -105,7 +105,7 @@ export function ListeMessages({
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-2">
                 <span
-                  className="min-w-0 flex-1 truncate text-[13.5px]"
+                  className="min-w-0 flex-1 truncate text-[0.8438rem]"
                   style={{ fontWeight: neuf ? 600 : 500 }}
                 >
                   {m.nom}
@@ -136,7 +136,7 @@ export function ListeMessages({
                       />
                     ) : (
                       <span
-                        className="text-[8.5px] font-bold"
+                        className="text-[0.5312rem] font-bold"
                         style={{ color: teinteDuCompte[1] }}
                       >
                         {initiales(m.compte)}
@@ -145,17 +145,17 @@ export function ListeMessages({
                   </span>
                 )}
                 <span
-                  className="flex-none font-mono text-[10.5px]"
+                  className="flex-none font-mono text-[0.6562rem]"
                   style={{ color: 'var(--sub)' }}
                 >
                   {heureCourte(m.date)}
                 </span>
               </span>
-              <span className="mt-0.5 block truncate text-[12.5px] font-medium">
+              <span className="mt-0.5 block truncate text-[0.7812rem] font-medium">
                 {m.sujet || '(sans objet)'}
               </span>
               <span
-                className="mt-0.5 block truncate text-[12px]"
+                className="mt-0.5 block truncate text-[0.75rem]"
                 style={{ color: 'var(--sub)' }}
               >
                 {m.extrait}
@@ -196,7 +196,7 @@ export function Lecture({
   if (!message) {
     return (
       <div
-        className="flex flex-1 items-center justify-center text-[13px]"
+        className="flex flex-1 items-center justify-center text-[0.8125rem]"
         style={{ color: 'var(--sub)' }}
       >
         Sélectionnez un message.
@@ -219,15 +219,15 @@ export function Lecture({
         <div className="flex items-center gap-2.5">
           <Pastille
             texte={initiales(message.nom)}
-            taille={30}
+            taille="1.875rem"
             fond={fond}
             couleur={encre}
             logo={logos[domaineDe(message.adresse)]}
           />
-          <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
+          <h2 className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold tracking-tight">
             {message.sujet || '(sans objet)'}
           </h2>
-          <span className="flex-none text-[12px]" style={{ color: 'var(--sub)' }}>
+          <span className="flex-none text-[0.75rem]" style={{ color: 'var(--sub)' }}>
             {heureCourte(message.date)}
           </span>
         </div>
@@ -235,8 +235,8 @@ export function Lecture({
         {/* Le nom seul sur cette ligne : elle a une hauteur fixe, et une
             adresse entière n'y tiendrait pas sans être coupée. Les adresses
             sont plus bas, où elles ont la place de passer à la ligne. */}
-        <div className="mt-1.5 flex items-center gap-2 pl-[40px]">
-          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+        <div className="mt-1.5 flex items-center gap-2 pl-[2.5rem]">
+          <span className="min-w-0 flex-1 truncate text-[0.7812rem] font-semibold">
             {message.nom}
           </span>
           {actions && (
@@ -296,7 +296,7 @@ function Destinataires({
         onClick={() => setOuvert(!ouvert)}
         aria-expanded={ouvert}
         title={ouvert ? 'Masquer les destinataires' : 'Afficher les destinataires'}
-        className="survolable absolute top-1.5 right-3 z-10 flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold"
+        className="survolable absolute top-1.5 right-3 z-10 flex h-6 items-center gap-1 rounded-md px-2 text-[0.6875rem] font-semibold"
         style={{ color: 'var(--sub)' }}
       >
         {!ouvert && total > 0 && (
@@ -306,7 +306,7 @@ function Destinataires({
         )}
         <Icone
           nom="expand_more"
-          taille={15}
+          taille="0.9375rem"
           style={{
             transform: ouvert ? 'rotate(180deg)' : undefined,
             transition: 'transform 160ms ease',
@@ -319,7 +319,7 @@ function Destinataires({
         // utile même quand on ne veut pas la liste entière.
         <div className="flex items-baseline gap-2 py-2.5 pr-28 pl-6">
           <span
-            className="w-[42px] flex-none text-right text-[11px] font-semibold"
+            className="w-[2.625rem] flex-none text-right text-[0.6875rem] font-semibold"
             style={{ color: 'var(--sub)' }}
           >
             De
@@ -334,7 +334,7 @@ function Destinataires({
       {lignes.map(({ role, contacts }) => (
         <div key={role} className="flex items-baseline gap-2">
           <span
-            className="w-[42px] flex-none text-right text-[11px] font-semibold"
+            className="w-[2.625rem] flex-none text-right text-[0.6875rem] font-semibold"
             style={{ color: 'var(--sub)' }}
           >
             {role}
@@ -381,13 +381,13 @@ function AdresseCopiable({
       className="adresse inline-flex max-w-full items-baseline gap-1.5 text-left"
     >
       {contact.nom && contact.nom !== contact.adresse && (
-        <span className="text-[12px] font-medium">{contact.nom}</span>
+        <span className="text-[0.75rem] font-medium">{contact.nom}</span>
       )}
       {/* `.valeur` porte le survol : c'est l'adresse qu'on copie, et elle
           seule doit s'allumer. `break-all` la fait continuer à la ligne
           suivante plutôt que déborder du cadre. */}
       <span
-        className="valeur font-mono text-[11px] break-all"
+        className="valeur font-mono text-[0.6875rem] break-all"
         style={{ color: 'var(--sub)' }}
       >
         {contact.adresse}
@@ -466,7 +466,7 @@ export function CorpsIsole({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-9 py-6">
-        <pre className="selectionnable font-sans text-[13.5px] leading-relaxed whitespace-pre-wrap">
+        <pre className="selectionnable font-sans text-[0.8438rem] leading-relaxed whitespace-pre-wrap">
           {texte}
         </pre>
       </div>
@@ -482,8 +482,8 @@ function Avertissement() {
       className="flex flex-none items-start gap-2.5 border-t px-9 py-3"
       style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
     >
-      <Icone nom="shield" taille={16} style={{ color: 'var(--sub)' }} />
-      <p className="text-[12px] leading-relaxed" style={{ color: 'var(--sub)' }}>
+      <Icone nom="shield" taille="1rem" style={{ color: 'var(--sub)' }} />
+      <p className="text-[0.75rem] leading-relaxed" style={{ color: 'var(--sub)' }}>
         Seul l'extrait fourni par Gmail est disponible pour ce message.
       </p>
     </div>

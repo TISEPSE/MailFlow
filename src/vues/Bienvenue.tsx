@@ -111,13 +111,13 @@ export function Bienvenue({
           className="flex h-20 w-20 items-center justify-center rounded-3xl"
           style={{ background: doux }}
         >
-          <Icone nom={etape.icone} taille={38} rempli style={{ color: solide }} />
+          <Icone nom={etape.icone} taille="2.375rem" rempli style={{ color: solide }} />
         </span>
 
         <div className="flex flex-col items-center gap-3 text-center">
-          <h1 className="text-[24px] font-semibold tracking-tight">{etape.titre}</h1>
+          <h1 className="text-[1.5rem] font-semibold tracking-tight">{etape.titre}</h1>
           <p
-            className="max-w-md text-[14px] leading-relaxed"
+            className="max-w-md text-[0.875rem] leading-relaxed"
             style={{ color: 'var(--sub)' }}
           >
             {etape.texte}
@@ -175,7 +175,7 @@ export function Bienvenue({
           <button
             type="button"
             onClick={onTerminer}
-            className="text-[12.5px] underline-offset-2 hover:underline"
+            className="text-[0.7812rem] underline-offset-2 hover:underline"
             style={{ color: 'var(--sub)' }}
           >
             Passer le guide
@@ -205,7 +205,7 @@ function Illustration({
   compteConnecte: boolean
 }) {
   const cadre =
-    'flex w-full flex-col gap-2 rounded-2xl border p-3.5 text-[12.5px]'
+    'flex w-full flex-col gap-2 rounded-2xl border p-3.5 text-[0.7812rem]'
   const style = { background: 'var(--sunk)', borderColor: 'var(--line)' }
 
   if (quoi === 'pages') {
@@ -230,7 +230,7 @@ function Illustration({
                   className="flex h-6 w-6 flex-none items-center justify-center rounded-lg"
                   style={{ background: d }}
                 >
-                  <Icone nom={icone} taille={14} style={{ color: s }} />
+                  <Icone nom={icone} taille="0.875rem" style={{ color: s }} />
                 </span>
                 <span className="truncate font-medium">{nom}</span>
               </div>
@@ -249,14 +249,14 @@ function Illustration({
           style={{ background: 'var(--card)' }}
         >
           <span
-            className="flex h-7 w-7 flex-none items-center justify-center rounded-full text-[11px] font-semibold"
+            className="flex h-7 w-7 flex-none items-center justify-center rounded-full text-[0.6875rem] font-semibold"
             style={{ background: '#E8EEFF', color: '#2455CC' }}
           >
             LM
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium">Le Marché du coin</span>
-            <span className="block truncate font-mono text-[10.5px]" style={{ color: 'var(--sub)' }}>
+            <span className="block truncate font-mono text-[0.6562rem]" style={{ color: 'var(--sub)' }}>
               promos@marche-du-coin.fr
             </span>
           </span>
@@ -267,11 +267,11 @@ function Illustration({
             className="inline-flex h-8 flex-none items-center justify-center gap-1.5 rounded-lg px-3 text-xs leading-none font-semibold"
             style={{ background: 'var(--accent)', color: '#FFFFFF' }}
           >
-            <Icone nom="archive" taille={14} compenser />
+            <Icone nom="archive" taille="0.875rem" compenser />
             Archiver
           </span>
         </div>
-        <p className="px-1 text-center text-[11.5px]" style={{ color: 'var(--sub)' }}>
+        <p className="px-1 text-center text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
           Un clic, et tous ses prochains messages suivront le même chemin.
         </p>
       </div>
@@ -283,14 +283,14 @@ function Illustration({
       <div className={cadre} style={style}>
         <div className="flex items-center justify-center gap-3 py-1">
           <span
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[0.75rem] font-semibold"
             style={{ background: 'var(--card)', color: 'var(--fg)' }}
           >
-            <Icone nom="delete" taille={14} />
+            <Icone nom="delete" taille="0.875rem" />
             Supprimer
           </span>
-          <Icone nom="chevron_right" taille={16} style={{ color: 'var(--sub)' }} />
-          <span className="text-[12px]" style={{ color: 'var(--sub)' }}>
+          <Icone nom="chevron_right" taille="1rem" style={{ color: 'var(--sub)' }} />
+          <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
             Corbeille Gmail · 30 jours
           </span>
         </div>
@@ -302,8 +302,8 @@ function Illustration({
     return (
       <div className={cadre} style={style}>
         {compteConnecte ? (
-          <div className="flex items-center justify-center gap-2 py-2 text-[12.5px]">
-            <Icone nom="check_circle" taille={16} rempli style={{ color: 'var(--accent-fg)' }} />
+          <div className="flex items-center justify-center gap-2 py-2 text-[0.7812rem]">
+            <Icone nom="check_circle" taille="1rem" rempli style={{ color: 'var(--accent-fg)' }} />
             <span>Un compte est déjà relié. Vous pourrez en ajouter d'autres.</span>
           </div>
         ) : (
@@ -314,12 +314,12 @@ function Illustration({
             <Bouton
               variante="principal"
               icone="person"
-              tailleIcone={17}
+              tailleIcone="1.42em"
               onClick={onConnecter}
             >
               Connecter mon compte Google
             </Bouton>
-            <span className="text-[11.5px]" style={{ color: 'var(--sub)' }}>
+            <span className="text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
               Vous pourrez aussi le faire plus tard, depuis les Paramètres.
             </span>
           </div>
@@ -336,13 +336,13 @@ function Illustration({
     <div className={cadre} style={style}>
       <div className="flex items-center justify-center gap-4 py-1">
         <Reglage nom="Thème">
-          <Icone nom="palette" taille={20} style={{ color: 'var(--sub)' }} />
+          <Icone nom="palette" taille="1.25rem" style={{ color: 'var(--sub)' }} />
         </Reglage>
         <Reglage nom="Fréquence">
-          <Icone nom="schedule" taille={20} style={{ color: 'var(--sub)' }} />
+          <Icone nom="schedule" taille="1.25rem" style={{ color: 'var(--sub)' }} />
         </Reglage>
         <Reglage nom="Comptes">
-          <Icone nom="person" taille={20} style={{ color: 'var(--sub)' }} />
+          <Icone nom="person" taille="1.25rem" style={{ color: 'var(--sub)' }} />
         </Reglage>
       </div>
     </div>
@@ -359,7 +359,7 @@ function Reglage({ nom, children }: { nom: string; children: React.ReactNode }) 
       >
         {children}
       </span>
-      <span className="text-[11px]" style={{ color: 'var(--sub)' }}>
+      <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
         {nom}
       </span>
     </span>

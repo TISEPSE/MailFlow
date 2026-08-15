@@ -101,7 +101,7 @@ export function Recherche({
         className="flex h-14 items-center gap-3 border-b px-4"
         style={{ borderColor: ouvert ? 'var(--line)' : 'transparent' }}
       >
-        <Icone nom="search" taille={20} style={{ color: 'var(--sub)' }} />
+        <Icone nom="search" taille="1.25rem" style={{ color: 'var(--sub)' }} />
         <input
           ref={champ}
           type="text"
@@ -109,7 +109,7 @@ export function Recherche({
           onChange={(e) => setQ(e.target.value)}
           placeholder="Rechercher un message, un expéditeur, une phrase…"
           aria-label="Rechercher dans tous les messages"
-          className="selectionnable min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+          className="selectionnable min-w-0 flex-1 bg-transparent text-[0.9375rem] outline-none"
           style={{ color: 'var(--fg)' }}
         />
         {q && (
@@ -122,7 +122,7 @@ export function Recherche({
             aria-label="Effacer la recherche"
             className="bouton bouton-icone flex-none rounded-md p-1"
           >
-            <Icone nom="close" taille={13} />
+            <Icone nom="close" taille="0.8125rem" />
           </button>
         )}
       </div>
@@ -130,7 +130,7 @@ export function Recherche({
       {ouvert ? (
         <div>
           {resultats.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[12.5px]" style={{ color: 'var(--sub)' }}>
+            <p className="px-4 py-6 text-center text-[0.7812rem]" style={{ color: 'var(--sub)' }}>
               Aucun message ne correspond à « {q.trim()} ».
             </p>
           ) : (
@@ -151,35 +151,35 @@ export function Recherche({
                   >
                     <Pastille
                       texte={initiales(message.nom)}
-                      taille={26}
+                      taille="1.625rem"
                       fond={fond}
                       couleur={encre}
                       logo={logos[domaineDe(message.adresse)]}
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                        <span className="min-w-0 flex-1 truncate text-[0.7812rem] font-semibold">
                           {message.nom}
                         </span>
                         <span
-                          className="flex-none font-mono text-[10px]"
+                          className="flex-none font-mono text-[0.625rem]"
                           style={{ color: 'var(--sub)' }}
                         >
                           {heureCourte(message.date)}
                         </span>
                       </span>
-                      <span className="block truncate text-[12px]">
+                      <span className="block truncate text-[0.75rem]">
                         {message.sujet || '(sans objet)'}
                       </span>
                     </span>
                     <span className="flex flex-none flex-col items-end gap-1">
                       <span
-                        className="rounded px-1.5 py-px text-[9.5px] font-semibold"
+                        className="rounded px-1.5 py-px text-[0.5938rem] font-semibold"
                         style={{ background: doux, color: solide }}
                       >
                         {VUES[message.categorie]}
                       </span>
-                      <span className="text-[9.5px]" style={{ color: 'var(--sub)' }}>
+                      <span className="text-[0.5938rem]" style={{ color: 'var(--sub)' }}>
                         dans le {OU[ou]}
                       </span>
                     </span>
@@ -190,7 +190,7 @@ export function Recherche({
           )}
         </div>
       ) : (
-        <p className="px-4 py-6 text-center text-[12.5px]" style={{ color: 'var(--sub)' }}>
+        <p className="px-4 py-6 text-center text-[0.7812rem]" style={{ color: 'var(--sub)' }}>
           Cherchez un expéditeur, un sujet, une phrase — dans toutes les pages à
           la fois. <kbd>Échap</kbd> pour fermer.
         </p>

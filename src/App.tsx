@@ -629,7 +629,7 @@ export default function App() {
           <div className="flex items-center gap-1 pt-1 pb-3">
             {!repliee && (
               <span
-                className="min-w-0 flex-1 truncate px-2.5 text-[11px] font-semibold tracking-wider uppercase"
+                className="min-w-0 flex-1 truncate px-2.5 text-[0.6875rem] font-semibold tracking-wider uppercase"
                 style={{ color: 'var(--sub)' }}
               >
                 Boîte de réception
@@ -643,7 +643,7 @@ export default function App() {
               aria-label={repliee ? 'Déplier la barre' : 'Replier la barre'}
               className="bouton bouton-icone mx-auto flex-none rounded-lg p-1.5"
             >
-              <Icone nom={repliee ? 'left_panel_open' : 'left_panel_close'} taille={18} />
+              <Icone nom={repliee ? 'left_panel_open' : 'left_panel_close'} taille="1.125rem" />
             </button>
           </div>
 
@@ -669,12 +669,12 @@ export default function App() {
                 style={actif ? { background: 'var(--card)' } : undefined}
               >
                 <span
-                  className="relative flex h-7 w-7 flex-none items-center justify-center rounded-[9px]"
+                  className="relative flex h-7 w-7 flex-none items-center justify-center rounded-[0.5625rem]"
                   style={{ background: actif ? solide : doux }}
                 >
                   <Icone
                     nom={glyphe}
-                    taille={16}
+                    taille="1rem"
                     rempli={actif}
                     style={{ color: actif ? '#FFFFFF' : solide }}
                   />
@@ -684,12 +684,12 @@ export default function App() {
                         className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
                         style={{ background: solide, color: '#FFFFFF' }}
                       >
-                        <Icone nom="progress_activity" taille={11} tourne />
+                        <Icone nom="progress_activity" taille="0.6875rem" tourne />
                       </span>
                     ) : (
                       compte(v) > 0 && (
                         <span
-                          className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-semibold"
+                          className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[0.5625rem] font-semibold"
                           style={{ background: solide, color: '#FFFFFF' }}
                         >
                           {compte(v)}
@@ -700,19 +700,19 @@ export default function App() {
                 {!repliee && (
                   <>
                     <span
-                      className="min-w-0 flex-1 truncate text-[13px] font-medium"
+                      className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium"
                       style={{ color: actif ? 'var(--fg)' : 'var(--sub)' }}
                     >
                       {libelle}
                     </span>
                     <span
-                      className="flex flex-none items-center justify-end font-mono text-[11px]"
+                      className="flex flex-none items-center justify-end font-mono text-[0.6875rem]"
                       // Largeur réservée : sans elle, le passage du compteur à
                       // l'anneau décalait le libellé au moment du relevé.
                       style={{ color: actif ? solide : 'var(--sub)', minWidth: 16 }}
                     >
                       {v !== 'regles' && releveEnCours ? (
-                        <Icone nom="progress_activity" taille={13} tourne />
+                        <Icone nom="progress_activity" taille="0.8125rem" tourne />
                       ) : (
                         compte(v)
                       )}
@@ -732,14 +732,14 @@ export default function App() {
                 title={repliee ? 'Actualiser la boîte' : undefined}
                 // Replié, il prend la forme des entrées de navigation : un pavé
                 // large au milieu de carrés se lisait comme un élément étranger.
-                className={`bouton bouton-doux flex w-full items-center gap-3 rounded-lg py-2 text-[13px] font-semibold ${
+                className={`bouton bouton-doux flex w-full items-center gap-3 rounded-lg py-2 text-[0.8125rem] font-semibold ${
                   repliee ? 'justify-center px-0' : 'px-2.5 text-left'
                 }`}
               >
                 <span className="flex h-7 w-7 flex-none items-center justify-center">
                   <Icone
                     nom="refresh"
-                    taille={16}
+                    taille="1rem"
                     tourne={enCours || premierReleve}
                   />
                 </span>
@@ -814,7 +814,7 @@ export default function App() {
                   className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
                   style={{ background: 'var(--accent-soft)' }}
                 >
-                  <Icone nom="groups" taille={15} style={{ color: 'var(--accent-fg)' }} />
+                  <Icone nom="groups" taille="0.9375rem" style={{ color: 'var(--accent-fg)' }} />
                 </span>
               ) : (
                 <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
@@ -822,14 +822,14 @@ export default function App() {
               {!repliee && (
                 <>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-semibold">
+                    <span className="block truncate text-[0.75rem] font-semibold">
                       {compteAffiche === TOUS_LES_COMPTES
                         ? 'Tous les comptes'
                         : (profil?.nom ??
                           (etat?.compteConnecte ? 'Compte Google' : 'Non connecté'))}
                     </span>
                     <span
-                      className="block truncate font-mono text-[10px]"
+                      className="block truncate font-mono text-[0.625rem]"
                       style={{ color: 'var(--sub)' }}
                     >
                       {compteAffiche === TOUS_LES_COMPTES
@@ -839,7 +839,7 @@ export default function App() {
                   </span>
                   <Icone
                     nom="expand_more"
-                    taille={16}
+                    taille="1rem"
                     style={{
                       color: 'var(--sub)',
                       // Pivote vers le haut quand le menu s'ouvre : la flèche
@@ -1137,13 +1137,13 @@ function MenuDeCompte({
               className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
               style={{ background: 'var(--accent-soft)' }}
             >
-              <Icone nom="groups" taille={15} style={{ color: 'var(--accent-fg)' }} />
+              <Icone nom="groups" taille="0.9375rem" style={{ color: 'var(--accent-fg)' }} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px] font-semibold">
+              <span className="block truncate text-[0.7812rem] font-semibold">
                 Tous les comptes
               </span>
-              <span className="block truncate text-[10px]" style={{ color: 'var(--sub)' }}>
+              <span className="block truncate text-[0.625rem]" style={{ color: 'var(--sub)' }}>
                 {comptes.length} boîtes réunies
               </span>
             </span>
@@ -1167,16 +1167,16 @@ function MenuDeCompte({
               className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
               style={{ background: 'var(--sunk)' }}
             >
-              <LogoGoogle taille={14} />
+              <LogoGoogle taille="0.875rem" />
             </span>
           )}
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-semibold">
+            <span className="block truncate text-[0.7812rem] font-semibold">
               {c.nom ?? c.adresse}
             </span>
             {c.nom && (
               <span
-                className="block truncate font-mono text-[10px]"
+                className="block truncate font-mono text-[0.625rem]"
                 style={{ color: 'var(--sub)' }}
               >
                 {c.adresse}
@@ -1194,10 +1194,10 @@ function MenuDeCompte({
         type="button"
         role="menuitem"
         onClick={onAjouter}
-        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold"
+        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.7812rem] font-semibold"
         style={{ color: 'var(--accent-fg)' }}
       >
-        <Icone nom="login" taille={16} compenser />
+        <Icone nom="login" taille="1rem" compenser />
         Ajouter un compte Google
       </button>
 
@@ -1205,9 +1205,9 @@ function MenuDeCompte({
         type="button"
         role="menuitem"
         onClick={onParametres}
-        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold"
+        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.7812rem] font-semibold"
       >
-        <Icone nom="settings" taille={16} compenser style={{ color: 'var(--sub)' }} />
+        <Icone nom="settings" taille="1rem" compenser style={{ color: 'var(--sub)' }} />
         Paramètres
       </button>
 
@@ -1215,10 +1215,10 @@ function MenuDeCompte({
         type="button"
         role="menuitem"
         onClick={onDeconnecter}
-        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold"
+        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.7812rem] font-semibold"
         style={{ color: '#C2410C' }}
       >
-        <Icone nom="logout" taille={16} compenser />
+        <Icone nom="logout" taille="1rem" compenser />
         Se déconnecter
       </button>
     </div>
@@ -1256,14 +1256,14 @@ function AvatarCompte({
         className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
         style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
       >
-        <LogoGoogle taille={17} />
+        <LogoGoogle taille="1.0625rem" />
       </div>
     )
   }
 
   return (
     <div
-      className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11px] font-semibold"
+      className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[0.6875rem] font-semibold"
       style={{ background: 'var(--faint)', color: 'var(--sub)' }}
     >
       {initiales(profil?.nom ?? profil?.adresse ?? '?')}
@@ -1311,12 +1311,12 @@ function PasConnecte({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-      <Icone nom="mail_lock" taille={52} style={{ color: 'var(--sub)', opacity: 0.45 }} />
-      <div className="text-[19px] font-semibold tracking-tight">
+      <Icone nom="mail_lock" taille="3.25rem" style={{ color: 'var(--sub)', opacity: 0.45 }} />
+      <div className="text-[1.1875rem] font-semibold tracking-tight">
         Aucun compte Gmail connecté
       </div>
       <p
-        className="max-w-md text-[14.5px] leading-relaxed"
+        className="max-w-md text-[0.9062rem] leading-relaxed"
         style={{ color: 'var(--sub)' }}
       >
         {bloque

@@ -39,7 +39,7 @@ export function ChampAdresse({
     const [encre, fond] = ton(categorie, sombre)
     return (
       <div className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-semibold">{titre}</span>
+        <span className="text-[0.7812rem] font-semibold">{titre}</span>
         {/* Hauteur libre plutôt que fixe : c'est l'adresse qui fait la règle,
             elle doit se relire en entier. Une adresse longue passe donc à la
             ligne au lieu d'être coupée. */}
@@ -51,7 +51,7 @@ export function ChampAdresse({
             className="inline-flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-1.5"
             style={{ background: fond, color: encre }}
           >
-            <span className="font-mono text-[12.5px] leading-5 font-semibold break-all">
+            <span className="font-mono text-[0.7812rem] leading-5 font-semibold break-all">
               {adresse}
             </span>
             {/* Une cible carrée de 20 pixels, centrée sur elle-même : la croix
@@ -66,12 +66,12 @@ export function ChampAdresse({
               className="croix-etiquette flex h-5 w-5 flex-none items-center justify-center self-center rounded-md"
               style={{ color: encre }}
             >
-              <Icone nom="close" taille={13} />
+              <Icone nom="close" taille="0.8125rem" />
             </button>
           </span>
         </div>
         {choisi && (
-          <span className="truncate text-[12px]" style={{ color: 'var(--sub)' }}>
+          <span className="truncate text-[0.75rem]" style={{ color: 'var(--sub)' }}>
             {choisi.nom}
           </span>
         )}
@@ -152,7 +152,7 @@ function Saisie({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[12.5px] font-semibold">{titre}</span>
+      <span className="text-[0.7812rem] font-semibold">{titre}</span>
       <input
         type="text"
         value={adresse}
@@ -164,7 +164,7 @@ function Saisie({
         placeholder="promo@offres-tech.fr"
         autoFocus
         autoComplete="off"
-        className="selectionnable h-11 rounded-xl border px-4 font-mono text-[13px] outline-none"
+        className="selectionnable h-11 rounded-xl border px-4 font-mono text-[0.8125rem] outline-none"
         style={{ background: 'var(--sunk)', borderColor: 'var(--line)', color: 'var(--fg)' }}
       />
 
@@ -188,11 +188,11 @@ function Saisie({
                 className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-semibold">
+                  <span className="block truncate text-[0.7812rem] font-semibold">
                     {m.nom}
                   </span>
                   <span
-                    className="block truncate font-mono text-[11px]"
+                    className="block truncate font-mono text-[0.6875rem]"
                     style={{ color: 'var(--sub)' }}
                   >
                     {m.adresse}

@@ -132,19 +132,19 @@ function Synthese({
           className="flex h-9 w-9 flex-none items-center justify-center rounded-xl"
           style={{ background: 'var(--accent)' }}
         >
-          <Icone nom="auto_awesome" taille={18} rempli style={{ color: '#FFFFFF' }} />
+          <Icone nom="auto_awesome" taille="1.125rem" rempli style={{ color: '#FFFFFF' }} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[14px] font-semibold tracking-tight">
+          <span className="block text-[0.875rem] font-semibold tracking-tight">
             Synthèse du jour
           </span>
-          <span className="block text-[11.5px]" style={{ color: 'var(--sub)' }}>
+          <span className="block text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
             {messages.length} newsletter{messages.length > 1 ? 's' : ''}
             {derniere ? ` — dernière à ${heureCourte(derniere)}` : ''}
           </span>
         </span>
         <span className="flex flex-none items-center gap-1">
-          <span className="pr-1 text-[11px]" style={{ color: 'var(--sub)' }}>
+          <span className="pr-1 text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
             Sources
           </span>
           {sources.map((m, i) => {
@@ -153,7 +153,7 @@ function Synthese({
               <Pastille
                 key={m.adresse}
                 texte={initiales(m.nom)}
-                taille={22}
+                taille="1.375rem"
                 fond={fond}
                 couleur={encre}
                 logo={logos[domaineDe(m.adresse)]}
@@ -183,7 +183,7 @@ function Filtres({
 }) {
   return (
     <div className="flex items-center gap-2" role="tablist" aria-label="Filtrer par thème">
-      <Icone nom="tag" taille={15} style={{ color: 'var(--sub)' }} />
+      <Icone nom="tag" taille="0.9375rem" style={{ color: 'var(--sub)' }} />
       {etiquettes.map((e) => (
         <button
           key={e}
@@ -191,13 +191,13 @@ function Filtres({
           role="tab"
           aria-selected={e === choisie}
           onClick={() => onChoisir(e)}
-          className="segment inline-flex h-[30px] items-center rounded-full px-3.5 text-[12px] font-semibold"
+          className="segment inline-flex h-[1.875rem] items-center rounded-full px-3.5 text-[0.75rem] font-semibold"
         >
           {e}
         </button>
       ))}
       {etiquettes.length === 1 && (
-        <span className="pl-1 text-[11.5px]" style={{ color: 'var(--sub)' }}>
+        <span className="pl-1 text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
           Les thèmes viendront des résumés.
         </span>
       )}
@@ -231,44 +231,44 @@ function Carte({
       <div className="flex items-center gap-2.5 px-4 pt-4">
         <Pastille
           texte={initiales(message.nom)}
-          taille={34}
+          taille="2.125rem"
           fond={fond}
           couleur={encre}
           logo={logos[domaineDe(message.adresse)]}
         />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-semibold tracking-tight">
+          <span className="block truncate text-[0.875rem] font-semibold tracking-tight">
             {message.nom}
           </span>
           <span
-            className="block truncate font-mono text-[10.5px]"
+            className="block truncate font-mono text-[0.6562rem]"
             style={{ color: 'var(--sub)' }}
           >
             {message.adresse}
           </span>
         </span>
         <span
-          className="flex flex-none items-center gap-1 text-[11px]"
+          className="flex flex-none items-center gap-1 text-[0.6875rem]"
           style={{ color: 'var(--sub)' }}
         >
-          <Icone nom="schedule" taille={12} />
+          <Icone nom="schedule" taille="0.75rem" />
           {heureCourte(message.date)}
         </span>
       </div>
 
       <div className="px-4 pt-3">
         <div
-          className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-wide uppercase"
+          className="mb-1.5 flex items-center gap-1.5 text-[0.6562rem] font-semibold tracking-wide uppercase"
           style={{ color: 'var(--accent-fg)' }}
         >
-          <Icone nom="auto_awesome" taille={12} rempli />
+          <Icone nom="auto_awesome" taille="0.75rem" rempli />
           Résumé IA
         </div>
         <AVenir texte="Le résumé de cette newsletter est une fonctionnalité à venir." />
         {/* L'extrait de Gmail, à défaut du résumé : ce n'en est pas un, mais
             c'est ce que le message dit de lui-même, et c'est mieux que rien. */}
         <p
-          className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed"
+          className="mt-2 line-clamp-3 text-[0.7812rem] leading-relaxed"
           style={{ color: 'var(--sub)' }}
         >
           {message.extrait}
@@ -276,13 +276,13 @@ function Carte({
       </div>
 
       <div className="mt-auto flex items-center gap-2 px-4 py-3.5">
-        <Bouton icone="open_in_full" tailleIcone={15} onClick={onVoir}>
+        <Bouton icone="open_in_full" tailleIcone="1.25em" onClick={onVoir}>
           Voir le mail
         </Bouton>
         <Bouton
           variante="principal"
           icone="archive"
-          tailleIcone={15}
+          tailleIcone="1.25em"
           onClick={onArchiver}
           titre="Le message quitte la boîte de réception. Rien n'est supprimé."
         >
@@ -291,7 +291,7 @@ function Carte({
         <Bouton
           variante="danger"
           icone="delete"
-          tailleIcone={15}
+          tailleIcone="1.25em"
           onClick={onSupprimer}
           titre="Mettre à la corbeille — récupérable 30 jours"
         >
@@ -312,12 +312,12 @@ function Carte({
 function AVenir({ texte, centre = false }: { texte: string; centre?: boolean }) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[12px] ${
+      className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[0.75rem] ${
         centre ? 'mx-4 my-3.5' : ''
       }`}
       style={{ background: 'var(--sunk)', color: 'var(--sub)' }}
     >
-      <Icone nom="hourglass_empty" taille={14} />
+      <Icone nom="hourglass_empty" taille="0.875rem" />
       <span>{texte}</span>
     </div>
   )

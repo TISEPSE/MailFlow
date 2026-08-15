@@ -24,7 +24,7 @@ import { BOITE, GLYPHES, GLYPHES_PLEINS, MARGE_ENCRE, type NomIcone } from './gl
  */
 export function Icone({
   nom,
-  taille = 18,
+  taille = '1.125rem',
   className = '',
   style,
   rempli = false,
@@ -32,9 +32,12 @@ export function Icone({
   tourne = false,
 }: {
   nom: NomIcone
-  /** En pixels, ou toute longueur CSS — `'1.15em'` la lie à la taille du
-   *  texte voisin, ce qui règle l'accord une fois pour toutes. */
-  taille?: number | string
+  /** Longueur CSS relative, jamais un nombre de pixels — le type l'interdit,
+   *  et ce n'est pas un caprice. Une icône figée en pixels à côté d'un texte
+   *  qui, lui, suit la taille de police du système finit forcément décalée :
+   *  c'est l'origine de tous les défauts d'alignement rencontrés jusqu'ici.
+   *  `'1.15em'` la lie au texte voisin, `'1rem'` au réglage général. */
+  taille?: string
   className?: string
   style?: CSSProperties
   rempli?: boolean
@@ -55,10 +58,9 @@ export function Icone({
   // qu'elle accompagne, et déborde donc sous la ligne de base. Centrer les
   // boîtes ne suffit pas ; l'œil lit un décalage vers le bas. Un léger
   // relèvement la ramène dans la bande des capitales.
-  // Les marges de compensation ne valent que pour une taille en pixels : en
-  // `em`, la géométrie suit le texte et n'a rien à rattraper.
-  const enPixels = typeof taille === 'number' ? taille : null
-  const marge = compenser && enPixels ? -Math.round(enPixels * MARGE_ENCRE[nom]) : 0
+  // La compensation s'exprime en proportion de l'icône, donc dans la même
+  // unité qu'elle : un `calc` suit la taille au lieu de la figer.
+  const marge = compenser ? `calc(${taille} * ${-MARGE_ENCRE[nom]})` : undefined
 
   return (
     <svg
@@ -70,7 +72,7 @@ export function Icone({
       className={`inline-block flex-none ${tourne ? 'mouvement-utile tourne ' : ''}${className}`}
       style={{
         fill: 'currentColor',
-        marginInline: marge || undefined,
+        marginInline: marge,
         ...style,
       }}
     >
@@ -87,13 +89,14 @@ export function Icone({
  */
 export function Pastille({
   texte,
-  taille = 30,
+  taille = '1.875rem',
   fond,
   couleur,
   logo,
 }: {
   texte: string
-  taille?: number
+  /** Longueur CSS relative — jamais de pixels : voir `Icone`. */
+  taille?: string
   fond: string
   couleur: string
   logo?: string
@@ -120,7 +123,10 @@ export function Pastille({
         height: taille,
         background: fond,
         color: couleur,
-        fontSize: taille * 0.38,
+        // Les initiales tiennent 38 % du disque quelle que soit sa taille : un
+        // rapport, pas une valeur, sinon elles ne suivent plus dès que la
+        // pastille change de gabarit.
+        fontSize: `calc(${taille} * 0.38)`,
       }}
     >
       {/* Pas de correction verticale ici, et c'est mesuré : l'encre des
@@ -152,8 +158,11 @@ export function Interrupteur({
   /** Taille des pages de réglages, où l'interrupteur est le sujet de la ligne. */
   grand?: boolean
 }) {
-  const [large, haut, bille] = grand ? [46, 27, 21] : [40, 23, 17]
-  const marge = (haut - bille) / 2
+  // En rem, comme le reste : l'interrupteur grandit avec le texte des réglages
+  // au lieu de rétrécir à côté de lui.
+  const [large, haut, bille] = grand ? [2.875, 1.6875, 1.3125] : [2.5, 1.4375, 1.0625]
+  const rem = (v: number) => `${v}rem`
+  const marge = rem((haut - bille) / 2)
 
   return (
     <button
@@ -165,18 +174,18 @@ export function Interrupteur({
       onClick={onChange}
       className="relative flex-none rounded-full transition-colors disabled:opacity-40"
       style={{
-        width: large,
-        height: haut,
+        width: rem(large),
+        height: rem(haut),
         background: actif ? 'var(--accent)' : 'var(--piste)',
       }}
     >
       <span
         className="absolute rounded-full bg-white transition-all"
         style={{
-          width: bille,
-          height: bille,
+          width: rem(bille),
+          height: rem(bille),
           top: marge,
-          left: actif ? large - bille - marge : marge,
+          left: actif ? rem(large - bille - (haut - bille) / 2) : marge,
           boxShadow: '0 1px 2px rgba(0,0,0,.25)',
         }}
       />
@@ -226,7 +235,7 @@ export function Segments<T extends string>({
             role="radio"
             aria-checked={actif}
             onClick={() => onChange(v)}
-            className={`segment inline-flex h-[34px] items-center justify-center rounded-lg px-4 text-[13.5px] font-semibold whitespace-nowrap ${
+            className={`segment inline-flex h-[2.125rem] items-center justify-center rounded-lg px-4 text-[0.8438rem] font-semibold whitespace-nowrap ${
               pleineLargeur ? 'flex-1' : ''
             }`}
           >
@@ -284,21 +293,21 @@ export function Toasts({
           <div className="flex items-start gap-2.5 px-3.5 py-3">
             <Icone
               nom={t.erreur ? 'error' : 'check_circle'}
-              taille={17}
+              taille="1.0625rem"
               rempli
               style={{ color: t.erreur ? '#C2410C' : 'var(--accent-fg)' }}
             />
-            <span className="min-w-0 flex-1 text-[13px] leading-5">{t.texte}</span>
+            <span className="min-w-0 flex-1 text-[0.8125rem] leading-5">{t.texte}</span>
             <button
               type="button"
               onClick={() => onFermer(t.id)}
               aria-label="Fermer le message"
               className="bouton bouton-icone -mt-0.5 flex-none rounded-md p-1"
             >
-              <Icone nom="close" taille={14} />
+              <Icone nom="close" taille="0.875rem" />
             </button>
           </div>
-          <div className="h-[3px]" style={{ background: 'var(--faint)' }}>
+          <div className="h-[0.1875rem]" style={{ background: 'var(--faint)' }}>
             <div
               className="toast-decompte h-full"
               style={{ background: t.erreur ? '#C2410C' : 'var(--accent)' }}
@@ -327,9 +336,9 @@ export function LigneReglage({
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3.5">
-      <Icone nom={icone} taille={19} style={{ color: 'var(--sub)' }} />
+      <Icone nom={icone} taille="1.1875rem" style={{ color: 'var(--sub)' }} />
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold">{titre}</div>
+        <div className="text-[0.8125rem] font-semibold">{titre}</div>
         <div className="pt-0.5 text-xs" style={{ color: 'var(--sub)' }}>
           {detail}
         </div>
@@ -351,7 +360,7 @@ export function Bloc({
     <>
       {titre && (
         <div
-          className="px-1 pt-7 pb-2.5 text-[11px] font-semibold tracking-wider uppercase"
+          className="px-1 pt-7 pb-2.5 text-[0.6875rem] font-semibold tracking-wider uppercase"
           style={{ color: 'var(--sub)' }}
         >
           {titre}
@@ -454,9 +463,9 @@ export function Modale({
           style={{ borderColor: 'var(--line)' }}
         >
           <div className="min-w-0 flex-1">
-            <h2 className="text-[17px] font-semibold tracking-tight">{titre}</h2>
+            <h2 className="text-[1.0625rem] font-semibold tracking-tight">{titre}</h2>
             {sous && (
-              <p className="pt-1 text-[13px]" style={{ color: 'var(--sub)' }}>
+              <p className="pt-1 text-[0.8125rem]" style={{ color: 'var(--sub)' }}>
                 {sous}
               </p>
             )}
@@ -467,7 +476,7 @@ export function Modale({
             aria-label="Fermer"
             className="bouton bouton-icone flex-none rounded-lg p-2"
           >
-            <Icone nom="close" taille={17} />
+            <Icone nom="close" taille="1.0625rem" />
           </button>
         </div>
 
@@ -527,7 +536,7 @@ export function SqueletteListe({ lignes = 7 }: { lignes?: number }) {
           className="flex items-center gap-3 overflow-hidden border-b px-3"
           style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
         >
-          <span className="mouvement-utile squelette h-[30px] w-[30px] flex-none rounded-full" />
+          <span className="mouvement-utile squelette h-[1.875rem] w-[1.875rem] flex-none rounded-full" />
           <span className="flex min-w-0 flex-1 flex-col gap-1.5">
             <span className="mouvement-utile squelette h-3 w-1/2" />
             <span className="mouvement-utile squelette h-3 w-4/5" />
@@ -548,10 +557,10 @@ export function SqueletteLecture() {
         style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
       >
         <div className="flex items-center gap-2.5">
-          <span className="mouvement-utile squelette h-[30px] w-[30px] flex-none rounded-full" />
+          <span className="mouvement-utile squelette h-[1.875rem] w-[1.875rem] flex-none rounded-full" />
           <span className="mouvement-utile squelette h-4 w-3/5" />
         </div>
-        <span className="mouvement-utile squelette ml-[40px] h-3 w-60" />
+        <span className="mouvement-utile squelette ml-[2.5rem] h-3 w-60" />
       </div>
       <div className="flex flex-1 flex-col gap-3 px-9 py-6">
         {[92, 78, 85, 60, 70].map((largeur, i) => (
@@ -623,11 +632,11 @@ export function Progression({
           {/* Le nom est calculé au-dessus, hors de l'attribut :
               `outils/extraire-icones.py` relit les noms dans les sources et
               prendrait la condition elle-même pour une icône à extraire. */}
-          <Icone nom={glyphe} taille={34} style={{ color: 'var(--accent-fg)' }} />
+          <Icone nom={glyphe} taille="2.125rem" style={{ color: 'var(--accent-fg)' }} />
         </span>
       </div>
 
-      <div className="text-[20px] font-semibold tracking-tight">
+      <div className="text-[1.25rem] font-semibold tracking-tight">
         {etape === 'connexion' || !indetermine
           ? INTITULES[etape]
           : 'Ouverture de votre boîte…'}
@@ -653,7 +662,7 @@ export function Progression({
           />
         </div>
         <div
-          className="flex items-baseline justify-between font-mono text-[12.5px]"
+          className="flex items-baseline justify-between font-mono text-[0.7812rem]"
           style={{ color: 'var(--sub)' }}
         >
           <span>
@@ -667,7 +676,7 @@ export function Progression({
         </div>
       </div>
 
-      <p className="max-w-md text-center text-[13.5px]" style={{ color: 'var(--sub)' }}>
+      <p className="max-w-md text-center text-[0.8438rem]" style={{ color: 'var(--sub)' }}>
         {EXPLICATIONS[etape]}
       </p>
     </div>
@@ -697,10 +706,10 @@ export function Vide({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-      <Icone nom={icone} taille={52} style={{ color: 'var(--sub)', opacity: 0.45 }} />
-      <div className="text-[19px] font-semibold tracking-tight">{titre}</div>
+      <Icone nom={icone} taille="3.25rem" style={{ color: 'var(--sub)', opacity: 0.45 }} />
+      <div className="text-[1.1875rem] font-semibold tracking-tight">{titre}</div>
       <div
-        className="max-w-md text-[14.5px] leading-relaxed"
+        className="max-w-md text-[0.9062rem] leading-relaxed"
         style={{ color: 'var(--sub)' }}
       >
         {detail}
@@ -712,7 +721,7 @@ export function Vide({
             icone={action.icone}
             // Ce bouton conclut une page entière : à 14 pixels, l'icône
             // paraissait posée à côté du texte plutôt qu'avec lui.
-            tailleIcone={17}
+            tailleIcone="1.42em"
             onClick={action.onClick}
           >
             {action.libelle}
@@ -740,8 +749,9 @@ export function Bouton({
   onClick: () => void
   variante?: 'principal' | 'secondaire' | 'discret' | 'danger'
   icone?: NomIcone
-  /** En `em` par défaut : l'icône suit la taille du texte du bouton. */
-  tailleIcone?: number | string
+  /** En `em` : l'icône suit la taille du texte du bouton, et le suit encore
+   *  si l'utilisateur change la taille de police du système. */
+  tailleIcone?: string
   disabled?: boolean
   titre?: string
   /** Fait tourner l'icône tant que l'action n'a pas rendu la main. */
@@ -838,12 +848,12 @@ export function Selecteur<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={ouvert}
         aria-label={libelle}
-        className="bouton bouton-neutre flex w-full items-center gap-2 rounded-xl px-3.5 py-3 text-left text-[13px] leading-5 font-semibold"
+        className="bouton bouton-neutre flex w-full items-center gap-2 rounded-xl px-3.5 py-3 text-left text-[0.8125rem] leading-5 font-semibold"
       >
         <span className="min-w-0 flex-1 truncate">{choisi?.texte}</span>
         <Icone
           nom="expand_more"
-          taille={17}
+          taille="1.0625rem"
           style={{
             color: 'var(--sub)',
             transform: ouvert ? 'rotate(180deg)' : undefined,
@@ -875,14 +885,14 @@ export function Selecteur<T extends string>({
                   onChange(v.valeur)
                   setOuvert(false)
                 }}
-                className="survolable flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium"
+                className="survolable flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[0.8125rem] font-medium"
                 style={actif ? { background: 'var(--faint)' } : undefined}
               >
                 <span className="min-w-0 flex-1 truncate">{v.texte}</span>
                 {actif && (
                   <Icone
                     nom="check_circle"
-                    taille={15}
+                    taille="0.9375rem"
                     rempli
                     style={{ color: 'var(--accent-fg)' }}
                   />

@@ -250,7 +250,7 @@ export function Courrier({
               compact
               variante="danger"
               icone="delete"
-              tailleIcone={15}
+              tailleIcone="1.25em"
               onClick={() => onSupprimer(choisi.id)}
               disabled={enCours}
               titre="Mettre à la corbeille — récupérable 30 jours"
@@ -260,10 +260,10 @@ export function Courrier({
 
             {regleExistante && (
               <span
-                className="inline-flex items-center gap-1.5 text-[12px]"
+                className="inline-flex items-center gap-1.5 text-[0.75rem]"
                 style={{ color: 'var(--accent-fg)' }}
               >
-                <Icone nom="bolt" taille={15} rempli />
+                <Icone nom="bolt" taille="0.9375rem" rempli />
                 Une règle vise déjà cet expéditeur.
               </span>
             )}
@@ -396,7 +396,7 @@ function ChoixDeRangement({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-semibold">Ranger sous</span>
+        <span className="text-[0.7812rem] font-semibold">Ranger sous</span>
         <Selecteur
           valeurs={[
             { valeur: '', texte: 'Aucun libellé' },
@@ -409,7 +409,7 @@ function ChoixDeRangement({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-semibold">Ou créer un libellé</span>
+        <span className="text-[0.7812rem] font-semibold">Ou créer un libellé</span>
         <div className="flex items-center gap-2">
           <input
             type="text"
@@ -423,7 +423,7 @@ function ChoixDeRangement({
             }}
             placeholder="Factures, Voyages…"
             aria-label="Nom du nouveau libellé"
-            className="selectionnable min-w-0 flex-1 rounded-xl border px-3.5 py-3 text-[13px] leading-5 outline-none"
+            className="selectionnable min-w-0 flex-1 rounded-xl border px-3.5 py-3 text-[0.8125rem] leading-5 outline-none"
             style={{
               background: 'var(--sunk)',
               borderColor: 'var(--line)',
@@ -439,7 +439,7 @@ function ChoixDeRangement({
             {creation ? 'Création…' : 'Créer'}
           </Bouton>
         </div>
-        <p className="text-[12px]" style={{ color: 'var(--sub)' }}>
+        <p className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
           Le libellé sera créé dans Gmail et vous le retrouverez partout.
         </p>
       </div>

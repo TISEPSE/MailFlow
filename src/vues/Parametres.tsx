@@ -168,7 +168,7 @@ export function Parametres({
           >
             <div className="flex items-center gap-2">
               <kbd
-                className="rounded-md border px-2 py-1 font-mono text-[12px] font-semibold"
+                className="rounded-md border px-2 py-1 font-mono text-[0.75rem] font-semibold"
                 style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
               >
                 Ctrl
@@ -185,7 +185,7 @@ export function Parametres({
                   if (/^[A-Z0-9]$/.test(t)) onToucheRecherche(t)
                 }}
                 aria-label="Touche du raccourci de recherche"
-                className="w-12 rounded-md border text-center font-mono text-[13px] font-semibold outline-none"
+                className="w-12 rounded-md border text-center font-mono text-[0.8125rem] font-semibold outline-none"
                 style={{
                   background: 'var(--card)',
                   borderColor: 'var(--line)',
@@ -269,7 +269,7 @@ export function Parametres({
             detail={etat.cheminRegles}
           >
             <span
-              className="flex-none font-mono text-[12px]"
+              className="flex-none font-mono text-[0.75rem]"
               style={{ color: 'var(--sub)' }}
             >
               {etat.nombreDeRegles === null ? 'illisible' : `${etat.nombreDeRegles} règles`}
@@ -344,13 +344,13 @@ function CarteCompte({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[16px] font-semibold">
+            <span className="truncate text-[1rem] font-semibold">
               {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
             </span>
-            {connecte && profil?.photo && <LogoGoogle taille={17} />}
+            {connecte && profil?.photo && <LogoGoogle taille="1.0625rem" />}
           </div>
           <div
-            className="selectionnable truncate pt-0.5 text-[13px]"
+            className="selectionnable truncate pt-0.5 text-[0.8125rem]"
             style={{ color: 'var(--sub)' }}
           >
             {connecte
@@ -478,13 +478,13 @@ function ChoixDeCompte({
               className="flex h-9 w-9 flex-none items-center justify-center rounded-full"
               style={{ background: melange ? 'var(--card)' : 'var(--accent-soft)' }}
             >
-              <Icone nom="groups" taille={18} style={{ color: 'var(--accent-fg)' }} />
+              <Icone nom="groups" taille="1.125rem" style={{ color: 'var(--accent-fg)' }} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13.5px] font-semibold">
+              <span className="block truncate text-[0.8438rem] font-semibold">
                 Tous les comptes
               </span>
-              <span className="block truncate text-[12px]" style={{ color: 'var(--sub)' }}>
+              <span className="block truncate text-[0.75rem]" style={{ color: 'var(--sub)' }}>
                 {melange
                   ? 'Vue active'
                   : `Réunit vos ${autres.length + 1} boîtes dans les mêmes pages`}
@@ -493,7 +493,7 @@ function ChoixDeCompte({
             {melange && (
               <Icone
                 nom="check_circle"
-                taille={17}
+                taille="1.0625rem"
                 rempli
                 style={{ color: 'var(--accent-fg)' }}
               />
@@ -504,7 +504,7 @@ function ChoixDeCompte({
       )}
 
       {autres.length === 0 ? (
-        <p className="px-3 py-2.5 text-[13px]" style={{ color: 'var(--sub)' }}>
+        <p className="px-3 py-2.5 text-[0.8125rem]" style={{ color: 'var(--sub)' }}>
           Aucun autre compte enregistré. Ajoutez-en un : celui-ci restera
           disponible, et vous pourrez passer de l'un à l'autre sans vous
           reconnecter.
@@ -520,12 +520,12 @@ function ChoixDeCompte({
             >
               <Vignette photo={c.photo} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-semibold">
+                <span className="block truncate text-[0.8438rem] font-semibold">
                   {c.nom ?? c.adresse}
                 </span>
                 {c.nom && (
                   <span
-                    className="block truncate font-mono text-[11px]"
+                    className="block truncate font-mono text-[0.6875rem]"
                     style={{ color: 'var(--sub)' }}
                   >
                     {c.adresse}
@@ -536,7 +536,7 @@ function ChoixDeCompte({
 
             {aRetirer === c.adresse ? (
               <div className="flex flex-none items-center gap-1.5 pr-1">
-                <span className="text-[12px]" style={{ color: 'var(--sub)' }}>
+                <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
                   Retirer ce compte ?
                 </span>
                 <BoutonTexte
@@ -557,7 +557,7 @@ function ChoixDeCompte({
                 aria-label={`Retirer le compte ${c.adresse}`}
                 className="bouton bouton-icone flex-none rounded-lg p-2"
               >
-                <Icone nom="delete" taille={17} />
+                <Icone nom="delete" taille="1.0625rem" />
               </button>
             )}
           </div>
@@ -569,10 +569,10 @@ function ChoixDeCompte({
           type="button"
           onClick={onAjouterCompte}
           disabled={enCours || bloque}
-          className="survolable flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[13.5px] font-semibold disabled:opacity-40"
+          className="survolable flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[0.8438rem] font-semibold disabled:opacity-40"
           style={{ color: 'var(--accent-fg)' }}
         >
-          <Icone nom="login" taille={17} />
+          <Icone nom="login" taille="1.0625rem" />
           Ajouter un compte Google
         </button>
       </div>
@@ -604,7 +604,7 @@ function Vignette({ photo }: { photo: string | null }) {
       className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
       style={{ background: 'var(--sunk)' }}
     >
-      <LogoGoogle taille={16} />
+      <LogoGoogle taille="1rem" />
     </span>
   )
 }
@@ -622,7 +622,7 @@ function BoutonTexte({
     <button
       type="button"
       onClick={onClick}
-      className="bouton flex-none rounded-md px-2 py-1 text-[12px] leading-none font-semibold"
+      className="bouton flex-none rounded-md px-2 py-1 text-[0.75rem] leading-none font-semibold"
       style={{ color: couleur ?? 'var(--fg)' }}
     >
       {children}
@@ -700,7 +700,7 @@ function Avatar({
         className="flex h-12 w-12 flex-none items-center justify-center rounded-full"
         style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
       >
-        <Icone nom="person_off" taille={22} style={{ color: 'var(--sub)' }} />
+        <Icone nom="person_off" taille="1.375rem" style={{ color: 'var(--sub)' }} />
       </div>
     )
   }
@@ -709,10 +709,10 @@ function Avatar({
 
   return (
     <div
-      className="flex h-12 w-12 flex-none items-center justify-center rounded-full text-[17px] font-semibold"
+      className="flex h-12 w-12 flex-none items-center justify-center rounded-full text-[1.0625rem] font-semibold"
       style={{ background: accent, color: '#FFFFFF' }}
     >
-      {nom ? initiales(nom) : <LogoGoogle taille={24} />}
+      {nom ? initiales(nom) : <LogoGoogle taille="1.5rem" />}
     </div>
   )
 }
@@ -732,14 +732,14 @@ function Reglage({
   return (
     <div className="flex items-center gap-3.5 px-4.5 py-3.5">
       <div
-        className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px]"
+        className="flex h-9 w-9 flex-none items-center justify-center rounded-[0.625rem]"
         style={{ background: 'var(--sunk)' }}
       >
-        <Icone nom={icone} taille={18} style={{ color: 'var(--sub)' }} />
+        <Icone nom={icone} taille="1.125rem" style={{ color: 'var(--sub)' }} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[14px] font-semibold">{titre}</div>
-        <div className="truncate pt-0.5 text-[12.5px]" style={{ color: 'var(--sub)' }}>
+        <div className="text-[0.875rem] font-semibold">{titre}</div>
+        <div className="truncate pt-0.5 text-[0.7812rem]" style={{ color: 'var(--sub)' }}>
           {detail}
         </div>
       </div>
@@ -751,10 +751,10 @@ function Reglage({
 function Statut({ ok }: { ok: boolean }) {
   return (
     <span
-      className="inline-flex flex-none items-center gap-1.5 text-[13px] leading-none font-semibold"
+      className="inline-flex flex-none items-center gap-1.5 text-[0.8125rem] leading-none font-semibold"
       style={{ color: ok ? 'var(--accent-fg)' : '#C2410C' }}
     >
-      <Icone nom={ok ? 'check_circle' : 'error'} taille={17} rempli />
+      <Icone nom={ok ? 'check_circle' : 'error'} taille="1.0625rem" rempli />
       {ok ? 'disponible' : 'indisponible'}
     </span>
   )
@@ -866,7 +866,7 @@ function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
       <Bouton
         variante="danger"
         icone="delete"
-        tailleIcone={15}
+        tailleIcone="1.25em"
         enAttente={enCours}
         disabled={enCours || octets === 0}
         onClick={() => void vider()}

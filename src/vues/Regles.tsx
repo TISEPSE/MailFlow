@@ -139,14 +139,14 @@ export function Regles({
         >
           {/* Sans `compenser` : le relèvement optique vise l'alignement sur des
               capitales, pas le centrage dans un champ de saisie. */}
-          <Icone nom="search" taille={17} style={{ color: 'var(--sub)' }} />
+          <Icone nom="search" taille="1.0625rem" style={{ color: 'var(--sub)' }} />
           <input
             type="text"
             value={recherche}
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Rechercher une règle par nom ou adresse"
             aria-label="Rechercher une règle"
-            className="selectionnable min-w-0 flex-1 bg-transparent text-[13.5px] leading-5 outline-none"
+            className="selectionnable min-w-0 flex-1 bg-transparent text-[0.8438rem] leading-5 outline-none"
             style={{ color: 'var(--fg)' }}
           />
         </div>
@@ -155,7 +155,7 @@ export function Regles({
           type="button"
           onClick={() => setFormulaireOuvert(true)}
           aria-haspopup="dialog"
-          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 self-stretch rounded-xl px-4 text-[13px] leading-none font-semibold"
+          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 self-stretch rounded-xl px-4 text-[0.8125rem] leading-none font-semibold"
         >
           <Icone
             nom="playlist_add_check"
@@ -181,7 +181,7 @@ export function Regles({
                 role="tab"
                 aria-selected={actif}
                 onClick={() => setOnglet(o)}
-                className="segment flex h-8 items-center rounded-lg px-4 text-[13px] leading-none font-semibold whitespace-nowrap"
+                className="segment flex h-8 items-center rounded-lg px-4 text-[0.8125rem] leading-none font-semibold whitespace-nowrap"
               >
                 {o}
               </button>
@@ -230,14 +230,14 @@ export function Regles({
                         couleur={encre}
                       />
                       <span
-                        className="font-mono text-[10.5px]"
+                        className="font-mono text-[0.6562rem]"
                         style={{ color: 'var(--sub)' }}
                       >
                         ajoutée le {r.date_ajout}
                       </span>
                     </div>
                     <div
-                      className="selectionnable mt-1 text-[13.5px]"
+                      className="selectionnable mt-1 text-[0.8438rem]"
                       style={{ color: r.active ? 'var(--fg)' : 'var(--sub)' }}
                     >
                       {phrase(r)}
@@ -246,7 +246,7 @@ export function Regles({
 
                   {confirme ? (
                     <div className="flex flex-none items-center gap-2">
-                      <span className="text-[12px]" style={{ color: 'var(--sub)' }}>
+                      <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
                         Supprimer cette règle ?
                       </span>
                       <Bouton
@@ -267,7 +267,7 @@ export function Regles({
                       aria-label={`Supprimer la règle : ${phrase(r)}`}
                       className="bouton bouton-icone flex-none rounded-lg p-1.5"
                     >
-                      <Icone nom="delete" taille={18} />
+                      <Icone nom="delete" taille="1.125rem" />
                     </button>
                   )}
                 </div>
@@ -436,7 +436,7 @@ function FormulaireAjout({
           la règle fera. */}
       <div className="flex flex-col gap-3 pt-1">
         <p
-          className="text-[13px] leading-relaxed"
+          className="text-[0.8125rem] leading-relaxed"
           style={{ color: valide ? 'var(--fg)' : 'var(--sub)' }}
         >
           {valide
@@ -448,7 +448,7 @@ function FormulaireAjout({
           <button
             type="submit"
             disabled={!valide || enCours}
-            className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[13px] leading-none font-semibold"
+            className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[0.8125rem] leading-none font-semibold"
           >
             {enCours ? 'Enregistrement…' : 'Enregistrer la règle'}
           </button>
@@ -461,7 +461,7 @@ function FormulaireAjout({
 function Champ({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[12.5px] font-semibold">{titre}</span>
+      <span className="text-[0.7812rem] font-semibold">{titre}</span>
       {children}
     </div>
   )

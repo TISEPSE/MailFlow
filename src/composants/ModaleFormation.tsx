@@ -68,7 +68,7 @@ export function ModaleFormation({
           sombre={sombre}
         />
 
-        <p className="text-[13px]" style={{ color: valide ? 'var(--fg)' : 'var(--sub)' }}>
+        <p className="text-[0.8125rem]" style={{ color: valide ? 'var(--fg)' : 'var(--sub)' }}>
           {valide
             ? phrase(regle)
             : 'Saisissez une adresse complète, ou choisissez-la dans la liste.'}
@@ -79,7 +79,7 @@ export function ModaleFormation({
           <button
             type="submit"
             disabled={!valide || enCours}
-            className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[13px] leading-none font-semibold"
+            className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[0.8125rem] leading-none font-semibold"
           >
             {enCours ? 'Enregistrement…' : 'Ajouter'}
           </button>

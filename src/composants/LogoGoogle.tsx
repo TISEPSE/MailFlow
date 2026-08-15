@@ -9,7 +9,7 @@
  * Employé uniquement pour désigner le compte Google relié, ce que les règles
  * d'usage de la marque autorisent.
  */
-export function LogoGoogle({ taille = 20 }: { taille?: number }) {
+export function LogoGoogle({ taille = '1.25rem' }: { taille?: string }) {
   return (
     <svg
       viewBox="0 0 48 48"

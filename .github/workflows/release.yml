@@ -42,8 +42,14 @@ jobs:
       # et un installeur dont le nom ment sur son contenu.
       - name: Le tag correspond aux fichiers de version
         run: |
+          # Un tag d'essai porte un suffixe — « v0.1.0-beta.1 ». Il désigne la
+          # même version que les fichiers, à un cran d'avancement près : on ne
+          # compare donc que le numéro, pas le suffixe. Sans quoi il faudrait
+          # renuméroter les trois fichiers à chaque bêta, et un « -beta.1 »
+          # glissé dans la version Debian n'apporterait rien de bon.
           attendue="${GITHUB_REF_NAME#v}"
-          echo "Tag : $attendue"
+          attendue="${attendue%%-*}"
+          echo "Tag : $GITHUB_REF_NAME, version attendue : $attendue"
           ecart=0
           comparer() {
             if [ "$2" != "$attendue" ]; then
@@ -182,6 +188,10 @@ jobs:
             descendez jusqu'à « Sécurité » : MailFlow y est nommé, avec un
             bouton **Ouvrir quand même**. Une seule fois — les lancements
             suivants ne demandent plus rien.
-          releaseDraft: true
-          prerelease: ${{ github.ref_type != 'tag' }}
+          # Un tag suffixé — « v0.1.0-beta.1 » — est une pré-version : elle
+          # paraît aussitôt, marquée comme telle, parce qu'elle n'existe que
+          # pour être essayée. Une version définitive reste au contraire en
+          # brouillon, le temps de la relire avant de la rendre publique.
+          releaseDraft: ${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+          prerelease: ${{ github.ref_type != 'tag' || contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
