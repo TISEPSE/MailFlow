@@ -73,6 +73,15 @@ describe('preferences', () => {
     expect(lirePreferences(d).accent).toBe(DEFAUTS.accent)
   })
 
+  it('montre le guide à qui ne l’a jamais vu', () => {
+    // Dépôt vide : première ouverture, ou dépôt effacé. Dans le doute on
+    // montre le guide — le manquer laisse devant quatre pages inexpliquées.
+    expect(lirePreferences(depot()).guideVu).toBe(false)
+
+    const vu = depot({ 'mailflow.preferences': JSON.stringify({ guideVu: true }) })
+    expect(lirePreferences(vu).guideVu).toBe(true)
+  })
+
   it('survit à un dépôt en écriture seule refusée', () => {
     const casse = { ...depot(), setItem: () => { throw new Error('quota') } }
 

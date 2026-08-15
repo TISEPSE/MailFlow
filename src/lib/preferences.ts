@@ -16,6 +16,8 @@ export interface Preferences {
   syncAuLancement: boolean
   /** Intervalle entre deux relevés de la boîte. */
   frequence: Frequence
+  /** Le guide de première ouverture a été vu. */
+  guideVu: boolean
 }
 
 export const FREQUENCES = ['1 min', '5 min', '15 min'] as const
@@ -33,6 +35,10 @@ export const DEFAUTS: Preferences = {
   accent: '#2F6BFF',
   syncAuLancement: false,
   frequence: '5 min',
+  // Faux par défaut : une installation neuve, ou un dépôt effacé, doit revoir
+  // le guide. Mieux vaut le montrer une fois de trop que de laisser quelqu'un
+  // devant quatre pages dont rien n'explique la différence.
+  guideVu: false,
 }
 
 const CLE = 'mailflow.preferences'
@@ -70,6 +76,7 @@ export function lirePreferences(depot: Storage = localStorage): Preferences {
     frequence: FREQUENCES.includes(p.frequence as Frequence)
       ? (p.frequence as Frequence)
       : DEFAUTS.frequence,
+    guideVu: typeof p.guideVu === 'boolean' ? p.guideVu : DEFAUTS.guideVu,
   }
 }
 

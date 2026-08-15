@@ -13,6 +13,7 @@ import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
+import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton } from './lib/presentation'
 import { creerCache, ranger, type CacheCorps } from './lib/corps'
 import { autresQueMoi } from './lib/reponse'
@@ -446,6 +447,13 @@ export default function App() {
     >
       <Toasts toasts={toasts} onFermer={retirerToast} />
 
+      {/* Pleine fenêtre, barre de navigation comprise : le guide explique
+          justement à quoi elle sert, et la laisser visible derrière lui
+          faisait doublon avec sa propre illustration. */}
+      {!prefs.guideVu ? (
+        <Bienvenue sombre={sombre} onTerminer={() => regler({ guideVu: true })} />
+      ) : (
+        <>
       {ajoutFormation && (
         <ModaleFormation
           expediteurs={boite}
@@ -698,6 +706,7 @@ export default function App() {
               onSyncAuLancement={() => regler({ syncAuLancement: !prefs.syncAuLancement })}
               frequence={prefs.frequence}
               onFrequence={(f: Frequence) => regler({ frequence: f })}
+              onRevoirLeGuide={() => regler({ guideVu: false })}
               enCours={enCours}
               onConnecter={() =>
                 void agir(async () => {
@@ -809,6 +818,8 @@ export default function App() {
           )}
         </main>
       </div>
+        </>
+      )}
     </div>
   )
 }

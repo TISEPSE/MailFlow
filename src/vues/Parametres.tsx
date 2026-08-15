@@ -14,7 +14,7 @@
  * « Changer de compte », qui, lui, fonctionne.
  */
 import { useState } from 'react'
-import { Bloc, Icone, Interrupteur, Segments } from '../composants/base'
+import { Bloc, Bouton, Icone, Interrupteur, Segments } from '../composants/base'
 import { LogoGoogle } from '../composants/LogoGoogle'
 import { FREQUENCES, type Frequence } from '../lib/preferences'
 import { initiales } from '../lib/presentation'
@@ -39,6 +39,7 @@ export function Parametres({
   onBasculer,
   onAjouterCompte,
   onOublierCompte,
+  onRevoirLeGuide,
   enCours,
 }: {
   etat: EtatApplication
@@ -57,6 +58,8 @@ export function Parametres({
   onBasculer: (adresse: string) => void
   onAjouterCompte: () => void
   onOublierCompte: (adresse: string) => void
+  /** Réaffiche le guide de première ouverture. */
+  onRevoirLeGuide: () => void
   enCours: boolean
 }) {
   return (
@@ -116,6 +119,18 @@ export function Parametres({
                 />
               ))}
             </div>
+          </Reglage>
+        </Bloc>
+
+        <Bloc titre="Prise en main">
+          <Reglage
+            icone="school"
+            titre="Revoir le guide"
+            detail="Les quatre pages, le geste des règles, et ce qui est réversible."
+          >
+            <Bouton icone="chevron_right" onClick={onRevoirLeGuide}>
+              Afficher
+            </Bouton>
           </Reglage>
         </Bloc>
 
