@@ -31,16 +31,33 @@ import type {
   Regle,
 } from '../types/backend'
 
-const ONGLETS = ['Toutes', 'Publicités', 'Newsletters', 'Formations'] as const
+const ONGLETS = [
+  'Toutes',
+  'Mails directs',
+  'Publicités',
+  'Newsletters',
+  'Formations',
+] as const
 type Onglet = (typeof ONGLETS)[number]
 
 const CATEGORIE_ONGLET: Record<Exclude<Onglet, 'Toutes'>, Categorie> = {
+  'Mails directs': 'humain',
   Publicités: 'publicite',
   Newsletters: 'newsletter',
   Formations: 'formation',
 }
 
-const CATEGORIES = ['Publicités', 'Newsletters', 'Formations'] as const
+/** Les quatre destinations possibles d'une règle.
+ *
+ *  « Mails directs » en fait partie : c'est ce qui permet de ramener dans la
+ *  correspondance un expéditeur que le classement automatique range ailleurs —
+ *  une adresse `no-reply` qui écrit pourtant vraiment. */
+const CATEGORIES = [
+  'Mails directs',
+  'Publicités',
+  'Newsletters',
+  'Formations',
+] as const
 
 /**
  * Les trois actions proposées ici.
@@ -68,7 +85,11 @@ const ACTION: Record<LibelleAction, ActionRegle> = {
  * l'être. Le réglage par défaut suit cette intention, et reste modifiable.
  */
 function actionParDefaut(categorie: (typeof CATEGORIES)[number]): LibelleAction {
-  return categorie === 'Formations' ? 'Classer seulement' : 'Archiver'
+  // Formations et mails directs se rangent pour être lus ; publicités et
+  // newsletters, pour ne plus l'être.
+  return categorie === 'Formations' || categorie === 'Mails directs'
+    ? 'Classer seulement'
+    : 'Archiver'
 }
 
 export function Regles({
@@ -136,7 +157,12 @@ export function Regles({
           aria-haspopup="dialog"
           className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 self-stretch rounded-xl px-4 text-[13px] leading-none font-semibold"
         >
-          <Icone nom="playlist_add_check" taille={15} rempli compenser />
+          <Icone
+            nom="playlist_add_check"
+            taille="1.45em"
+            rempli
+            className="icone-bouton"
+          />
           Ajouter une règle
         </button>
 
@@ -361,19 +387,9 @@ function FormulaireAjout({
         }}
       />
 
-      <Champ titre="Catégorie">
-        <Segments
-          pleineLargeur
-          valeurs={CATEGORIES}
-          valeur={categorie}
-          onChange={(v) => {
-            changerCategorie(v)
-            setChoisiParDefaut(false)
-          }}
-          libelle="Catégorie de la règle"
-        />
-      </Champ>
-
+      {/* L'action d'abord : on décide ce qu'il advient des messages, puis où
+          les retrouver. L'ordre inverse faisait choisir une destination avant
+          de savoir s'ils y resteraient. */}
       <Champ titre="Action">
         <Segments
           pleineLargeur
@@ -384,6 +400,19 @@ function FormulaireAjout({
             setActionChoisie(true)
           }}
           libelle="Action de la règle"
+        />
+      </Champ>
+
+      <Champ titre="Catégorie">
+        <Segments
+          pleineLargeur
+          valeurs={CATEGORIES}
+          valeur={categorie}
+          onChange={(v) => {
+            changerCategorie(v)
+            setChoisiParDefaut(false)
+          }}
+          libelle="Catégorie de la règle"
         />
       </Champ>
 

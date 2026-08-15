@@ -912,6 +912,10 @@ export default function App() {
               logos={logos}
               onErreur={(m) => annoncer(m, true)}
               onAnnonce={(m) => annoncer(m)}
+              corpsConnus={corpsConnus}
+              onCorpsCharge={(id, corps) =>
+                setCorpsConnus((connus) => ranger(connus, id, corps))
+              }
             />
           ) : vue === 'newsletter' ? (
             <Newsletters

@@ -729,7 +729,7 @@ export function Bouton({
   titre,
   enAttente = false,
   compact = false,
-  tailleIcone = '1.2em',
+  tailleIcone = '1.35em',
   className = '',
 }: {
   children: ReactNode

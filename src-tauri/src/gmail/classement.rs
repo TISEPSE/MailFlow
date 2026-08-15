@@ -48,6 +48,7 @@ impl From<Categorie> for CategorieMessage {
             Categorie::Publicite => Self::Publicite,
             Categorie::Newsletter => Self::Newsletter,
             Categorie::Formation => Self::Formation,
+            Categorie::Humain => Self::Humain,
         }
     }
 }

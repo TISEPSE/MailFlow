@@ -96,7 +96,7 @@ export interface MessageAffiche {
 }
 
 /** Miroir de `rules::model::Categorie`. */
-export type Categorie = 'publicite' | 'newsletter' | 'formation'
+export type Categorie = 'humain' | 'publicite' | 'newsletter' | 'formation'
 
 /** Miroir de `rules::model::Action`. */
 export type ActionRegle =

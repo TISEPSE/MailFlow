@@ -14,6 +14,7 @@ import type { ActionRegle, Categorie, Regle } from '../types/backend'
  * l'entrée de la barre latérale où il ira les lire.
  */
 export const VUE_DE_CATEGORIE: Record<Categorie, string> = {
+  humain: 'Mails directs',
   publicite: 'Triage & publicités',
   newsletter: 'Newsletters',
   formation: 'Rappels de formations',

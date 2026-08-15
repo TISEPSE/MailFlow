@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { Etiquette, Icone } from './base'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
 import { adresseValide } from '../lib/regles'
+import { normaliser } from '../lib/recherche'
 import type { Categorie, MessageAffiche } from '../types/backend'
 
 export function ChampAdresse({
@@ -110,25 +111,44 @@ function Saisie({
   titre: string
 }) {
   const [ouvert, setOuvert] = useState(false)
-  const q = adresse.trim().toLowerCase()
+  const q = normaliser(adresse.trim())
 
-  // Tous les expéditeurs connus, pas les six premiers : la règle qu'on vient
-  // ajouter ici vise justement quelqu'un dont le message n'est pas sous les
-  // yeux. La liste est bornée en hauteur, pas en nombre.
-  const propositions = q
-    ? Array.from(
-        new Map(
-          expediteurs
-            .filter((m) => m.adresse)
-            .filter(
-              (m) =>
-                m.adresse.toLowerCase().includes(q) ||
-                m.nom.toLowerCase().includes(q),
-            )
-            .map((m) => [m.adresse, m] as const),
-        ).values(),
-      ).sort((a, b) => (a.nom || a.adresse).localeCompare(b.nom || b.adresse, 'fr'))
-    : []
+  // Deux lettres au minimum : sur une lettre, la liste rendait presque tous les
+  // expéditeurs et ne guidait rien — il fallait la lire en entier pour trouver,
+  // c'est-à-dire faire soi-même le travail qu'elle prétend éviter.
+  const MINIMUM = 2
+
+  /** Là où la requête tombe dans une chaîne : plus c'est tôt, plus c'est sûr. */
+  const rang = (texte: string): number => {
+    const t = normaliser(texte)
+    if (t.startsWith(q)) return 0
+    // Début d'un mot : « rennes » pour « re », mais pas « no-reply ».
+    if (new RegExp(`(^|[\\s.@_-])${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(t)) {
+      return 1
+    }
+    return t.includes(q) ? 2 : 99
+  }
+
+  const propositions =
+    q.length >= MINIMUM
+      ? Array.from(
+          new Map(
+            expediteurs
+              .filter((m) => m.adresse)
+              .map((m) => [m.adresse, m] as const),
+          ).values(),
+        )
+          .map((m) => ({ m, r: Math.min(rang(m.nom), rang(m.adresse)) }))
+          .filter(({ r }) => r < 99)
+          // Le classement d'abord, l'alphabet ensuite : une correspondance en
+          // début de nom passe avant une qui se cache au milieu d'une adresse.
+          .sort(
+            (a, b) =>
+              a.r - b.r ||
+              (a.m.nom || a.m.adresse).localeCompare(b.m.nom || b.m.adresse, 'fr'),
+          )
+          .map(({ m }) => m)
+      : []
 
   return (
     <div className="flex flex-col gap-1.5">

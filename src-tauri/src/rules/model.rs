@@ -130,6 +130,10 @@ impl Rule {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Categorie {
+    /// Correspondance humaine. Sert à ramener dans les mails directs un
+    /// expéditeur que le classement automatique range ailleurs — une adresse
+    /// `no-reply` qui écrit pourtant vraiment, par exemple.
+    Humain,
     Publicite,
     Newsletter,
     Formation,
