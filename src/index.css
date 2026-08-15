@@ -108,9 +108,19 @@ body {
   background-clip: content-box;
 }
 
-/* Réduit les animations pour qui l'a demandé au système. */
+/* Réduit les animations pour qui l'a demandé au système.
+
+   Toutes, sauf celles qui portent une information. Une barre qui avance, une
+   icône qui tourne, un squelette qui respire : ce ne sont pas des ornements,
+   ce sont les seules choses qui disent qu'un travail est en cours. Les
+   supprimer laisse l'utilisateur devant une image figée, sans moyen de
+   distinguer une attente d'un blocage.
+
+   Le webview de certaines plateformes annonce d'ailleurs « reduce » sans que
+   personne ne l'ait demandé — et l'application paraissait alors gelée pendant
+   les vingt secondes du relevé. */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *:not(.mouvement-utile) {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
@@ -329,12 +339,9 @@ button:not(:disabled),
   animation: respirer 1.4s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tourne,
-  .squelette {
-    animation: none;
-  }
-}
+/* `.tourne` et `.squelette` ne figurent pas parmi les animations coupées : ils
+   disent qu'un travail est en cours, et c'est la seule chose qui le dise. Voir
+   la règle générale plus haut. */
 
 /* Adresse d'un correspondant, dans l'en-tête de lecture.
 
@@ -396,14 +403,14 @@ button:not(:disabled),
 @keyframes toast-entre {
   from {
     opacity: 0;
-    transform: translateX(-12px);
+    transform: translateX(12px);
   }
 }
 
 @keyframes toast-sort {
   to {
     opacity: 0;
-    transform: translateX(-12px);
+    transform: translateX(12px);
   }
 }
 

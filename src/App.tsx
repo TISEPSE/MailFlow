@@ -419,6 +419,14 @@ export default function App() {
         ? 0
         : parCategorie[v as CategorieMessage].length
 
+  /** Vrai tant que la boîte se relève : les compteurs ne veulent alors rien dire.
+   *
+   *  Le relevé demande un appel par message et dure une vingtaine de secondes.
+   *  Afficher « 0 » pendant ce temps affirme une boîte vide ; un compteur qui
+   *  tourne dit qu'on cherche encore. Les règles, elles, viennent du disque et
+   *  sont connues tout de suite : leur compte reste. */
+  const releveEnCours = premierReleve || avancement !== null
+
 
   return (
     <div
@@ -498,7 +506,11 @@ export default function App() {
                 aria-current={actif ? 'page' : undefined}
                 // Repliée, la barre garde le libellé en infobulle : une icône
                 // seule ne dit pas ce qu'elle range.
-                title={repliee ? `${libelle} (${compte(v)})` : undefined}
+                title={
+                  repliee
+                    ? `${libelle}${v !== 'regles' && releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
+                    : undefined
+                }
                 className={`survolable flex items-center gap-3 rounded-lg py-2 ${
                   repliee ? 'justify-center px-0' : 'px-2.5 text-left'
                 }`}
@@ -514,14 +526,24 @@ export default function App() {
                     rempli={actif}
                     style={{ color: actif ? '#FFFFFF' : solide }}
                   />
-                  {repliee && compte(v) > 0 && (
-                    <span
-                      className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-semibold"
-                      style={{ background: solide, color: '#FFFFFF' }}
-                    >
-                      {compte(v)}
-                    </span>
-                  )}
+                  {repliee &&
+                    (v !== 'regles' && releveEnCours ? (
+                      <span
+                        className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
+                        style={{ background: solide, color: '#FFFFFF' }}
+                      >
+                        <Icone nom="progress_activity" taille={11} tourne />
+                      </span>
+                    ) : (
+                      compte(v) > 0 && (
+                        <span
+                          className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-semibold"
+                          style={{ background: solide, color: '#FFFFFF' }}
+                        >
+                          {compte(v)}
+                        </span>
+                      )
+                    ))}
                 </span>
                 {!repliee && (
                   <>
@@ -532,10 +554,16 @@ export default function App() {
                       {libelle}
                     </span>
                     <span
-                      className="flex-none font-mono text-[11px]"
-                      style={{ color: actif ? solide : 'var(--sub)' }}
+                      className="flex flex-none items-center justify-end font-mono text-[11px]"
+                      // Largeur réservée : sans elle, le passage du compteur à
+                      // l'anneau décalait le libellé au moment du relevé.
+                      style={{ color: actif ? solide : 'var(--sub)', minWidth: 16 }}
                     >
-                      {compte(v)}
+                      {v !== 'regles' && releveEnCours ? (
+                        <Icone nom="progress_activity" taille={13} tourne />
+                      ) : (
+                        compte(v)
+                      )}
                     </span>
                   </>
                 )}

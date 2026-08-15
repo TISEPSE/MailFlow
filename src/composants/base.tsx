@@ -63,7 +63,7 @@ export function Icone({
       viewBox={BOITE}
       width={taille}
       height={taille}
-      className={`inline-block flex-none ${tourne ? 'tourne ' : ''}${className}`}
+      className={`inline-block flex-none ${tourne ? 'mouvement-utile tourne ' : ''}${className}`}
       style={{
         fill: 'currentColor',
         marginInline: marge || undefined,
@@ -242,7 +242,7 @@ export interface Toast {
 }
 
 /**
- * Pile de messages passagers, en haut à gauche.
+ * Pile de messages passagers, en haut à droite.
  *
  * Ils se superposent à l'interface au lieu de s'y insérer : le bandeau qu'ils
  * remplacent poussait la boîte vers le bas à chaque action, si bien que le
@@ -261,9 +261,9 @@ export function Toasts({
   return (
     <div
       // `pointer-events-none` sur la pile, rétabli sur chaque toast : sans
-      // cela, la colonne invisible interceptait les clics de la barre latérale
-      // qu'elle recouvre.
-      className="pointer-events-none fixed top-4 left-4 z-50 flex w-80 flex-col gap-2"
+      // cela, la colonne invisible interceptait les clics de ce qu'elle
+      // recouvre — ici l'en-tête de lecture et ses boutons d'action.
+      className="pointer-events-none fixed top-4 right-4 z-50 flex w-80 flex-col gap-2"
       role="status"
       aria-live="polite"
     >
@@ -502,11 +502,11 @@ export function SqueletteListe({ lignes = 7 }: { lignes?: number }) {
           className="flex items-center gap-3 overflow-hidden border-b px-3"
           style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
         >
-          <span className="squelette h-[30px] w-[30px] flex-none rounded-full" />
+          <span className="mouvement-utile squelette h-[30px] w-[30px] flex-none rounded-full" />
           <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span className="squelette h-3 w-1/2" />
-            <span className="squelette h-3 w-4/5" />
-            <span className="squelette h-3 w-2/3" />
+            <span className="mouvement-utile squelette h-3 w-1/2" />
+            <span className="mouvement-utile squelette h-3 w-4/5" />
+            <span className="mouvement-utile squelette h-3 w-2/3" />
           </span>
         </div>
       ))}
@@ -523,14 +523,14 @@ export function SqueletteLecture() {
         style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
       >
         <div className="flex items-center gap-2.5">
-          <span className="squelette h-[30px] w-[30px] flex-none rounded-full" />
-          <span className="squelette h-4 w-3/5" />
+          <span className="mouvement-utile squelette h-[30px] w-[30px] flex-none rounded-full" />
+          <span className="mouvement-utile squelette h-4 w-3/5" />
         </div>
-        <span className="squelette ml-[40px] h-3 w-60" />
+        <span className="mouvement-utile squelette ml-[40px] h-3 w-60" />
       </div>
       <div className="flex flex-1 flex-col gap-3 px-9 py-6">
         {[92, 78, 85, 60, 70].map((largeur, i) => (
-          <span key={i} className="squelette h-3.5" style={{ width: `${largeur}%` }} />
+          <span key={i} className="mouvement-utile squelette h-3.5" style={{ width: `${largeur}%` }} />
         ))}
       </div>
     </div>
@@ -602,7 +602,7 @@ export function Progression({
           style={{ background: 'var(--faint)' }}
         >
           <div
-            className={`h-full rounded-full ${indetermine ? 'barre-indeterminee' : ''}`}
+            className={`h-full rounded-full ${indetermine ? 'mouvement-utile barre-indeterminee' : ''}`}
             style={{
               width: indetermine ? undefined : `${part}%`,
               background: 'var(--accent)',
