@@ -397,6 +397,24 @@ function Corps({
     return <div className="min-h-0 flex-1" />
   }
 
+  return <CorpsIsole corps={corps} extrait={message.extrait} />
+}
+
+/**
+ * Le contenu d'un message, isolé du reste de l'application.
+ *
+ * Partagé par le panneau de lecture et la fenêtre en grand des newsletters :
+ * le bac à sable est la pièce qui rend l'affichage acceptable, et il ne doit
+ * exister qu'en un seul exemplaire.
+ */
+export function CorpsIsole({
+  corps,
+  extrait,
+}: {
+  corps: CorpsMessage | null
+  /** Montré quand Gmail n'a rendu ni HTML ni texte. */
+  extrait: string
+}) {
   if (corps?.html) {
     return (
       <iframe
@@ -409,12 +427,12 @@ function Corps({
         sandbox=""
         srcDoc={documentIsole(corps.html)}
         className="min-h-0 w-full flex-1"
-        style={{ border: 0, background: '#FFFFFF' }}
+        style={{ border: 0, background: '#FFFFFF', minHeight: '100%' }}
       />
     )
   }
 
-  const texte = corps?.texte ?? message.extrait
+  const texte = corps?.texte ?? extrait
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

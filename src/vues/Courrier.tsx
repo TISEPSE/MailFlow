@@ -66,6 +66,8 @@ export function Courrier({
   libelles,
   chargement,
   comptes,
+  vise,
+  onVise,
 }: {
   messages: MessageAffiche[]
   vide: {
@@ -97,9 +99,22 @@ export function Courrier({
   chargement?: boolean
   /** Renseignés dans la vue mélangée seulement. */
   comptes?: readonly string[]
+  /** Message désigné par la recherche, à ouvrir sans attendre un clic. */
+  vise?: string | null
+  /** Prévient que la désignation a été honorée, pour qu'elle ne se répète pas. */
+  onVise?: () => void
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
+
+  // La recherche désigne un message : la vue l'ouvre, puis rend la main. Sans
+  // ce second temps, la sélection resterait clouée dessus et l'on ne pourrait
+  // plus en ouvrir un autre.
+  useEffect(() => {
+    if (!vise) return
+    setSelection(vise)
+    onVise?.()
+  }, [vise, onVise])
 
   const choisi = messages.find((m) => m.id === selection) ?? messages[0]
 

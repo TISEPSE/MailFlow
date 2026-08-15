@@ -383,11 +383,17 @@ export function Modale({
   sous,
   onFermer,
   children,
+  large = false,
+  sansRembourrage = false,
 }: {
   titre: string
   sous?: string
   onFermer: () => void
   children: ReactNode
+  /** Occupe presque tout l'écran : pour lire un message en entier. */
+  large?: boolean
+  /** Le contenu gère lui-même ses marges — utile à une `iframe`. */
+  sansRembourrage?: boolean
 }) {
   const cadre = useRef<HTMLDivElement>(null)
 
@@ -430,7 +436,9 @@ export function Modale({
         role="dialog"
         aria-modal="true"
         aria-label={titre}
-        className="apparait my-auto w-full max-w-lg rounded-2xl border"
+        className={`apparait my-auto w-full rounded-2xl border ${
+          large ? 'max-w-5xl' : 'max-w-lg'
+        }`}
         style={{
           background: 'var(--card)',
           borderColor: 'var(--line)',
@@ -461,7 +469,13 @@ export function Modale({
 
         {/* Défilement interne : les suggestions d'adresse débordaient de la
             fenêtre au lieu de la faire défiler. */}
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
+        <div
+          className={`overflow-y-auto ${large ? 'h-[72vh]' : 'max-h-[70vh]'} ${
+            sansRembourrage ? '' : 'px-6 py-5'
+          }`}
+        >
+          {children}
+        </div>
       </div>
     </div>
   )

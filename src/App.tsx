@@ -13,6 +13,7 @@ import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
+import { Newsletters } from './vues/Newsletters'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton } from './lib/presentation'
 import { creerCache, ranger, type CacheCorps } from './lib/corps'
@@ -25,6 +26,7 @@ import {
   type Frequence,
 } from './lib/preferences'
 import { LogoGoogle } from './composants/LogoGoogle'
+import { Recherche } from './composants/Recherche'
 import { ModaleFormation } from './composants/ModaleFormation'
 import {
   appHealth,
@@ -164,6 +166,12 @@ export default function App() {
    *  minutes derrière l'écran de chargement. Une référence et non un état :
    *  l'écoute est posée une fois pour toutes et doit lire la valeur du moment. */
   const chargementComplet = useRef(false)
+
+  /** Message désigné par la recherche, à sélectionner dans sa vue.
+   *
+   *  Un état à part de la sélection interne de la vue : celle-ci se souvient de
+   *  ce qu'on a ouvert, tandis que celui-ci est un ordre venu d'ailleurs. */
+  const [messageVise, setMessageVise] = useState<string | null>(null)
 
   /** Fenêtre d'ajout d'un expéditeur aux rappels de formation. */
   const [ajoutFormation, setAjoutFormation] = useState(false)
@@ -768,6 +776,26 @@ export default function App() {
         </nav>
 
         <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
+          {/* La recherche ne paraît que là où elle a de quoi chercher : sur les
+              Règles et les Paramètres, elle ne désignerait rien. */}
+          {etat?.compteConnecte && vue !== 'regles' && vue !== 'parametres' && (
+            <div
+              className="flex flex-none items-center justify-center border-b px-6 py-2.5"
+              style={{ borderColor: 'var(--line)', background: 'var(--side)' }}
+            >
+              <Recherche
+                messages={boite}
+                corps={corpsConnus}
+                logos={logos}
+                sombre={sombre}
+                onOuvrir={(m) => {
+                  setVue(m.categorie)
+                  setMessageVise(m.id)
+                }}
+              />
+            </div>
+          )}
+
           {avancement ? (
             <Progression
               faits={avancement.faits}
@@ -826,10 +854,36 @@ export default function App() {
                 })
               }
             />
+          ) : vue === 'newsletter' ? (
+            <Newsletters
+              messages={parCategorie.newsletter}
+              chargement={premierReleve}
+              logos={logos}
+              vide={VIDES.newsletter}
+              onOuvrir={(id) => void marquerLu(id)}
+              corpsConnus={corpsConnus}
+              onCorpsCharge={(id, corps) =>
+                setCorpsConnus((connus) => ranger(connus, id, corps))
+              }
+              onArchiver={(id) =>
+                void agir(async () => {
+                  await messageRanger(id, undefined)
+                  return 'Newsletter archivée.'
+                })
+              }
+              onSupprimer={(id) =>
+                void agir(async () => {
+                  await messageCorbeille(id)
+                  return 'Newsletter mise à la corbeille.'
+                })
+              }
+            />
           ) : (
             <Courrier
               messages={parCategorie[vue]}
               chargement={premierReleve}
+              vise={messageVise}
+              onVise={() => setMessageVise(null)}
               comptes={
                 compteAffiche === TOUS_LES_COMPTES
                   ? comptes.map((c) => c.adresse)
