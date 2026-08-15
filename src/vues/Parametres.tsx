@@ -655,13 +655,13 @@ function BoutonCarte({
       // chacune peut se désaccorder des autres.
       className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex flex-none items-center justify-center gap-[0.5em] rounded-xl font-semibold`}
       style={{
-        fontSize: '0.84rem',
-        height: '2.6em',
-        paddingInline: '1em',
+        fontSize: '0.95rem',
+        height: '2.8em',
+        paddingInline: '1.15em',
         lineHeight: 1,
       }}
     >
-      {icone && <Icone nom={icone} taille="1.25em" className="icone-bouton" />}
+      {icone && <Icone nom={icone} taille="1.35em" className="icone-bouton" />}
       {children}
     </button>
   )

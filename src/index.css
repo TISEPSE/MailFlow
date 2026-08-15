@@ -666,9 +666,17 @@ button:not(:disabled),
 
    Le décalage est exprimé en `em` : il suit la taille du texte de lui-même, et
    le réglage vaut pour toutes les tailles de bouton au lieu d'être refait à
-   chaque fois en pixels. */
+   chaque fois en pixels.
+
+   La valeur ne se règle pas plus finement, et il est utile de savoir pourquoi :
+   l'encre d'un mot dépend de ses lettres. « Déconnecter » porte un accent qui
+   monte au-dessus des capitales, « Changer de compte » un jambage qui descend
+   sous la ligne. Mesurer l'écart entre le centre de l'icône et celui de l'encre
+   donne donc deux résultats différents pour deux boutons pourtant identiques.
+   La bonne référence est la bande des capitales, que 0,04 em approche au demi-
+   pixel près dans les deux cas — le reste est du sous-pixel. */
 .icone-bouton {
-  transform: translateY(0.055em);
+  transform: translateY(0.04em);
 }
 
 /* La rotation a besoin du même canal : elle l'emporte, et l'écart d'un
