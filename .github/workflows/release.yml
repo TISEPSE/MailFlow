@@ -155,10 +155,12 @@ jobs:
             echo "Identifiants présents, ils seront figés dans le binaire."
           fi
 
-      # Les artefacts macOS ne sont ni signés ni notarisés à ce stade : au
-      # premier lancement, Gatekeeper les bloque et l'utilisateur doit passer
-      # par clic droit puis « Ouvrir ». Signer demande un compte Apple Developer
-      # (99 $/an) ; les secrets se branchent alors ici sans toucher au reste.
+      # Les artefacts macOS ne sont ni signés ni notarisés à ce stade :
+      # Gatekeeper les bloque au premier lancement, et le contournement passe
+      # désormais par les Réglages Système — Apple a retiré le clic droit puis
+      # « Ouvrir » dans macOS 15. Sur un public non technique, ce détour est
+      # rédhibitoire : signer demande un compte Apple Developer (99 $/an), et
+      # les secrets se branchent alors ici sans toucher au reste.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -171,10 +173,15 @@ jobs:
             Téléchargez le fichier correspondant à votre machine :
 
             - **macOS** — `.dmg` (universel : Intel et Apple Silicon).
-              Non signé : au premier lancement, faites un clic droit sur
-              l'application puis « Ouvrir », sinon macOS la refuse.
             - **Linux** — `.AppImage` pour toutes les distributions,
               ou `.deb` pour Debian et Ubuntu.
+
+            **Premier lancement sur macOS.** L'application n'est pas encore
+            signée : macOS la refuse et propose de la mettre à la corbeille.
+            Ouvrez alors  > Réglages Système > Confidentialité et sécurité,
+            descendez jusqu'à « Sécurité » : MailFlow y est nommé, avec un
+            bouton **Ouvrir quand même**. Une seule fois — les lancements
+            suivants ne demandent plus rien.
           releaseDraft: true
           prerelease: ${{ github.ref_type != 'tag' }}
           args: ${{ matrix.args }}

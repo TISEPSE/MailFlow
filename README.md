@@ -139,7 +139,15 @@ branches.
 `workflow_dispatch` permet un build d'essai sans tag : il produit une
 préversion en brouillon, sans contrôle de version.
 
-Les binaires macOS ne sont pas signés à ce stade. Au premier lancement,
-Gatekeeper les bloque et l'utilisateur doit passer par clic droit puis
-« Ouvrir ». La signature demande un compte Apple Developer ; les secrets se
-branchent alors dans le workflow sans toucher au reste.
+### Le cas de macOS
+
+Les binaires macOS ne sont pas signés à ce stade, et Gatekeeper les bloque au
+premier lancement. Depuis macOS 15, le clic droit puis « Ouvrir » ne suffit plus
+— Apple a retiré ce raccourci. Il faut lancer l'application une première fois,
+la voir refusée, puis ouvrir  > Réglages Système > Confidentialité et sécurité
+et cliquer sur **Ouvrir quand même** sous « Sécurité ». Une seule fois.
+
+Pour un public non technique, ce détour est rédhibitoire : c'est exactement le
+geste qu'on apprend aux gens à ne pas faire. La signature demande un compte
+Apple Developer (99 $/an) ; les secrets se branchent alors dans le workflow sans
+toucher au reste.
