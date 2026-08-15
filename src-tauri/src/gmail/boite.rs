@@ -155,7 +155,15 @@ pub async fn charger_suivi<T: Transport, J: SourceJeton>(
     requete: &str,
     mut avance: impl FnMut(usize, usize),
 ) -> Resultat<Vec<MessageAffiche>> {
-    let refs = client.lister(requete, PLAFOND_BOITE).await?;
+    // La corbeille n'est visible que si on la demande : `messages.list`
+    // l'écarte par défaut, quelle que soit la requête.
+    let refs = if requete == CORBEILLE {
+        client
+            .lister_incluant_corbeille(requete, PLAFOND_BOITE)
+            .await?
+    } else {
+        client.lister(requete, PLAFOND_BOITE).await?
+    };
     avance(0, refs.len());
 
     let mut boite = Vec::with_capacity(refs.len());
