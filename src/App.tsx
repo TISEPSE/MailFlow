@@ -16,7 +16,7 @@ import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
 import { Corbeille } from './vues/Corbeille'
 import { Bienvenue } from './vues/Bienvenue'
-import { initiales, ton } from './lib/presentation'
+import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, ranger, type CacheCorps } from './lib/corps'
 import { autresQueMoi } from './lib/reponse'
 import {
@@ -78,6 +78,17 @@ type Vue = CategorieMessage | 'corbeille' | 'regles' | 'parametres'
  * distinction est ainsi impossible à confondre avec un vrai compte.
  */
 const TOUS_LES_COMPTES = '\u0000tous'
+
+/** Traduit une vue en clé de couleur.
+ *
+ *  Les deux vocabulaires ne coïncident pas — la vue s'appelle « regles », le
+ *  ton « regle » — et une entrée sans correspondance rendait `TONS[…]`
+ *  indéfini : lire `.clair` dessus effaçait toute l'application. */
+function teinteDeLaVue(v: Vue): Teintable {
+  if (v === 'regles') return 'regle'
+  if (v === 'parametres') return 'humain'
+  return v
+}
 
 const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'humain', libelle: 'Mails directs', glyphe: 'person' },
@@ -602,7 +613,7 @@ export default function App() {
 
           {NAV.map(({ vue: v, libelle, glyphe }) => {
             const actif = vue === v
-            const [solide, doux] = ton(v === 'regles' ? 'regle' : (v as CategorieMessage), sombre)
+            const [solide, doux] = ton(teinteDeLaVue(v), sombre)
             return (
               <button
                 key={v}

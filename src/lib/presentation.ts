@@ -23,9 +23,16 @@ export function palette(index: number): readonly [string, string] {
   return PALETTE[Math.abs(index) % PALETTE.length] ?? PALETTE[0]!
 }
 
-/** Couleurs par catégorie : [texte, fond]. */
+/** Ce qui porte une couleur dans la barre de navigation. */
+export type Teintable = CategorieMessage | 'regle' | 'corbeille'
+
+/** Couleurs par catégorie : [texte, fond].
+ *
+ *  Le type couvre *toutes* les entrées de la barre, corbeille comprise : une
+ *  entrée sans ton rendait `TONS[…]` indéfini, et lire `.clair` dessus faisait
+ *  disparaître l'application entière derrière un écran blanc. */
 export const TONS: Record<
-  CategorieMessage | 'regle',
+  Teintable,
   { clair: readonly [string, string]; sombre: readonly [string, string] }
 > = {
   humain: { clair: ['#4A4A55', '#E6E6EC'], sombre: ['#B9B9C4', '#2E2E38'] },
@@ -33,13 +40,16 @@ export const TONS: Record<
   newsletter: { clair: ['#2455CC', '#DCE6FF'], sombre: ['#7FA5FF', '#23304F'] },
   formation: { clair: ['#25714A', '#DDEFE2'], sombre: ['#4FC98A', '#1F3229'] },
   regle: { clair: ['#5B45B8', '#E4DDFA'], sombre: ['#B08CFF', '#2C2540'] },
+  corbeille: { clair: ['#6E6E76', '#EDEDF1'], sombre: ['#9C9CA5', '#2E2E34'] },
 }
 
-export function ton(
-  categorie: CategorieMessage | 'regle',
-  sombre: boolean,
-): readonly [string, string] {
-  return sombre ? TONS[categorie].sombre : TONS[categorie].clair
+export function ton(quoi: Teintable, sombre: boolean): readonly [string, string] {
+  // Le repli n'est pas une précaution de style : sans lui, une entrée de
+  // navigation ajoutée sans ton fait planter le rendu de toute l'application,
+  // et l'écran devient blanc sans le moindre message. Une couleur neutre vaut
+  // mieux que ça.
+  const teintes = TONS[quoi] ?? TONS.humain
+  return sombre ? teintes.sombre : teintes.clair
 }
 
 export const LIBELLE_CATEGORIE: Record<CategorieMessage, string> = {

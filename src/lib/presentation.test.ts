@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { heureCourte, initiales, couleurDuCompte } from './presentation'
+import { heureCourte, initiales, couleurDuCompte, ton, type Teintable } from './presentation'
 
 /** Repère fixe : jeudi 14 août 2026, 10 h 00 locales. */
 const MAINTENANT = new Date(2026, 7, 14, 10, 0, 0)
@@ -90,5 +90,32 @@ describe('couleurDuCompte', () => {
     // Un message rangé sous un compte depuis oublié : mieux vaut une couleur
     // de plus qu'un liseré vide.
     expect(couleurDuCompte('parti@ailleurs.fr', comptes)).toBeDefined()
+  })
+})
+
+describe('ton', () => {
+  it('donne une couleur à chaque entrée de la barre de navigation', () => {
+    // Le test qui manquait : « Corbeille » avait été ajoutée à la barre sans
+    // ton, `TONS['corbeille']` valait donc `undefined`, et lire `.clair`
+    // dessus faisait disparaître toute l'application derrière un écran blanc.
+    const entrees: Teintable[] = [
+      'humain',
+      'publicite',
+      'newsletter',
+      'formation',
+      'regle',
+      'corbeille',
+    ]
+
+    for (const e of entrees) {
+      expect(ton(e, false), e).toHaveLength(2)
+      expect(ton(e, true), e).toHaveLength(2)
+    }
+  })
+
+  it('rend une couleur neutre plutôt que de planter sur un inconnu', () => {
+    // Une entrée ajoutée demain sans ton doit s'afficher en gris, pas effacer
+    // l'application.
+    expect(ton('inventée' as Teintable, false)).toEqual(ton('humain', false))
   })
 })
