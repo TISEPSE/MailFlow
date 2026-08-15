@@ -18,6 +18,7 @@ function message(destinataires: string[], copies: string[] = []): MessageAffiche
     date: null,
     nonLu: false,
     categorie: 'humain',
+    compte: 'moi@gmail.com',
   }
 }
 

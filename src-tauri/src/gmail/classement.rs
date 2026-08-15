@@ -23,14 +23,17 @@
 //! rappel de cours d'une autre notification. Elle n'apparaît que si une règle le
 //! dit — c'est-à-dire si l'utilisateur l'a rangée là.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::libelles;
 use super::modele::MessageMetadata;
 use crate::rules::{Categorie, RuleSet};
 
 /// Famille d'affichage d'un message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// `Deserialize` parce que cette famille est rangée telle quelle dans le cache
+/// de relevés : la relire évite de reclasser toute la boîte à l'ouverture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CategorieMessage {
     Humain,

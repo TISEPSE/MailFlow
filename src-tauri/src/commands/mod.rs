@@ -16,6 +16,7 @@ use chrono::{Local, Utc};
 use crate::auth::flux::ClientOAuth;
 use crate::auth::session::SessionAuth;
 use crate::auth::{DELAI_AUTORISATION, connecter};
+use crate::cache;
 use crate::comptes::{self, Annuaire};
 use crate::config;
 use crate::error::{AppError, Resultat};
@@ -322,11 +323,37 @@ pub async fn regle_basculer(app: AppHandle, id: String) -> Resultat<RuleSet> {
 /// l'ouverture, et l'écran de chargement n'avait rien à en dire.
 pub const EVENEMENT_RELEVE: &str = "messages-releves";
 
+/// Dossier où le cache s'installe, durablement.
+///
+/// Le dossier de cache de l'application, et non `$XDG_RUNTIME_DIR` comme
+/// autrefois : celui-ci survit à l'extinction de la machine, ce qui est tout
+/// l'objet de la manœuvre. Voir [`crate::cache`] pour ce que ce choix coûte.
+pub fn dossier_cache(app: &AppHandle) -> Resultat<PathBuf> {
+    app.path()
+        .app_cache_dir()
+        .map(|d| d.join("boites"))
+        .map_err(|e| AppError::Config(format!("dossier de cache introuvable : {e}")))
+}
+
+/// Adresse du compte actif, telle que l'annuaire la connaît.
+///
+/// Prise dans l'annuaire et non demandée à Gmail : c'est une lecture de
+/// fichier, là où l'autre coûte un appel réseau, et le cache s'interroge à
+/// chaque ouverture.
+fn compte_actif(app: &AppHandle) -> String {
+    comptes::charger(&dossier_config(app).unwrap_or_default())
+        .actif
+        .unwrap_or_default()
+}
+
 /// Relève la boîte et classe les messages par vue.
 ///
 /// Ne rend ni corps de message ni identifiant de fil : le HTML d'un e-mail est
 /// écrit par un inconnu et ne traversera l'IPC que le jour où une `iframe` en
 /// bac à sable saura l'afficher sans risque.
+///
+/// Le relevé est rangé au passage : c'est lui qui s'affichera à la prochaine
+/// ouverture, sans attendre le réseau.
 #[tauri::command]
 pub async fn boite_lister(
     app: AppHandle,
@@ -335,16 +362,81 @@ pub async fn boite_lister(
     use tauri::Emitter;
 
     let regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+    let compte = compte_actif(&app);
 
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-    let boite = charger_boite_suivi(&client, &regles, |faits, total| {
+    let boite = charger_boite_suivi(&client, &regles, &compte, |faits, total| {
         let _ = app.emit(EVENEMENT_RELEVE, Avancement { faits, total });
     })
     .await
     .inspect_err(|e| log::warn!("relevé de la boîte interrompu : {e}"))?;
 
+    if let Ok(racine) = dossier_cache(&app) {
+        cache::ranger_boite(&racine, &compte, &boite);
+    }
+
     log::info!("{} message(s) relevé(s)", boite.len());
     Ok(boite)
+}
+
+/// Rend le dernier relevé connu du compte actif, sans toucher au réseau.
+///
+/// C'est ce qui s'affiche à l'ouverture, le temps que le relevé aboutisse. Rend
+/// une liste vide plutôt qu'une erreur quand rien n'a encore été rangé : une
+/// première ouverture n'est pas une panne.
+#[tauri::command]
+pub async fn boite_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
+    let racine = dossier_cache(&app)?;
+    let boite = cache::lire_boite(&racine, &compte_actif(&app)).unwrap_or_default();
+
+    log::info!("{} message(s) relus du cache", boite.len());
+    Ok(boite)
+}
+
+/// Rend les relevés de tous les comptes connus, mélangés et triés par date.
+///
+/// C'est le compte fictif « Tous les comptes » : une vue, pas une boîte. Tout
+/// vient du disque — aucun appel réseau, donc aucune attente. Les comptes qui
+/// n'ont jamais été relevés n'y figurent simplement pas encore.
+#[tauri::command]
+pub async fn boite_melangee(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
+    let dossier = dossier_config(&app)?;
+    let racine = dossier_cache(&app)?;
+
+    let mut tout: Vec<MessageAffiche> = comptes::charger(&dossier)
+        .connus
+        .iter()
+        .filter_map(|c| cache::lire_boite(&racine, &c.adresse))
+        .flatten()
+        .collect();
+
+    // Décroissant : le plus récent en tête, comme dans chaque boîte prise
+    // séparément. Une date absente part en fin de liste plutôt que de prendre
+    // la première place.
+    tout.sort_by(|a, b| b.date.cmp(&a.date));
+
+    log::info!("{} message(s) dans la vue mélangée", tout.len());
+    Ok(tout)
+}
+
+/// Efface tout le cache, tous comptes confondus.
+#[tauri::command]
+pub async fn cache_vider(app: AppHandle) -> Resultat<()> {
+    let racine = dossier_cache(&app)?;
+    cache::vider(&racine)?;
+    // Les corps aussi : les garder après avoir effacé les relevés laisserait
+    // sur le disque exactement ce que l'utilisateur voulait voir partir.
+    let _ = std::fs::remove_dir_all(crate::gmail::corps::dossier_cache_dans(&app));
+
+    log::info!("cache effacé à la demande");
+    Ok(())
+}
+
+/// Taille du cache sur le disque, en octets.
+#[tauri::command]
+pub async fn cache_taille(app: AppHandle) -> Resultat<u64> {
+    let racine = dossier_cache(&app)?;
+    Ok(cache::taille(&racine) + cache::taille(&crate::gmail::corps::dossier_cache_dans(&app)))
 }
 
 /// Corps d'un message, prêt à être affiché en bac à sable.
@@ -357,14 +449,15 @@ pub async fn boite_lister(
 /// entier, quand le tri se contente de quelques en-têtes.
 #[tauri::command]
 pub async fn message_corps(
+    app: AppHandle,
     etat: State<'_, EtatAuth>,
     id: String,
 ) -> Resultat<crate::gmail::corps::CorpsMessage> {
     use crate::gmail::corps;
 
-    // Déjà rangé : ni appel Gmail, ni images à retélécharger. Le dossier est
-    // effacé au démarrage de la machine, jamais avant.
-    let dossier = corps::dossier_cache();
+    // Déjà rangé : ni appel Gmail, ni images à retélécharger. Le dossier
+    // survit au redémarrage de la machine — voir `crate::cache`.
+    let dossier = corps::dossier_cache_dans(&app);
     if let Some(connu) = corps::lire(&dossier, &id) {
         return Ok(connu);
     }
@@ -431,13 +524,13 @@ pub async fn corps_precharger(
     use crate::gmail::corps;
     use tauri::Emitter;
 
-    let dossier = corps::dossier_cache();
+    let dossier = corps::dossier_cache_dans(&app);
     let total = ids.len();
     let mut faits = 0;
 
     for id in ids {
         if corps::lire(&dossier, &id).is_none() {
-            let _ = message_corps(etat.clone(), id).await;
+            let _ = message_corps(app.clone(), etat.clone(), id).await;
         }
         faits += 1;
         let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });

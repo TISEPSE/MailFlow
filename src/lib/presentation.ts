@@ -114,3 +114,22 @@ export function initiales(nom: string): string {
 export function domaineDe(adresse: string): string {
   return adresse.split('@')[1] ?? ''
 }
+
+/**
+ * Couleur propre a un compte, dans la vue melangee.
+ *
+ * Attribuee par rang dans la liste des comptes, et non par empreinte de
+ * l'adresse : la palette ne compte que quatre teintes, et deux adresses
+ * quelconques y tombent trop souvent sur la meme — ce qui reviendrait a ne
+ * rien distinguer, precisement la ou la couleur est la seule marque.
+ *
+ * Le rang est stable tant que la liste ne bouge pas. Retirer un compte
+ * redistribue les couleurs des suivants : rare, et sans consequence.
+ */
+export function couleurDuCompte(
+  adresse: string,
+  comptes: readonly string[],
+): readonly [string, string] {
+  const rang = comptes.findIndex((c) => c.toLowerCase() === adresse.toLowerCase())
+  return palette(rang >= 0 ? rang : comptes.length)
+}

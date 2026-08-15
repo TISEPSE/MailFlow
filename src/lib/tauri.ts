@@ -98,9 +98,39 @@ export function regleBasculer(id: string): Promise<JeuDeRegles> {
   return invoke<JeuDeRegles>('regle_basculer', { id })
 }
 
-/** Releve la boite de reception, deja classee par vue. */
+/** Releve la boite de reception chez Gmail, deja classee par vue. */
 export function boiteLister(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('boite_lister')
+}
+
+/**
+ * Dernier releve connu du compte actif, lu sur le disque.
+ *
+ * Aucun appel reseau : c'est ce qui s'affiche a l'ouverture, le temps que le
+ * vrai releve aboutisse. Liste vide quand rien n'a encore ete range.
+ */
+export function boiteEnCache(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('boite_en_cache')
+}
+
+/**
+ * Releves de tous les comptes connus, melanges et tries par date.
+ *
+ * Le compte fictif « Tous les comptes » : une vue, pas une boite. Tout vient du
+ * disque, donc sans attente.
+ */
+export function boiteMelangee(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('boite_melangee')
+}
+
+/** Efface tout le cache, releves et corps, tous comptes confondus. */
+export function cacheVider(): Promise<void> {
+  return invoke<void>('cache_vider')
+}
+
+/** Taille du cache sur le disque, en octets. */
+export function cacheTaille(): Promise<number> {
+  return invoke<number>('cache_taille')
 }
 
 /**

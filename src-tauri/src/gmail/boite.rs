@@ -11,7 +11,7 @@
 //! La seconde est le coût : lire les corps demande `format=full`, donc le
 //! téléchargement de chaque message. Les listes n'en ont pas besoin.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::classement::{CategorieMessage, classer};
 use super::client::{ClientGmail, SourceJeton, Transport};
@@ -30,7 +30,7 @@ pub const PLAFOND_BOITE: usize = 60;
 ///
 /// Le nom est cosmétique et l'adresse fait foi, pour la raison habituelle : le
 /// nom affiché est écrit par l'expéditeur.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Contact {
     pub nom: String,
     pub adresse: String,
@@ -57,7 +57,10 @@ impl Contact {
 }
 
 /// Un message tel que les vues l'affichent.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+///
+/// `Deserialize` autant que `Serialize` : c'est cette forme-là qui est rangée
+/// sur le disque entre deux lancements, voir [`crate::cache`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageAffiche {
     pub id: String,
@@ -84,10 +87,16 @@ pub struct MessageAffiche {
 
     pub non_lu: bool,
     pub categorie: CategorieMessage,
+
+    /// Adresse du compte qui a reçu ce message.
+    ///
+    /// Sans intérêt tant qu'on regarde une boîte à la fois ; indispensable dès
+    /// que la vue les mélange, où rien d'autre ne dit d'où vient un message.
+    pub compte: String,
 }
 
 impl MessageAffiche {
-    pub fn depuis(m: &MessageMetadata, regles: &RuleSet) -> Self {
+    pub fn depuis(m: &MessageMetadata, regles: &RuleSet, compte: &str) -> Self {
         Self {
             id: m.id.clone(),
             nom: nom_affiche(m.from()),
@@ -99,6 +108,7 @@ impl MessageAffiche {
             date: m.date().map(|d| d.to_rfc3339()),
             non_lu: m.label_ids.iter().any(|l| l == libelles::UNREAD),
             categorie: classer(m, regles),
+            compte: compte.to_string(),
         }
     }
 }
@@ -107,8 +117,9 @@ impl MessageAffiche {
 pub async fn charger_boite<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,
+    compte: &str,
 ) -> Resultat<Vec<MessageAffiche>> {
-    charger_boite_suivi(client, regles, |_, _| {}).await
+    charger_boite_suivi(client, regles, compte, |_, _| {}).await
 }
 
 /// Même relevé, en rendant compte de son avancement.
@@ -121,6 +132,7 @@ pub async fn charger_boite<T: Transport, J: SourceJeton>(
 pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,
+    compte: &str,
     mut avance: impl FnMut(usize, usize),
 ) -> Resultat<Vec<MessageAffiche>> {
     let refs = client.lister("in:inbox", PLAFOND_BOITE).await?;
@@ -129,7 +141,7 @@ pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
     let mut boite = Vec::with_capacity(refs.len());
     for (rang, reference) in refs.iter().enumerate() {
         match client.metadonnees(&reference.id).await {
-            Ok(m) => boite.push(MessageAffiche::depuis(&m, regles)),
+            Ok(m) => boite.push(MessageAffiche::depuis(&m, regles, compte)),
 
             // Le message a bougé entre la liste et la lecture : cas courant sur
             // une boîte vivante. Il manquera à l'affichage, ce n'est pas une
@@ -169,7 +181,7 @@ mod tests {
 
     #[test]
     fn le_message_affiche_separe_le_nom_de_l_adresse() {
-        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default());
+        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default(), "moi@gmail.com");
 
         assert_eq!(a.nom, "Karim Belhadj");
         // Normalisée : c'est elle qui servira à créer une règle.
@@ -180,13 +192,13 @@ mod tests {
 
     #[test]
     fn le_libelle_unread_devient_l_etat_non_lu() {
-        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default());
+        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default(), "moi@gmail.com");
         assert!(a.non_lu);
 
         let lu = metadonnees(serde_json::json!({
             "id": "m2", "threadId": "t1", "labelIds": ["INBOX"]
         }));
-        assert!(!MessageAffiche::depuis(&lu, &RuleSet::default()).non_lu);
+        assert!(!MessageAffiche::depuis(&lu, &RuleSet::default(), "moi@gmail.com").non_lu);
     }
 
     #[test]
@@ -200,7 +212,7 @@ mod tests {
             ]}
         }));
 
-        let a = MessageAffiche::depuis(&m, &RuleSet::default());
+        let a = MessageAffiche::depuis(&m, &RuleSet::default(), "moi@gmail.com");
 
         assert_eq!(a.destinataires.len(), 2);
         assert_eq!(a.destinataires[0].nom, "Dupont, Marie");
@@ -222,7 +234,7 @@ mod tests {
             ]}
         }));
 
-        let a = MessageAffiche::depuis(&m, &RuleSet::default());
+        let a = MessageAffiche::depuis(&m, &RuleSet::default(), "moi@gmail.com");
 
         assert!(a.destinataires.is_empty());
         assert!(a.copies.is_empty());
@@ -230,7 +242,7 @@ mod tests {
 
     #[test]
     fn la_date_est_rendue_en_rfc_3339() {
-        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default());
+        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default(), "moi@gmail.com");
 
         assert!(a.date.as_deref().unwrap().starts_with("2023-11-14T"));
     }
@@ -241,7 +253,7 @@ mod tests {
         // plutôt que de faire échouer tout le chargement.
         let nu = metadonnees(serde_json::json!({"id": "m3", "threadId": "t1"}));
 
-        let a = MessageAffiche::depuis(&nu, &RuleSet::default());
+        let a = MessageAffiche::depuis(&nu, &RuleSet::default(), "moi@gmail.com");
 
         assert_eq!(a.adresse, "");
         assert_eq!(a.sujet, "");
@@ -252,7 +264,7 @@ mod tests {
     fn aucun_corps_de_message_ne_traverse_l_ipc() {
         // Le corps est du HTML écrit par un inconnu. Tant qu'il n'y a pas
         // d'iframe en bac à sable pour l'afficher, il ne sort pas du backend.
-        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default());
+        let a = MessageAffiche::depuis(&message_complet(), &RuleSet::default(), "moi@gmail.com");
 
         let json = serde_json::to_string(&a).unwrap();
         assert!(!json.contains("payload"));
@@ -264,7 +276,9 @@ mod tests {
     async fn une_boite_vide_ne_remonte_aucun_message() {
         let c = ClientDeTest::avec(vec![ok(r#"{"resultSizeEstimate":0}"#)]);
 
-        let boite = charger_boite(&c.client, &RuleSet::default()).await.unwrap();
+        let boite = charger_boite(&c.client, &RuleSet::default(), "moi@gmail.com")
+            .await
+            .unwrap();
 
         assert!(boite.is_empty());
     }
@@ -288,7 +302,9 @@ mod tests {
             .to_string()),
         ]);
 
-        let boite = charger_boite(&c.client, &RuleSet::default()).await.unwrap();
+        let boite = charger_boite(&c.client, &RuleSet::default(), "moi@gmail.com")
+            .await
+            .unwrap();
 
         assert_eq!(boite.len(), 2);
         assert_eq!(boite[0].categorie, CategorieMessage::Publicite);
@@ -314,9 +330,12 @@ mod tests {
         ]);
 
         let mut etapes = Vec::new();
-        charger_boite_suivi(&c.client, &RuleSet::default(), |faits, total| {
-            etapes.push((faits, total))
-        })
+        charger_boite_suivi(
+            &c.client,
+            &RuleSet::default(),
+            "moi@gmail.com",
+            |faits, total| etapes.push((faits, total)),
+        )
         .await
         .unwrap();
 
@@ -342,7 +361,9 @@ mod tests {
             .to_string()),
         ]);
 
-        let boite = charger_boite(&c.client, &RuleSet::default()).await.unwrap();
+        let boite = charger_boite(&c.client, &RuleSet::default(), "moi@gmail.com")
+            .await
+            .unwrap();
 
         assert_eq!(boite.len(), 1);
         assert_eq!(boite[0].id, "m2");

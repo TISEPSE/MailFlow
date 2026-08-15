@@ -11,6 +11,7 @@
 use tauri::Manager;
 
 pub mod auth;
+pub mod cache;
 pub mod commands;
 pub mod comptes;
 pub mod config;
@@ -67,6 +68,10 @@ pub fn run() {
             commands::regle_supprimer,
             commands::regle_basculer,
             commands::boite_lister,
+            commands::boite_en_cache,
+            commands::boite_melangee,
+            commands::cache_vider,
+            commands::cache_taille,
             commands::message_corps,
             commands::corps_precharger,
             commands::message_ranger,

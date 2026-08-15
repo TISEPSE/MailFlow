@@ -28,7 +28,9 @@ import { LogoGoogle } from './composants/LogoGoogle'
 import { ModaleFormation } from './composants/ModaleFormation'
 import {
   appHealth,
+  boiteEnCache,
   boiteLister,
+  boiteMelangee,
   compteAjouter,
   compteBasculer,
   compteOublier,
@@ -65,6 +67,14 @@ import type {
 } from './types/backend'
 
 type Vue = CategorieMessage | 'regles' | 'parametres'
+
+/**
+ * Valeur de `compteAffiche` désignant la vue mélangée.
+ *
+ * Ce n'est pas une adresse : aucun compte ne peut porter ce nom, et la
+ * distinction est ainsi impossible à confondre avec un vrai compte.
+ */
+const TOUS_LES_COMPTES = '\u0000tous'
 
 const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'humain', libelle: 'Mails directs', glyphe: 'person' },
@@ -131,6 +141,13 @@ export default function App() {
   const [avancement, setAvancement] = useState<
     (Avancement & { etape: EtapeChargement }) | null
   >(null)
+
+  /** Compte dont la vue montre le courrier.
+   *
+   *  Presque toujours le compte actif ; vaut [`TOUS_LES_COMPTES`] quand
+   *  l'utilisateur a choisi la vue mélangée, qui n'est pas une boîte mais la
+   *  réunion des relevés déjà rangés sur le disque. */
+  const [compteAffiche, setCompteAffiche] = useState<string | null>(null)
 
   /** Vrai pendant toute recherche de messages, écran de chargement ou non.
    *
@@ -212,20 +229,44 @@ export default function App() {
     }
   }, [annoncer])
 
+  /** Demande les logos des expéditeurs. Ils partent sur le réseau, et la boîte
+   *  doit s'afficher sans les attendre. */
+  const chercherLesLogos = useCallback((messages: MessageAffiche[]) => {
+    const adresses = [...new Set(messages.map((m) => m.adresse))].filter(Boolean)
+    logosExpediteurs(adresses)
+      .then((trouves) => setLogos((connus) => ({ ...connus, ...trouves })))
+      .catch(() => undefined)
+  }, [])
+
+  /**
+   * Affiche le dernier relevé rangé sur le disque, sans toucher au réseau.
+   *
+   * C'est ce qu'on voit à l'ouverture et à chaque bascule de compte : le relevé
+   * dure une vingtaine de secondes, et les messages d'il y a dix minutes valent
+   * mieux qu'un écran vide pendant ce temps. Le vrai relevé suit et corrige.
+   */
+  const afficherLeCache = useCallback(async () => {
+    try {
+      const messages = await boiteEnCache()
+      if (!messages.length) return false
+
+      setBoite(messages)
+      setPremierReleve(false)
+      chercherLesLogos(messages)
+      return true
+    } catch {
+      // Cache illisible ou absent : ce n'est pas une panne, on relèvera.
+      return false
+    }
+  }, [chercherLesLogos])
+
   const relever = useCallback(async () => {
     setEnRecherche(true)
     try {
       const messages = await boiteLister()
       setBoite(messages)
       setPremierReleve(false)
-
-      // Les logos arrivent après : ils partent sur le réseau, et la boîte doit
-      // s'afficher sans les attendre.
-      const adresses = [...new Set(messages.map((m) => m.adresse))].filter(Boolean)
-      logosExpediteurs(adresses)
-        .then((trouves) => setLogos((connus) => ({ ...connus, ...trouves })))
-        .catch(() => undefined)
-
+      chercherLesLogos(messages)
       return messages
     } catch (e) {
       annoncer(messageDErreur(e), true)
@@ -234,7 +275,23 @@ export default function App() {
     } finally {
       setEnRecherche(false)
     }
-  }, [annoncer])
+  }, [annoncer, chercherLesLogos])
+
+  /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
+  const afficherLaVueMelangee = useCallback(async () => {
+    setCompteAffiche(TOUS_LES_COMPTES)
+    setEnRecherche(true)
+    try {
+      const messages = await boiteMelangee()
+      setBoite(messages)
+      setPremierReleve(false)
+      chercherLesLogos(messages)
+    } catch (e) {
+      annoncer(messageDErreur(e), true)
+    } finally {
+      setEnRecherche(false)
+    }
+  }, [annoncer, chercherLesLogos])
 
   /**
    * Relève la boîte, puis charge d'avance tous les corps, barre à l'appui.
@@ -247,6 +304,14 @@ export default function App() {
     // Total inconnu, mais l'écran doit être là avant le relevé : sans cela, la
     // bascule de compte montrait d'abord un squelette, puis la barre — deux
     // attentes différentes pour un seul clic.
+    // Le cache d'abord : s'il a quelque chose à montrer, l'écran de chargement
+    // n'a plus lieu d'être et le relevé se fait en arrière-plan.
+    const dejaVu = await afficherLeCache()
+    if (dejaVu) {
+      void relever()
+      return
+    }
+
     chargementComplet.current = true
     setAvancement((en) => en ?? { faits: 0, total: 0, etape: 'releve' })
     try {
@@ -259,7 +324,7 @@ export default function App() {
       chargementComplet.current = false
       setAvancement(null)
     }
-  }, [relever])
+  }, [relever, afficherLeCache])
 
   /**
    * Marque un message comme lu, d'abord à l'écran puis chez Gmail.
@@ -374,6 +439,7 @@ export default function App() {
         // Dès le clic, et non après le relevé : la boîte de l'autre compte
         // n'a rien en cache, l'attente est réelle et doit s'annoncer.
         setAvancement({ faits: 0, total: 0, etape: 'releve' })
+        setCompteAffiche(adresse)
         await compteBasculer(adresse)
         // La boîte affichée est celle du compte précédent : la vider avant le
         // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
@@ -635,6 +701,11 @@ export default function App() {
                   setMenuCompte(false)
                   void basculerVers(adresse)
                 }}
+                melange={compteAffiche === TOUS_LES_COMPTES}
+                onMelanger={() => {
+                  setMenuCompte(false)
+                  void afficherLaVueMelangee()
+                }}
                 onAjouter={() => {
                   setMenuCompte(false)
                   void ajouterUnCompte()
@@ -759,6 +830,11 @@ export default function App() {
             <Courrier
               messages={parCategorie[vue]}
               chargement={premierReleve}
+              comptes={
+                compteAffiche === TOUS_LES_COMPTES
+                  ? comptes.map((c) => c.adresse)
+                  : undefined
+              }
               regles={regles?.automations ?? []}
               proposition={PROPOSITIONS[vue]}
               logos={logos}
@@ -852,6 +928,8 @@ function MenuDeCompte({
   declencheur,
   onFermer,
   onBasculer,
+  onMelanger,
+  melange,
   onAjouter,
   onParametres,
   onDeconnecter,
@@ -863,6 +941,10 @@ function MenuDeCompte({
   declencheur: React.RefObject<HTMLButtonElement | null>
   onFermer: () => void
   onBasculer: (adresse: string) => void
+  /** Ouvre la vue qui réunit les boîtes de tous les comptes. */
+  onMelanger: () => void
+  /** Vrai quand cette vue est déjà celle qu'on regarde. */
+  melange: boolean
   onAjouter: () => void
   onParametres: () => void
   onDeconnecter: () => void
@@ -926,6 +1008,36 @@ function MenuDeCompte({
         boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
       }}
     >
+      {/* Le compte fictif, en tête et seulement à plusieurs : à un compte, la
+          vue mélangée montrerait exactement la même chose que la boîte. */}
+      {comptes.length > 1 && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onMelanger}
+            aria-current={melange || undefined}
+            className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
+          >
+            <span
+              className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+              style={{ background: 'var(--accent-soft)' }}
+            >
+              <Icone nom="groups" taille={15} style={{ color: 'var(--accent-fg)' }} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12.5px] font-semibold">
+                Tous les comptes
+              </span>
+              <span className="block truncate text-[10px]" style={{ color: 'var(--sub)' }}>
+                {comptes.length} boîtes réunies
+              </span>
+            </span>
+          </button>
+          <div className="mx-1 my-1.5 border-t" style={{ borderColor: 'var(--line)' }} />
+        </>
+      )}
+
       {autres.map((c) => (
         <button
           key={c.adresse}

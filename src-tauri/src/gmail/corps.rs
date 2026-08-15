@@ -352,16 +352,18 @@ fn fin_d_attribut(bas: &str, debut: usize) -> usize {
 
 /// Dossier où déposer les corps déjà chargés.
 ///
-/// `$XDG_RUNTIME_DIR` de préférence : le système l'efface à chaque démarrage de
-/// la machine. Fermer et rouvrir MailFlow retrouve donc tout, mais éteindre
-/// l'ordinateur remet à zéro — le contenu des messages ne s'installe jamais
-/// durablement sur le disque.
-pub fn dossier_cache() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
+/// Le dossier de cache de l'application, qui survit à l'extinction de la
+/// machine. Les corps vivaient auparavant dans `$XDG_RUNTIME_DIR`, effacé à
+/// chaque démarrage : c'était un choix de confidentialité assumé, renversé
+/// sciemment parce qu'il faisait tout recommencer à chaque redémarrage. Voir
+/// [`crate::cache`] pour ce que ce renversement coûte et comment on le limite.
+pub fn dossier_cache_dans(app: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
 
-    base.join("mailflow").join("corps")
+    app.path()
+        .app_cache_dir()
+        .map(|d| d.join("corps"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("mailflow").join("corps"))
 }
 
 /// Chemin du fichier d'un message.
@@ -684,14 +686,6 @@ mod tests {
         assert_eq!(chemin.parent(), Some(dossier));
         let nom = chemin.file_name().unwrap().to_string_lossy();
         assert!(!nom.contains('/') && !nom.contains(".."), "nom : {nom}");
-    }
-
-    #[test]
-    fn le_cache_vit_dans_un_dossier_efface_au_demarrage_machine() {
-        // C'est tout l'intérêt du choix : rien ne s'installe durablement.
-        let d = dossier_cache();
-
-        assert!(d.ends_with("mailflow/corps"), "{}", d.display());
     }
 
     #[test]

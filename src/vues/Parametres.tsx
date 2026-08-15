@@ -13,12 +13,18 @@
  * revoir le stockage, les règles et le classement. La place est occupée par
  * « Changer de compte », qui, lui, fonctionne.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bloc, Bouton, Icone, Interrupteur, Segments } from '../composants/base'
 import { LogoGoogle } from '../composants/LogoGoogle'
 import { FREQUENCES, type Frequence } from '../lib/preferences'
 import { initiales } from '../lib/presentation'
-import { majOuvrir, majVerifier, messageDErreur } from '../lib/tauri'
+import {
+  cacheTaille,
+  cacheVider,
+  majOuvrir,
+  majVerifier,
+  messageDErreur,
+} from '../lib/tauri'
 import type {
   CompteConnu,
   EtatApplication,
@@ -143,6 +149,8 @@ export function Parametres({
           </Reglage>
 
           <MiseAJour onErreur={onErreur} />
+
+          <CacheDisque onErreur={onErreur} />
         </Bloc>
 
         <Bloc titre="Synchronisation Gmail">
@@ -693,6 +701,63 @@ function MiseAJour({ onErreur }: { onErreur: (message: string) => void }) {
           {etat === 'verifie' ? 'Vérification…' : 'Vérifier'}
         </Bouton>
       )}
+    </Reglage>
+  )
+}
+
+/**
+ * Les messages gardés sur le disque.
+ *
+ * Ils y sont pour que l'ouverture soit immédiate : le relevé demande un appel
+ * par message et dure une vingtaine de secondes. Les effacer ne perd rien —
+ * tout est chez Gmail — mais rend la prochaine ouverture aussi lente que la
+ * première.
+ */
+function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
+  const [octets, setOctets] = useState<number | null>(null)
+  const [enCours, setEnCours] = useState(false)
+
+  useEffect(() => {
+    cacheTaille()
+      .then(setOctets)
+      .catch(() => setOctets(null))
+  }, [])
+
+  const vider = async () => {
+    setEnCours(true)
+    try {
+      await cacheVider()
+      setOctets(0)
+    } catch (e) {
+      onErreur(messageDErreur(e))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  const taille =
+    octets === null
+      ? ''
+      : octets < 1024 * 1024
+        ? ` (${Math.max(1, Math.round(octets / 1024))} Ko)`
+        : ` (${(octets / 1024 / 1024).toFixed(1)} Mo)`
+
+  return (
+    <Reglage
+      icone="delete"
+      titre="Messages gardés sur cet ordinateur"
+      detail={`Ils rendent l'ouverture immédiate${taille}. Les effacer ne perd rien : tout est chez Gmail.`}
+    >
+      <Bouton
+        variante="danger"
+        icone="delete"
+        tailleIcone={15}
+        enAttente={enCours}
+        disabled={enCours || octets === 0}
+        onClick={() => void vider()}
+      >
+        {enCours ? 'Effacement…' : 'Effacer'}
+      </Bouton>
     </Reglage>
   )
 }

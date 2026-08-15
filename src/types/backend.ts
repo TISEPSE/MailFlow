@@ -91,6 +91,8 @@ export interface MessageAffiche {
   date: string | null
   nonLu: boolean
   categorie: CategorieMessage
+  /** Adresse du compte qui a recu ce message. Sert a la vue melangee. */
+  compte: string
 }
 
 /** Miroir de `rules::model::Categorie`. */

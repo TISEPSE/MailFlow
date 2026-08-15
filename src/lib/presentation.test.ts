@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { heureCourte, initiales } from './presentation'
+import { heureCourte, initiales, couleurDuCompte } from './presentation'
 
 /** Repère fixe : jeudi 14 août 2026, 10 h 00 locales. */
 const MAINTENANT = new Date(2026, 7, 14, 10, 0, 0)
@@ -59,5 +59,36 @@ describe('initiales', () => {
     // Meme regle que pour un nom compose : deux tokens, deux initiales.
     expect(initiales('offres-tech.fr')).toBe('OT')
     expect(initiales('Jean-Pierre Dupont')).toBe('JP')
+  })
+})
+
+describe('couleurDuCompte', () => {
+  const comptes = ['baptiste@gmail.com', 'pro@educagri.fr', 'asso@exemple.fr']
+
+  it('distingue les comptes de la liste', () => {
+    // C'est toute la raison du choix par rang : deux adresses quelconques
+    // tombaient trop souvent sur la même teinte, ce qui revenait à ne rien
+    // distinguer là où la couleur est la seule marque.
+    const teintes = comptes.map((c) => couleurDuCompte(c, comptes)[0])
+
+    expect(new Set(teintes).size).toBe(comptes.length)
+  })
+
+  it('rend la même couleur au même compte', () => {
+    expect(couleurDuCompte('pro@educagri.fr', comptes)).toEqual(
+      couleurDuCompte('pro@educagri.fr', comptes),
+    )
+  })
+
+  it('ignore la casse', () => {
+    expect(couleurDuCompte('Pro@Educagri.fr', comptes)).toEqual(
+      couleurDuCompte('pro@educagri.fr', comptes),
+    )
+  })
+
+  it('donne une couleur à un compte absent de la liste', () => {
+    // Un message rangé sous un compte depuis oublié : mieux vaut une couleur
+    // de plus qu'un liseré vide.
+    expect(couleurDuCompte('parti@ailleurs.fr', comptes)).toBeDefined()
   })
 })

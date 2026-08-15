@@ -14,7 +14,13 @@ import {
   Pastille,
   SqueletteLecture,
 } from './base'
-import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
+import {
+  couleurDuCompte,
+  domaineDe,
+  heureCourte,
+  initiales,
+  palette,
+} from '../lib/presentation'
 import type { CorpsMessage, MessageAffiche } from '../types/backend'
 
 export function ListeMessages({
@@ -22,11 +28,15 @@ export function ListeMessages({
   selection,
   onSelect,
   logos,
+  comptes,
 }: {
   messages: MessageAffiche[]
   selection: string | null
   onSelect: (id: string) => void
   logos: Record<string, string>
+  /** Renseignés dans la vue mélangée seulement : chaque tuile porte alors
+   *  l'adresse dont le message vient, et un liseré de la couleur du compte. */
+  comptes?: readonly string[]
 }) {
   return (
     <div
@@ -44,6 +54,7 @@ export function ListeMessages({
         const [fond, encre] = palette(i)
         const choisi = m.id === selection
         const neuf = m.nonLu
+        const teinteDuCompte = comptes ? couleurDuCompte(m.compte, comptes) : null
         return (
           <button
             key={m.id}
@@ -59,7 +70,16 @@ export function ListeMessages({
             // sujet court et un sujet long donnaient sinon des tuiles de
             // hauteurs différentes, et le trait de la première ne tombait sur
             // rien.
-            style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
+            style={{
+              borderColor: 'var(--line)',
+              height: HAUTEUR_LIGNE,
+              // Le liseré du compte, dans la vue mélangée. Il se lit d'un coup
+              // d'œil sur toute la colonne, là où il faudrait examiner chaque
+              // étiquette pour trier à la lecture.
+              boxShadow: teinteDuCompte
+                ? `inset 3px 0 0 0 ${teinteDuCompte[1]}`
+                : undefined,
+            }}
           >
             {/* La pastille de non-lu passe en repère absolu : en colonne, elle
                 coûtait une vingtaine de pixels à toutes les tuiles, y compris
@@ -84,6 +104,17 @@ export function ListeMessages({
                 >
                   {m.nom}
                 </span>
+                {teinteDuCompte && (
+                  // L'adresse de réception, et non le nom du compte : c'est
+                  // elle qui distingue deux boîtes du même propriétaire.
+                  <span
+                    className="max-w-[42%] flex-none truncate rounded px-1.5 py-px font-mono text-[9.5px] font-semibold"
+                    style={{ background: teinteDuCompte[0], color: teinteDuCompte[1] }}
+                    title={m.compte}
+                  >
+                    {m.compte}
+                  </span>
+                )}
                 <span
                   className="flex-none font-mono text-[10.5px]"
                   style={{ color: 'var(--sub)' }}

@@ -65,6 +65,7 @@ export function Courrier({
   onCreerLibelle,
   libelles,
   chargement,
+  comptes,
 }: {
   messages: MessageAffiche[]
   vide: {
@@ -94,6 +95,8 @@ export function Courrier({
   libelles?: LibelleGmail[]
   /** Vrai tant que le premier relevé n'a pas abouti. */
   chargement?: boolean
+  /** Renseignés dans la vue mélangée seulement. */
+  comptes?: readonly string[]
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
@@ -190,6 +193,7 @@ export function Courrier({
           onOuvrir(id)
         }}
         logos={logos}
+        comptes={comptes}
       />
       <Lecture
         message={choisi}
