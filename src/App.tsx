@@ -14,6 +14,7 @@ import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
+import { Corbeille } from './vues/Corbeille'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton } from './lib/presentation'
 import { creerCache, ranger, type CacheCorps } from './lib/corps'
@@ -68,7 +69,7 @@ import type {
   ProfilCompte,
 } from './types/backend'
 
-type Vue = CategorieMessage | 'regles' | 'parametres'
+type Vue = CategorieMessage | 'corbeille' | 'regles' | 'parametres'
 
 /**
  * Valeur de `compteAffiche` désignant la vue mélangée.
@@ -84,6 +85,7 @@ const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'newsletter', libelle: 'Newsletters', glyphe: 'newspaper' },
   { vue: 'formation', libelle: 'Rappels de formations', glyphe: 'school' },
   { vue: 'regles', libelle: 'Règles automatiques', glyphe: 'bolt' },
+  { vue: 'corbeille', libelle: 'Corbeille', glyphe: 'delete' },
 ]
 
 
@@ -501,7 +503,7 @@ export default function App() {
   const compte = (v: Vue): number =>
     v === 'regles'
       ? (regles?.automations.length ?? 0)
-      : v === 'parametres'
+      : v === 'parametres' || v === 'corbeille'
         ? 0
         : parCategorie[v as CategorieMessage].length
 
@@ -536,7 +538,17 @@ export default function App() {
           justement à quoi elle sert, et la laisser visible derrière lui
           faisait doublon avec sa propre illustration. */}
       {!prefs.guideVu ? (
-        <Bienvenue sombre={sombre} onTerminer={() => regler({ guideVu: true })} />
+        <Bienvenue
+          sombre={sombre}
+          onTerminer={() => regler({ guideVu: true })}
+          compteConnecte={etat?.compteConnecte ?? false}
+          onConnecter={() =>
+            void agir(async () => {
+              await googleConnecter()
+              return 'Compte Google relié.'
+            })
+          }
+        />
       ) : (
         <>
       {ajoutFormation && (
@@ -601,7 +613,7 @@ export default function App() {
                 // seule ne dit pas ce qu'elle range.
                 title={
                   repliee
-                    ? `${libelle}${v !== 'regles' && releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
+                    ? `${libelle}${v !== 'regles' && v !== 'corbeille' && releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
                     : undefined
                 }
                 className={`survolable flex items-center gap-3 rounded-lg py-2 ${
@@ -620,7 +632,7 @@ export default function App() {
                     style={{ color: actif ? '#FFFFFF' : solide }}
                   />
                   {repliee &&
-                    (v !== 'regles' && releveEnCours ? (
+                    (v !== 'regles' && v !== 'corbeille' && releveEnCours ? (
                       <span
                         className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
                         style={{ background: solide, color: '#FFFFFF' }}
@@ -652,7 +664,7 @@ export default function App() {
                       // l'anneau décalait le libellé au moment du relevé.
                       style={{ color: actif ? solide : 'var(--sub)', minWidth: 16 }}
                     >
-                      {v !== 'regles' && releveEnCours ? (
+                      {v !== 'regles' && v !== 'corbeille' && releveEnCours ? (
                         <Icone nom="progress_activity" taille={13} tourne />
                       ) : (
                         compte(v)
@@ -778,7 +790,10 @@ export default function App() {
         <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
           {/* La recherche ne paraît que là où elle a de quoi chercher : sur les
               Règles et les Paramètres, elle ne désignerait rien. */}
-          {etat?.compteConnecte && vue !== 'regles' && vue !== 'parametres' && (
+          {etat?.compteConnecte &&
+            vue !== 'regles' &&
+            vue !== 'parametres' &&
+            vue !== 'corbeille' && (
             <div
               className="flex flex-none items-center justify-center border-b px-6 py-2.5"
               style={{ borderColor: 'var(--line)', background: 'var(--side)' }}
@@ -853,6 +868,12 @@ export default function App() {
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
+            />
+          ) : vue === 'corbeille' ? (
+            <Corbeille
+              logos={logos}
+              onErreur={(m) => annoncer(m, true)}
+              onAnnonce={(m) => annoncer(m)}
             />
           ) : vue === 'newsletter' ? (
             <Newsletters

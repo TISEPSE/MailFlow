@@ -595,3 +595,44 @@ button:not(:disabled),
     transition: none;
   }
 }
+
+/* Passage d'un écran du guide au suivant.
+
+   Le glissement suit le sens de la navigation : vers la gauche quand on avance,
+   vers la droite quand on revient. C'est ce qui distingue « page suivante » de
+   « contenu remplacé » — sans direction, on ne sait pas si l'on a avancé.
+
+   `.mouvement-utile` parce que cette animation *est* le retour : elle dit que
+   le clic a porté et dans quel sens. La règle générale de mouvement réduit
+   l'aurait supprimée, et certains webviews annoncent « reduce » sans que
+   personne ne l'ait demandé — l'écran changeait alors sans transition, ce qui
+   se lit comme un saut. */
+@keyframes guide_depuis_la_droite {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+@keyframes guide_depuis_la_gauche {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+
+.guide-avance {
+  animation: guide_depuis_la_droite 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.guide-recule {
+  animation: guide_depuis_la_gauche 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* La pastille de progression s'étire vers l'écran courant plutôt que de sauter
+   d'un point à l'autre. */
+.point {
+  transition:
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms ease;
+}

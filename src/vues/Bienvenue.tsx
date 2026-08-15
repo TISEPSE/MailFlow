@@ -21,7 +21,7 @@ interface Etape {
   titre: string
   texte: string
   /** Ce que l'écran montre en plus du texte. */
-  illustration: 'pages' | 'regle' | 'corbeille' | 'reglages'
+  illustration: 'pages' | 'regle' | 'corbeille' | 'connexion' | 'reglages'
 }
 
 const ETAPES: Etape[] = [
@@ -50,6 +50,14 @@ const ETAPES: Etape[] = [
     illustration: 'corbeille',
   },
   {
+    icone: 'person',
+    couleur: 'newsletter',
+    titre: 'Reliez votre compte Gmail',
+    texte:
+      "MailFlow ouvrira votre navigateur sur la vraie page de Google. Votre mot de passe ne passe jamais par cette fenêtre, et l'autorisation se retire quand vous voulez.",
+    illustration: 'connexion',
+  },
+  {
     icone: 'settings',
     couleur: 'formation',
     titre: 'Tout se règle ici',
@@ -62,12 +70,28 @@ const ETAPES: Etape[] = [
 export function Bienvenue({
   sombre,
   onTerminer,
+  onConnecter,
+  compteConnecte,
 }: {
   sombre: boolean
   /** Marque le guide comme vu et rend la main à l'application. */
   onTerminer: () => void
+  /** Lance le parcours Google, depuis l'écran qui le propose. */
+  onConnecter: () => void
+  /** Vrai quand un compte est déjà relié : l'écran le dit au lieu de le
+   *  proposer une seconde fois. */
+  compteConnecte: boolean
 }) {
   const [rang, setRang] = useState(0)
+
+  // Le sens du dernier déplacement : l'animation glisse dans cette direction,
+  // ce qui distingue « page suivante » de « contenu remplacé ».
+  const [sens, setSens] = useState<'avance' | 'recule'>('avance')
+
+  const aller = (vers: number) => {
+    setSens(vers > rang ? 'avance' : 'recule')
+    setRang(vers)
+  }
   const etape = ETAPES[rang]!
   const dernier = rang === ETAPES.length - 1
   const [solide, doux] = ton(etape.couleur, sombre)
@@ -79,7 +103,10 @@ export function Bienvenue({
     >
       {/* La clé de rendu force le rejeu de l'apparition à chaque écran : sans
           elle, React réutilise le nœud et l'animation ne se relance pas. */}
-      <div key={rang} className="apparait flex w-full max-w-lg flex-col items-center gap-6">
+      <div
+        key={rang}
+        className={`guide-${sens} mouvement-utile flex w-full max-w-lg flex-col items-center gap-6`}
+      >
         <span
           className="flex h-20 w-20 items-center justify-center rounded-3xl"
           style={{ background: doux }}
@@ -97,7 +124,12 @@ export function Bienvenue({
           </p>
         </div>
 
-        <Illustration quoi={etape.illustration} sombre={sombre} />
+        <Illustration
+          quoi={etape.illustration}
+          sombre={sombre}
+          onConnecter={onConnecter}
+          compteConnecte={compteConnecte}
+        />
       </div>
 
       {/* Hors du bloc animé : ces commandes ne doivent pas rejouer d'apparition
@@ -111,7 +143,7 @@ export function Bienvenue({
               role="tab"
               aria-selected={i === rang}
               aria-label={`Écran ${i + 1} sur ${ETAPES.length}`}
-              onClick={() => setRang(i)}
+              onClick={() => aller(i)}
               className="point rounded-full"
               // La largeur distingue l'écran courant : un simple changement de
               // couleur ne se voit pas sur un point de six pixels.
@@ -126,14 +158,14 @@ export function Bienvenue({
 
         <div className="flex items-center gap-2.5">
           {rang > 0 && (
-            <Bouton icone="chevron_left" onClick={() => setRang(rang - 1)}>
+            <Bouton icone="chevron_left" onClick={() => aller(rang - 1)}>
               Précédent
             </Bouton>
           )}
           <Bouton
             variante="principal"
             icone={dernier ? 'check_circle' : 'chevron_right'}
-            onClick={() => (dernier ? onTerminer() : setRang(rang + 1))}
+            onClick={() => (dernier ? onTerminer() : aller(rang + 1))}
           >
             {dernier ? 'Commencer' : 'Suivant'}
           </Bouton>
@@ -164,9 +196,13 @@ export function Bienvenue({
 function Illustration({
   quoi,
   sombre,
+  onConnecter,
+  compteConnecte,
 }: {
   quoi: Etape['illustration']
   sombre: boolean
+  onConnecter: () => void
+  compteConnecte: boolean
 }) {
   const cadre =
     'flex w-full flex-col gap-2 rounded-2xl border p-3.5 text-[12.5px]'
@@ -224,11 +260,14 @@ function Illustration({
               promos@marche-du-coin.fr
             </span>
           </span>
+          {/* Les classes du vrai bouton, `leading-none` compris : sans lui, la
+              boîte du texte est plus haute que ses lettres, et centrer les
+              boîtes laisse l'icône au-dessus du mot. */}
           <span
-            className="flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold"
+            className="inline-flex h-8 flex-none items-center justify-center gap-1.5 rounded-lg px-3 text-xs leading-none font-semibold"
             style={{ background: 'var(--accent)', color: '#FFFFFF' }}
           >
-            <Icone nom="archive" taille={13} />
+            <Icone nom="archive" taille={14} compenser />
             Archiver
           </span>
         </div>
@@ -259,6 +298,36 @@ function Illustration({
     )
   }
 
+  if (quoi === 'connexion') {
+    return (
+      <div className={cadre} style={style}>
+        {compteConnecte ? (
+          <div className="flex items-center justify-center gap-2 py-2 text-[12.5px]">
+            <Icone nom="check_circle" taille={16} rempli style={{ color: 'var(--accent-fg)' }} />
+            <span>Un compte est déjà relié. Vous pourrez en ajouter d'autres.</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2.5 py-1">
+            {/* Le geste est proposé ici même : renvoyer aux Paramètres au
+                moment où l'on explique la connexion ajouterait un détour à
+                l'endroit précis où l'on veut avancer. */}
+            <Bouton
+              variante="principal"
+              icone="person"
+              tailleIcone={17}
+              onClick={onConnecter}
+            >
+              Connecter mon compte Google
+            </Bouton>
+            <span className="text-[11.5px]" style={{ color: 'var(--sub)' }}>
+              Vous pourrez aussi le faire plus tard, depuis les Paramètres.
+            </span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Les icônes sont écrites une à une, et non parcourues depuis un tableau :
   // `outils/extraire-icones.py` relit les noms dans les sources, et ne
   // reconnaît que la forme `nom="…"`. Un nom caché dans un tableau de paires
@@ -267,13 +336,13 @@ function Illustration({
     <div className={cadre} style={style}>
       <div className="flex items-center justify-center gap-4 py-1">
         <Reglage nom="Thème">
-          <Icone nom="palette" taille={16} style={{ color: 'var(--sub)' }} />
+          <Icone nom="palette" taille={20} style={{ color: 'var(--sub)' }} />
         </Reglage>
         <Reglage nom="Fréquence">
-          <Icone nom="schedule" taille={16} style={{ color: 'var(--sub)' }} />
+          <Icone nom="schedule" taille={20} style={{ color: 'var(--sub)' }} />
         </Reglage>
         <Reglage nom="Comptes">
-          <Icone nom="person" taille={16} style={{ color: 'var(--sub)' }} />
+          <Icone nom="person" taille={20} style={{ color: 'var(--sub)' }} />
         </Reglage>
       </div>
     </div>
@@ -285,7 +354,7 @@ function Reglage({ nom, children }: { nom: string; children: React.ReactNode }) 
   return (
     <span className="flex flex-col items-center gap-1.5">
       <span
-        className="flex h-9 w-9 items-center justify-center rounded-xl"
+        className="flex h-11 w-11 items-center justify-center rounded-xl"
         style={{ background: 'var(--card)' }}
       >
         {children}

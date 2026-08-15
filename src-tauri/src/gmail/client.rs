@@ -139,6 +139,11 @@ fn url_batch_modify() -> String {
     format!("{BASE_API}/users/me/messages/batchModify")
 }
 
+fn url_untrash(id: &str) -> String {
+    let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
+    format!("{BASE_API}/users/me/messages/{id}/untrash")
+}
+
 fn url_trash(id: &str) -> String {
     let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
     format!("{BASE_API}/users/me/messages/{id}/trash")
@@ -316,6 +321,16 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
     /// reprendre.
     pub async fn mettre_a_la_corbeille(&self, id: &str) -> Resultat<()> {
         self.appeler(Methode::Post, &url_trash(id), Some("{}".into()))
+            .await
+            .map(|_| ())
+    }
+
+    /// Sort un message de la corbeille et le remet où il était.
+    ///
+    /// Le pendant exact de [`Self::mettre_a_la_corbeille`] : c'est ce qui rend
+    /// la suppression réversible pour de bon, et non seulement en principe.
+    pub async fn sortir_de_la_corbeille(&self, id: &str) -> Resultat<()> {
+        self.appeler(Methode::Post, &url_untrash(id), Some("{}".into()))
             .await
             .map(|_| ())
     }
@@ -800,6 +815,19 @@ mod tests {
         assert!(corps.contains("removeLabelIds"), "corps : {corps}");
         assert!(corps.contains("INBOX"));
         assert!(corps.contains("m1") && corps.contains("m2"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn sortir_de_la_corbeille_vise_l_endpoint_untrash() {
+        let c = ClientDeTest::avec(vec![ok("{}")]);
+
+        c.client.sortir_de_la_corbeille("m1").await.unwrap();
+
+        assert!(
+            c.urls()[0].ends_with("/messages/m1/untrash"),
+            "{}",
+            c.urls()[0]
+        );
     }
 
     #[tokio::test(start_paused = true)]

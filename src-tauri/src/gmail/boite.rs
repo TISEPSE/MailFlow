@@ -113,13 +113,19 @@ impl MessageAffiche {
     }
 }
 
+/// Requête Gmail de la boîte de réception.
+pub const BOITE_DE_RECEPTION: &str = "in:inbox";
+
+/// Requête Gmail de la corbeille.
+pub const CORBEILLE: &str = "in:trash";
+
 /// Relève la boîte de réception et classe ce qu'elle contient.
 pub async fn charger_boite<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,
     compte: &str,
 ) -> Resultat<Vec<MessageAffiche>> {
-    charger_boite_suivi(client, regles, compte, |_, _| {}).await
+    charger_suivi(client, regles, compte, BOITE_DE_RECEPTION, |_, _| {}).await
 }
 
 /// Même relevé, en rendant compte de son avancement.
@@ -133,9 +139,23 @@ pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,
     compte: &str,
+    avance: impl FnMut(usize, usize),
+) -> Resultat<Vec<MessageAffiche>> {
+    charger_suivi(client, regles, compte, BOITE_DE_RECEPTION, avance).await
+}
+
+/// Relève ce que désigne une requête Gmail, en rendant compte de son avancement.
+///
+/// La requête est un paramètre et non une constante : la corbeille se relève
+/// exactement comme la boîte, au mot-clé près.
+pub async fn charger_suivi<T: Transport, J: SourceJeton>(
+    client: &ClientGmail<T, J>,
+    regles: &RuleSet,
+    compte: &str,
+    requete: &str,
     mut avance: impl FnMut(usize, usize),
 ) -> Resultat<Vec<MessageAffiche>> {
-    let refs = client.lister("in:inbox", PLAFOND_BOITE).await?;
+    let refs = client.lister(requete, PLAFOND_BOITE).await?;
     avance(0, refs.len());
 
     let mut boite = Vec::with_capacity(refs.len());

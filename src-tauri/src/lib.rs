@@ -69,6 +69,8 @@ pub fn run() {
             commands::regle_basculer,
             commands::boite_lister,
             commands::boite_en_cache,
+            commands::corbeille_lister,
+            commands::message_restaurer,
             commands::boite_melangee,
             commands::cache_vider,
             commands::cache_taille,

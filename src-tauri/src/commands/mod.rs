@@ -379,6 +379,43 @@ pub async fn boite_lister(
     Ok(boite)
 }
 
+/// Relève la corbeille du compte actif.
+///
+/// Exactement le même parcours que la boîte, au mot-clé de recherche près.
+/// Rien n'est mis en cache : la corbeille se consulte rarement, et un cache
+/// périmé y serait plus gênant qu'une attente — on y vient précisément pour
+/// vérifier ce qui s'y trouve.
+#[tauri::command]
+pub async fn corbeille_lister(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<Vec<MessageAffiche>> {
+    use crate::gmail::boite::{CORBEILLE, charger_suivi};
+
+    let regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+    let compte = compte_actif(&app);
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let corbeille = charger_suivi(&client, &regles, &compte, CORBEILLE, |_, _| {}).await?;
+
+    log::info!("{} message(s) dans la corbeille", corbeille.len());
+    Ok(corbeille)
+}
+
+/// Sort un message de la corbeille.
+///
+/// C'est ce qui rend la suppression réversible pour de bon, et non seulement en
+/// principe : le message reprend sa place, sans que l'utilisateur ait à passer
+/// par Gmail.
+#[tauri::command]
+pub async fn message_restaurer(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    client.sortir_de_la_corbeille(&id).await?;
+
+    log::info!("message sorti de la corbeille");
+    Ok(())
+}
+
 /// Rend le dernier relevé connu du compte actif, sans toucher au réseau.
 ///
 /// C'est ce qui s'affiche à l'ouverture, le temps que le relevé aboutisse. Rend
