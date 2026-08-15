@@ -55,6 +55,8 @@ export function Parametres({
   onErreur,
   melange,
   onMelanger,
+  toucheRecherche,
+  onToucheRecherche,
   enCours,
 }: {
   etat: EtatApplication
@@ -81,6 +83,9 @@ export function Parametres({
   melange: boolean
   /** Ouvre la vue qui réunit les boîtes de tous les comptes. */
   onMelanger: () => void
+  /** Lettre du raccourci de recherche, combinée à Ctrl ou Cmd. */
+  toucheRecherche: string
+  onToucheRecherche: (touche: string) => void
   enCours: boolean
 }) {
   return (
@@ -154,6 +159,41 @@ export function Parametres({
             <Bouton icone="chevron_right" onClick={onRevoirLeGuide}>
               Afficher
             </Bouton>
+          </Reglage>
+
+          <Reglage
+            icone="search"
+            titre="Raccourci de recherche"
+            detail="Ouvre la recherche depuis n'importe quelle page. Une lettre, combinée à Ctrl — Cmd sur macOS."
+          >
+            <div className="flex items-center gap-2">
+              <kbd
+                className="rounded-md border px-2 py-1 font-mono text-[12px] font-semibold"
+                style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+              >
+                Ctrl
+              </kbd>
+              <span style={{ color: 'var(--sub)' }}>+</span>
+              {/* Une seule lettre, mise en majuscule : la comparaison au clavier
+                  se fait dessus, et accepter autre chose rendrait la recherche
+                  inatteignable. */}
+              <input
+                type="text"
+                value={toucheRecherche}
+                onChange={(e) => {
+                  const t = e.target.value.slice(-1).toUpperCase()
+                  if (/^[A-Z0-9]$/.test(t)) onToucheRecherche(t)
+                }}
+                aria-label="Touche du raccourci de recherche"
+                className="w-12 rounded-md border text-center font-mono text-[13px] font-semibold outline-none"
+                style={{
+                  background: 'var(--card)',
+                  borderColor: 'var(--line)',
+                  color: 'var(--fg)',
+                  height: '2.2em',
+                }}
+              />
+            </div>
           </Reglage>
 
           <MiseAJour onErreur={onErreur} />

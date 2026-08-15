@@ -1,5 +1,9 @@
 /**
- * Barre de recherche, en tête de la fenêtre.
+ * Recherche, en fenêtre plutôt qu'en barre.
+ *
+ * Une barre permanente coûte une bande de hauteur sur chaque page, pour un
+ * geste occasionnel. La fenêtre s'ouvre au raccourci, prend l'écran le temps
+ * de chercher, et rend sa place.
  *
  * Elle cherche dans toutes les vues à la fois, et non dans celle qui est
  * ouverte : on se souvient d'un expéditeur, rarement de la case où MailFlow l'a
@@ -34,6 +38,7 @@ export function Recherche({
   logos,
   sombre,
   onOuvrir,
+  onFermer,
 }: {
   messages: readonly MessageAffiche[]
   corps: ReadonlyMap<string, CorpsMessage>
@@ -41,9 +46,9 @@ export function Recherche({
   sombre: boolean
   /** Va au message : change de vue et l'y sélectionne. */
   onOuvrir: (message: MessageAffiche) => void
+  onFermer: () => void
 }) {
   const [q, setQ] = useState('')
-  const [actif, setActif] = useState(false)
   const cadre = useRef<HTMLDivElement>(null)
   const champ = useRef<HTMLInputElement>(null)
 
@@ -53,52 +58,53 @@ export function Recherche({
   )
 
   useEffect(() => {
-    const dehors = (e: MouseEvent) => {
-      if (!cadre.current?.contains(e.target as Node)) setActif(false)
-    }
+    champ.current?.focus()
     const auClavier = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setActif(false)
-        champ.current?.blur()
-        return
-      }
-      // Le raccourci du système : on cherche sans quitter le clavier.
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault()
-        champ.current?.focus()
-        setActif(true)
-      }
+      if (e.key === 'Escape') onFermer()
     }
-    document.addEventListener('mousedown', dehors)
     document.addEventListener('keydown', auClavier)
-    return () => {
-      document.removeEventListener('mousedown', dehors)
-      document.removeEventListener('keydown', auClavier)
-    }
-  }, [])
+    return () => document.removeEventListener('keydown', auClavier)
+  }, [onFermer])
 
-  const ouvert = actif && q.trim().length > 0
+  const ouvert = q.trim().length > 0
 
   return (
-    <div ref={cadre} className="relative w-full max-w-md">
+    <div
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onFermer()
+      }}
+      // Vers le haut : la fenêtre s'ouvre au tiers de l'écran, là où l'œil
+      // arrive naturellement, plutôt qu'au centre exact d'où la liste
+      // descendrait hors du cadre.
+      className="fixed inset-0 z-50 flex items-start justify-center px-6 pt-[12vh]"
+      style={{ background: 'rgb(0 0 0 / 40%)', backdropFilter: 'blur(3px)' }}
+    >
+    <div
+      ref={cadre}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rechercher dans tous les messages"
+      className="apparait relative w-full max-w-2xl overflow-hidden rounded-2xl border"
+      style={{
+        background: 'var(--card)',
+        borderColor: 'var(--line)',
+        boxShadow: '0 24px 64px rgb(0 0 0 / 28%)',
+      }}
+    >
       <div
-        className="flex h-9 items-center gap-2 rounded-xl border px-3"
-        style={{
-          background: 'var(--sunk)',
-          borderColor: ouvert ? 'var(--accent)' : 'var(--line)',
-          transition: 'border-color 120ms ease',
-        }}
+        className="flex h-14 items-center gap-3 border-b px-4"
+        style={{ borderColor: ouvert ? 'var(--line)' : 'transparent' }}
       >
-        <Icone nom="search" taille={15} style={{ color: 'var(--sub)' }} />
+        <Icone nom="search" taille={20} style={{ color: 'var(--sub)' }} />
         <input
           ref={champ}
           type="text"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onFocus={() => setActif(true)}
           placeholder="Rechercher un message, un expéditeur, une phrase…"
           aria-label="Rechercher dans tous les messages"
-          className="selectionnable min-w-0 flex-1 bg-transparent text-[12.5px] outline-none"
+          className="selectionnable min-w-0 flex-1 bg-transparent text-[15px] outline-none"
           style={{ color: 'var(--fg)' }}
         />
         {q && (
@@ -116,15 +122,8 @@ export function Recherche({
         )}
       </div>
 
-      {ouvert && (
-        <div
-          className="menu-apparait absolute top-full right-0 left-0 z-40 mt-2 overflow-hidden rounded-xl border"
-          style={{
-            background: 'var(--card)',
-            borderColor: 'var(--line)',
-            boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
-          }}
-        >
+      {ouvert ? (
+        <div>
           {resultats.length === 0 ? (
             <p className="px-4 py-6 text-center text-[12.5px]" style={{ color: 'var(--sub)' }}>
               Aucun message ne correspond à « {q.trim()} ».
@@ -140,7 +139,7 @@ export function Recherche({
                     type="button"
                     onClick={() => {
                       onOuvrir(message)
-                      setActif(false)
+                      onFermer()
                     }}
                     className="survolable flex w-full items-center gap-2.5 border-b px-3 py-2.5 text-left last:border-b-0"
                     style={{ borderColor: 'var(--line)' }}
@@ -185,7 +184,13 @@ export function Recherche({
             </div>
           )}
         </div>
+      ) : (
+        <p className="px-4 py-6 text-center text-[12.5px]" style={{ color: 'var(--sub)' }}>
+          Cherchez un expéditeur, un sujet, une phrase — dans toutes les pages à
+          la fois. <kbd>Échap</kbd> pour fermer.
+        </p>
       )}
+    </div>
     </div>
   )
 }

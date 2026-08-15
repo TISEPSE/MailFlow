@@ -18,6 +18,8 @@ export interface Preferences {
   frequence: Frequence
   /** Le guide de première ouverture a été vu. */
   guideVu: boolean
+  /** Touche qui ouvre la recherche, combinée à Ctrl (Cmd sur macOS). */
+  toucheRecherche: string
 }
 
 export const FREQUENCES = ['1 min', '5 min', '15 min'] as const
@@ -39,6 +41,9 @@ export const DEFAUTS: Preferences = {
   // le guide. Mieux vaut le montrer une fois de trop que de laisser quelqu'un
   // devant quatre pages dont rien n'explique la différence.
   guideVu: false,
+  // `K` comme dans la plupart des applications de bureau. Modifiable : sur un
+  // clavier autre qu'AZERTY ou QWERTY, la touche voisine n'est pas la même.
+  toucheRecherche: 'K',
 }
 
 const CLE = 'mailflow.preferences'
@@ -77,6 +82,12 @@ export function lirePreferences(depot: Storage = localStorage): Preferences {
       ? (p.frequence as Frequence)
       : DEFAUTS.frequence,
     guideVu: typeof p.guideVu === 'boolean' ? p.guideVu : DEFAUTS.guideVu,
+    // Une seule lettre : une chaîne quelconque ne correspondrait à aucune
+    // touche, et la recherche deviendrait inatteignable.
+    toucheRecherche:
+      typeof p.toucheRecherche === 'string' && /^[A-Z0-9]$/.test(p.toucheRecherche)
+        ? p.toucheRecherche
+        : DEFAUTS.toucheRecherche,
   }
 }
 

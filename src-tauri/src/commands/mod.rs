@@ -398,7 +398,34 @@ pub async fn corbeille_lister(
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
     let corbeille = charger_suivi(&client, &regles, &compte, CORBEILLE, |_, _| {}).await?;
 
+    if let Ok(racine) = dossier_cache(&app) {
+        cache::ranger_boite(&racine, &cle_corbeille(&compte), &corbeille);
+    }
+
     log::info!("{} message(s) dans la corbeille", corbeille.len());
+    Ok(corbeille)
+}
+
+/// Clé de cache de la corbeille d'un compte.
+///
+/// Distincte de celle de la boîte : les deux se relèvent séparément, et
+/// écrire l'une sur l'autre ferait apparaître les messages supprimés dans la
+/// boîte de réception.
+fn cle_corbeille(compte: &str) -> String {
+    format!("{compte}#corbeille")
+}
+
+/// Rend la dernière corbeille connue, sans toucher au réseau.
+///
+/// Même raison que pour la boîte : attendre un relevé complet à chaque
+/// ouverture d'une page qu'on ne fait que consulter n'apporte rien.
+#[tauri::command]
+pub async fn corbeille_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
+    let racine = dossier_cache(&app)?;
+    let corbeille =
+        cache::lire_boite(&racine, &cle_corbeille(&compte_actif(&app))).unwrap_or_default();
+
+    log::info!("{} message(s) de corbeille relus du cache", corbeille.len());
     Ok(corbeille)
 }
 

@@ -16,7 +16,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Bouton, Icone, SqueletteLecture, SqueletteListe, Vide } from '../composants/base'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
-import { corbeilleLister, messageCorps, messageDErreur, messageRestaurer } from '../lib/tauri'
+import {
+  corbeilleEnCache,
+  corbeilleLister,
+  messageCorps,
+  messageDErreur,
+  messageRestaurer,
+} from '../lib/tauri'
 import type { CorpsMessage, MessageAffiche } from '../types/backend'
 
 export function Corbeille({
@@ -37,11 +43,21 @@ export function Corbeille({
   const [enCours, setEnCours] = useState<string | null>(null)
 
   const relever = useCallback(async () => {
+    // Le disque d'abord : la corbeille s'affiche à l'instant, puis se met à
+    // jour derrière. Attendre un relevé complet à chaque ouverture d'une page
+    // qu'on ne fait que consulter n'apportait rien.
+    try {
+      const connus = await corbeilleEnCache()
+      if (connus.length) setMessages(connus)
+    } catch {
+      // Cache absent : le relevé qui suit s'en charge.
+    }
+
     try {
       setMessages(await corbeilleLister())
     } catch (e) {
       onErreur(messageDErreur(e))
-      setMessages([])
+      setMessages((liste) => liste ?? [])
     }
   }, [onErreur])
 

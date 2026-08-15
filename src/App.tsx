@@ -186,6 +186,9 @@ export default function App() {
    *  ce qu'on a ouvert, tandis que celui-ci est un ordre venu d'ailleurs. */
   const [messageVise, setMessageVise] = useState<string | null>(null)
 
+  /** Fenêtre de recherche, ouverte au raccourci. */
+  const [rechercheOuverte, setRechercheOuverte] = useState(false)
+
   /** Fenêtre d'ajout d'un expéditeur aux rappels de formation. */
   const [ajoutFormation, setAjoutFormation] = useState(false)
   const boutonProfil = useRef<HTMLButtonElement>(null)
@@ -364,6 +367,22 @@ export default function App() {
     },
     [annoncer],
   )
+
+  useEffect(() => {
+    const auClavier = (e: KeyboardEvent) => {
+      // `Ctrl` ou `Cmd` selon la plateforme, sans distinguer : les deux
+      // ouvrent, et personne n'a jamais les deux à la fois sous le pouce.
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toUpperCase() === prefs.toucheRecherche
+      ) {
+        e.preventDefault()
+        setRechercheOuverte(true)
+      }
+    }
+    document.addEventListener('keydown', auClavier)
+    return () => document.removeEventListener('keydown', auClavier)
+  }, [prefs.toucheRecherche])
 
   useEffect(() => {
     if (menuCompte) {
@@ -547,6 +566,21 @@ export default function App() {
       className="flex h-full flex-col"
     >
       <Toasts toasts={toasts} onFermer={retirerToast} />
+
+      {rechercheOuverte && etat?.compteConnecte && (
+        <Recherche
+          messages={boite}
+          corps={corpsConnus}
+          logos={logos}
+          sombre={sombre}
+          onFermer={() => setRechercheOuverte(false)}
+          onOuvrir={(m) => {
+            setVue(m.categorie)
+            setMessageVise(m.id)
+            setRechercheOuverte(false)
+          }}
+        />
+      )}
 
       {/* Pleine fenêtre, barre de navigation comprise : le guide explique
           justement à quoi elle sert, et la laisser visible derrière lui
@@ -824,29 +858,6 @@ export default function App() {
         </nav>
 
         <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
-          {/* La recherche ne paraît que là où elle a de quoi chercher : sur les
-              Règles et les Paramètres, elle ne désignerait rien. */}
-          {etat?.compteConnecte &&
-            vue !== 'regles' &&
-            vue !== 'parametres' &&
-            vue !== 'corbeille' && (
-            <div
-              className="flex flex-none items-center justify-center border-b px-6 py-2.5"
-              style={{ borderColor: 'var(--line)', background: 'var(--side)' }}
-            >
-              <Recherche
-                messages={boite}
-                corps={corpsConnus}
-                logos={logos}
-                sombre={sombre}
-                onOuvrir={(m) => {
-                  setVue(m.categorie)
-                  setMessageVise(m.id)
-                }}
-              />
-            </div>
-          )}
-
           {avancement ? (
             <Progression
               faits={avancement.faits}
@@ -870,6 +881,8 @@ export default function App() {
               onRevoirLeGuide={() => regler({ guideVu: false })}
               melange={compteAffiche === TOUS_LES_COMPTES}
               onMelanger={() => void afficherLaVueMelangee()}
+              toucheRecherche={prefs.toucheRecherche}
+              onToucheRecherche={(t) => regler({ toucheRecherche: t })}
               onErreur={(m) => annoncer(m, true)}
               enCours={enCours}
               onConnecter={() =>
