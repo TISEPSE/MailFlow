@@ -77,24 +77,16 @@ fn alea() -> f64 {
 
 /// URL de `users.messages.list`.
 ///
-/// `inclure_corbeille` n'est pas un détail : `messages.list` écarte par défaut
-/// la corbeille et les indésirables. Sans ce paramètre, une requête `in:trash`
-/// rend une liste vide — Gmail filtre le résultat après avoir appliqué la
-/// requête, et la page de corbeille paraissait donc toujours vide.
-fn url_liste(
-    requete: &str,
-    page: Option<&str>,
-    max_par_page: usize,
-    inclure_corbeille: bool,
-) -> String {
+/// Note pour qui rouvrirait un jour la corbeille : `messages.list` l'écarte par
+/// défaut, *après* avoir appliqué la requête. Une recherche `in:trash` rendrait
+/// donc une liste vide, sans erreur, tant qu'on n'ajoute pas
+/// `includeSpamTrash=true`.
+fn url_liste(requete: &str, page: Option<&str>, max_par_page: usize) -> String {
     let mut url = format!("{BASE_API}/users/me/messages");
     let mut params = vec![
         ("q".to_string(), requete.to_string()),
         ("maxResults".to_string(), max_par_page.to_string()),
     ];
-    if inclure_corbeille {
-        params.push(("includeSpamTrash".to_string(), "true".to_string()));
-    }
     if let Some(p) = page {
         params.push(("pageToken".to_string(), p.to_string()));
     }
@@ -150,11 +142,6 @@ fn url_piece_jointe(message: &str, piece: &str) -> String {
 
 fn url_batch_modify() -> String {
     format!("{BASE_API}/users/me/messages/batchModify")
-}
-
-fn url_untrash(id: &str) -> String {
-    let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
-    format!("{BASE_API}/users/me/messages/{id}/untrash")
 }
 
 fn url_trash(id: &str) -> String {
@@ -245,33 +232,12 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
     /// `plafond` borne la pagination : une boîte de vingt mille messages ne doit
     /// pas se traduire par vingt mille lectures au premier lancement.
     pub async fn lister(&self, requete: &str, plafond: usize) -> Resultat<Vec<RefMessage>> {
-        self.lister_avec(requete, plafond, false).await
-    }
-
-    /// Même chose, corbeille et indésirables compris.
-    ///
-    /// Réservé aux vues qui les regardent délibérément : les inclure partout
-    /// ferait remonter dans la boîte de réception ce qu'on vient d'en sortir.
-    pub async fn lister_incluant_corbeille(
-        &self,
-        requete: &str,
-        plafond: usize,
-    ) -> Resultat<Vec<RefMessage>> {
-        self.lister_avec(requete, plafond, true).await
-    }
-
-    async fn lister_avec(
-        &self,
-        requete: &str,
-        plafond: usize,
-        inclure_corbeille: bool,
-    ) -> Resultat<Vec<RefMessage>> {
         let mut trouves: Vec<RefMessage> = Vec::new();
         let mut page: Option<String> = None;
 
         while trouves.len() < plafond {
             let reste = plafond - trouves.len();
-            let url = url_liste(requete, page.as_deref(), reste.min(500), inclure_corbeille);
+            let url = url_liste(requete, page.as_deref(), reste.min(500));
 
             let corps = self.appeler(Methode::Get, &url, None).await?;
             let reponse: ReponseListe = serde_json::from_str(&corps)
@@ -355,16 +321,6 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
     /// reprendre.
     pub async fn mettre_a_la_corbeille(&self, id: &str) -> Resultat<()> {
         self.appeler(Methode::Post, &url_trash(id), Some("{}".into()))
-            .await
-            .map(|_| ())
-    }
-
-    /// Sort un message de la corbeille et le remet où il était.
-    ///
-    /// Le pendant exact de [`Self::mettre_a_la_corbeille`] : c'est ce qui rend
-    /// la suppression réversible pour de bon, et non seulement en principe.
-    pub async fn sortir_de_la_corbeille(&self, id: &str) -> Resultat<()> {
-        self.appeler(Methode::Post, &url_untrash(id), Some("{}".into()))
             .await
             .map(|_| ())
     }
@@ -689,7 +645,7 @@ mod tests {
 
     #[test]
     fn l_url_de_liste_encode_la_requete_gmail() {
-        let u = url_liste("in:inbox is:unread", None, 100, false);
+        let u = url_liste("in:inbox is:unread", None, 100);
 
         assert!(u.starts_with(&format!("{BASE_API}/users/me/messages?")));
         assert!(u.contains("q=in%3Ainbox+is%3Aunread"), "url : {u}");
@@ -699,7 +655,7 @@ mod tests {
 
     #[test]
     fn l_url_de_liste_transporte_le_jeton_de_page() {
-        let u = url_liste("in:inbox", Some("07123&x=1"), 100, false);
+        let u = url_liste("in:inbox", Some("07123&x=1"), 100);
 
         assert!(u.contains("pageToken=07123%26x%3D1"), "url : {u}");
     }
@@ -849,49 +805,6 @@ mod tests {
         assert!(corps.contains("removeLabelIds"), "corps : {corps}");
         assert!(corps.contains("INBOX"));
         assert!(corps.contains("m1") && corps.contains("m2"));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn la_corbeille_demande_explicitement_a_la_voir() {
-        // Sans `includeSpamTrash`, Gmail écarte la corbeille du résultat même
-        // quand la requête ne demande qu'elle : la page paraissait vide.
-        let c = ClientDeTest::avec(vec![ok(r#"{"resultSizeEstimate":0}"#)]);
-
-        c.client
-            .lister_incluant_corbeille("in:trash", 10)
-            .await
-            .unwrap();
-
-        assert!(
-            c.urls()[0].contains("includeSpamTrash=true"),
-            "{}",
-            c.urls()[0]
-        );
-        assert!(c.urls()[0].contains("in%3Atrash"), "{}", c.urls()[0]);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn la_boite_de_reception_n_inclut_pas_la_corbeille() {
-        // L'inverse compte tout autant : ce qu'on vient de supprimer ne doit
-        // pas remonter dans la boîte au relevé suivant.
-        let c = ClientDeTest::avec(vec![ok(r#"{"resultSizeEstimate":0}"#)]);
-
-        c.client.lister("in:inbox", 10).await.unwrap();
-
-        assert!(!c.urls()[0].contains("includeSpamTrash"), "{}", c.urls()[0]);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn sortir_de_la_corbeille_vise_l_endpoint_untrash() {
-        let c = ClientDeTest::avec(vec![ok("{}")]);
-
-        c.client.sortir_de_la_corbeille("m1").await.unwrap();
-
-        assert!(
-            c.urls()[0].ends_with("/messages/m1/untrash"),
-            "{}",
-            c.urls()[0]
-        );
     }
 
     #[tokio::test(start_paused = true)]

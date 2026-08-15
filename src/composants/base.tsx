@@ -600,6 +600,7 @@ export function Progression({
   // même de savoir combien de messages seront à charger. Une barre à zéro
   // laisserait croire que rien ne se passe.
   const indetermine = total <= 0
+  const glyphe: NomIcone = etape === 'connexion' ? 'person' : 'inbox'
   const part = indetermine ? 0 : Math.min(100, Math.round((faits / total) * 100))
 
   return (
@@ -615,11 +616,10 @@ export function Progression({
           className="relative flex h-20 w-20 items-center justify-center rounded-full"
           style={{ background: 'var(--accent-soft)' }}
         >
-          <Icone
-            nom={etape === 'connexion' ? 'person' : 'inbox'}
-            taille={34}
-            style={{ color: 'var(--accent-fg)' }}
-          />
+          {/* Le nom est calculé au-dessus, hors de l'attribut :
+              `outils/extraire-icones.py` relit les noms dans les sources et
+              prendrait la condition elle-même pour une icône à extraire. */}
+          <Icone nom={glyphe} taille={34} style={{ color: 'var(--accent-fg)' }} />
         </span>
       </div>
 

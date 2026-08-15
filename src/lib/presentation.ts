@@ -24,13 +24,13 @@ export function palette(index: number): readonly [string, string] {
 }
 
 /** Ce qui porte une couleur dans la barre de navigation. */
-export type Teintable = CategorieMessage | 'regle' | 'corbeille'
+export type Teintable = CategorieMessage | 'regle'
 
 /** Couleurs par catégorie : [texte, fond].
  *
- *  Le type couvre *toutes* les entrées de la barre, corbeille comprise : une
- *  entrée sans ton rendait `TONS[…]` indéfini, et lire `.clair` dessus faisait
- *  disparaître l'application entière derrière un écran blanc. */
+ *  Le type couvre *toutes* les entrées de la barre : une entrée sans ton
+ *  rendait `TONS[…]` indéfini, et lire `.clair` dessus faisait disparaître
+ *  l'application entière derrière un écran blanc. */
 export const TONS: Record<
   Teintable,
   { clair: readonly [string, string]; sombre: readonly [string, string] }
@@ -40,9 +40,6 @@ export const TONS: Record<
   newsletter: { clair: ['#2455CC', '#DCE6FF'], sombre: ['#7FA5FF', '#23304F'] },
   formation: { clair: ['#25714A', '#DDEFE2'], sombre: ['#4FC98A', '#1F3229'] },
   regle: { clair: ['#5B45B8', '#E4DDFA'], sombre: ['#B08CFF', '#2C2540'] },
-  // Rouge : c'est la seule entrée dont le contenu part, et la couleur doit le
-  // dire avant qu'on ne lise le mot.
-  corbeille: { clair: ['#C2410C', '#FDE3DC'], sombre: ['#F98A5E', '#3A2622'] },
 }
 
 export function ton(quoi: Teintable, sombre: boolean): readonly [string, string] {

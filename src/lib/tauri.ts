@@ -123,26 +123,6 @@ export function boiteMelangee(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('boite_melangee')
 }
 
-/**
- * Releve la corbeille du compte actif.
- *
- * Rien n'est mis en cache : on y vient precisement pour verifier ce qui s'y
- * trouve, et un cache perime y serait plus genant qu'une attente.
- */
-export function corbeilleLister(): Promise<MessageAffiche[]> {
-  return invoke<MessageAffiche[]>('corbeille_lister')
-}
-
-/** Derniere corbeille connue, lue sur le disque. Aucun appel reseau. */
-export function corbeilleEnCache(): Promise<MessageAffiche[]> {
-  return invoke<MessageAffiche[]>('corbeille_en_cache')
-}
-
-/** Sort un message de la corbeille et le remet ou il etait. */
-export function messageRestaurer(id: string): Promise<void> {
-  return invoke<void>('message_restaurer', { id })
-}
-
 /** Efface tout le cache, releves et corps, tous comptes confondus. */
 export function cacheVider(): Promise<void> {
   return invoke<void>('cache_vider')

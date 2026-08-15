@@ -95,16 +95,15 @@ describe('couleurDuCompte', () => {
 
 describe('ton', () => {
   it('donne une couleur à chaque entrée de la barre de navigation', () => {
-    // Le test qui manquait : « Corbeille » avait été ajoutée à la barre sans
-    // ton, `TONS['corbeille']` valait donc `undefined`, et lire `.clair`
-    // dessus faisait disparaître toute l'application derrière un écran blanc.
+    // Le test qui manquait : une entrée avait été ajoutée à la barre sans ton,
+    // `TONS[…]` valait donc `undefined`, et lire `.clair` dessus faisait
+    // disparaître toute l'application derrière un écran blanc.
     const entrees: Teintable[] = [
       'humain',
       'publicite',
       'newsletter',
       'formation',
       'regle',
-      'corbeille',
     ]
 
     for (const e of entrees) {

@@ -14,7 +14,6 @@ import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
-import { Corbeille } from './vues/Corbeille'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, ranger, type CacheCorps } from './lib/corps'
@@ -69,7 +68,7 @@ import type {
   ProfilCompte,
 } from './types/backend'
 
-type Vue = CategorieMessage | 'corbeille' | 'regles' | 'parametres'
+type Vue = CategorieMessage | 'regles' | 'parametres'
 
 /**
  * Valeur de `compteAffiche` désignant la vue mélangée.
@@ -96,7 +95,6 @@ const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'newsletter', libelle: 'Newsletters', glyphe: 'newspaper' },
   { vue: 'formation', libelle: 'Rappels de formations', glyphe: 'school' },
   { vue: 'regles', libelle: 'Règles automatiques', glyphe: 'bolt' },
-  { vue: 'corbeille', libelle: 'Corbeille', glyphe: 'delete' },
 ]
 
 
@@ -536,7 +534,7 @@ export default function App() {
   const compte = (v: Vue): number =>
     v === 'regles'
       ? (regles?.automations.length ?? 0)
-      : v === 'parametres' || v === 'corbeille'
+      : v === 'parametres'
         ? 0
         : parCategorie[v as CategorieMessage].length
 
@@ -662,7 +660,7 @@ export default function App() {
                 // seule ne dit pas ce qu'elle range.
                 title={
                   repliee
-                    ? `${libelle}${v !== 'regles' && v !== 'corbeille' && releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
+                    ? `${libelle}${v !== 'regles' && releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
                     : undefined
                 }
                 className={`survolable flex items-center gap-3 rounded-lg py-2 ${
@@ -681,7 +679,7 @@ export default function App() {
                     style={{ color: actif ? '#FFFFFF' : solide }}
                   />
                   {repliee &&
-                    (v !== 'regles' && v !== 'corbeille' && releveEnCours ? (
+                    (v !== 'regles' && releveEnCours ? (
                       <span
                         className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
                         style={{ background: solide, color: '#FFFFFF' }}
@@ -713,7 +711,7 @@ export default function App() {
                       // l'anneau décalait le libellé au moment du relevé.
                       style={{ color: actif ? solide : 'var(--sub)', minWidth: 16 }}
                     >
-                      {v !== 'regles' && v !== 'corbeille' && releveEnCours ? (
+                      {v !== 'regles' && releveEnCours ? (
                         <Icone nom="progress_activity" taille={13} tourne />
                       ) : (
                         compte(v)
@@ -918,16 +916,6 @@ export default function App() {
                   setRegles(await regleAjouter(r))
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
                 })
-              }
-            />
-          ) : vue === 'corbeille' ? (
-            <Corbeille
-              logos={logos}
-              onErreur={(m) => annoncer(m, true)}
-              onAnnonce={(m) => annoncer(m)}
-              corpsConnus={corpsConnus}
-              onCorpsCharge={(id, corps) =>
-                setCorpsConnus((connus) => ranger(connus, id, corps))
               }
             />
           ) : vue === 'newsletter' ? (
