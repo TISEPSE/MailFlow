@@ -226,8 +226,14 @@ mod tests {
                 "messages": [{"id": "m1", "threadId": "t1"}, {"id": "m2", "threadId": "t2"}]
             })
             .to_string()),
-            ok(&serde_json::json!({"id": "m1", "threadId": "t1", "labelIds": ["INBOX"]}).to_string()),
-            ok(&serde_json::json!({"id": "m2", "threadId": "t2", "labelIds": ["INBOX"]}).to_string()),
+            ok(
+                &serde_json::json!({"id": "m1", "threadId": "t1", "labelIds": ["INBOX"]})
+                    .to_string(),
+            ),
+            ok(
+                &serde_json::json!({"id": "m2", "threadId": "t2", "labelIds": ["INBOX"]})
+                    .to_string(),
+            ),
         ]);
 
         let mut etapes = Vec::new();

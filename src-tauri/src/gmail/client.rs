@@ -350,7 +350,7 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
             .filter(|l| l.genre == "user")
             .collect();
 
-        propres.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        propres.sort_by_key(|l| l.name.to_lowercase());
         Ok(propres)
     }
 

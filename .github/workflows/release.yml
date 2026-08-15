@@ -1,6 +1,9 @@
 name: Release
 
-# Declenchement manuel, ou sur un tag de version.
+# Déclenchement manuel, ou sur un tag de version.
+#
+# Un tag ne déclenche pas la CI, qui n'écoute que les branches : la publication
+# lance donc elle-même les contrôles avant de compiler quoi que ce soit.
 on:
   workflow_dispatch:
   push:
@@ -8,26 +11,80 @@ on:
 
 permissions:
   contents: write
+  # `rustsec/audit-check`, appelé par la CI réutilisée, publie son rapport sous
+  # forme de « check run ». Un travail appelé ne peut pas obtenir plus de droits
+  # que son appelant : sans cette ligne, l'audit échouerait ici alors qu'il
+  # passe sur les branches.
+  checks: write
 
 jobs:
-  build:
+  # ---------------------------------------------------------------------------
+  # Les deux gardes-fous, avant de dépenser des minutes de compilation.
+  # ---------------------------------------------------------------------------
+
+  controle:
+    name: Contrôle
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      checks: write
+
+  version:
+    name: Version
+    runs-on: ubuntu-22.04
+    if: github.ref_type == 'tag'
+    steps:
+      - uses: actions/checkout@v5
+
+      # Trois fichiers portent le numéro de version, et rien ne les tient
+      # ensemble. Publier « v0.2.0 » depuis un dépôt resté en 0.1.0 donnerait
+      # une application qui s'annonce à Gmail sous un numéro qui n'existe pas,
+      # et un installeur dont le nom ment sur son contenu.
+      - name: Le tag correspond aux fichiers de version
+        run: |
+          attendue="${GITHUB_REF_NAME#v}"
+          echo "Tag : $attendue"
+          ecart=0
+          comparer() {
+            if [ "$2" != "$attendue" ]; then
+              echo "::error file=$1::version $2, attendue $attendue"
+              ecart=1
+            fi
+          }
+          comparer package.json "$(jq -r .version package.json)"
+          comparer src-tauri/tauri.conf.json "$(jq -r .version src-tauri/tauri.conf.json)"
+          comparer src-tauri/Cargo.toml \
+            "$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
+          exit $ecart
+
+  # ---------------------------------------------------------------------------
+  # Compilation et publication.
+  # ---------------------------------------------------------------------------
+
+  publier:
     name: ${{ matrix.nom }}
+    needs: [controle, version]
+    # `version` ne tourne pas sur un déclenchement manuel : sans `always()`,
+    # son statut « skipped » annulerait la compilation. La condition reste
+    # fermée pour autant — seuls « réussi » et « sauté » laissent passer.
+    if: >-
+      always() && needs.controle.result == 'success'
+      && (needs.version.result == 'success' || needs.version.result == 'skipped')
     runs-on: ${{ matrix.plateforme }}
     strategy:
-      # Un échec sur une plateforme ne doit pas annuler les autres :
-      # mieux vaut publier deux binaires sur trois que zero.
+      # Un échec sur une plateforme ne doit pas annuler l'autre : mieux vaut
+      # publier un binaire sur deux que zéro.
       fail-fast: false
       matrix:
         include:
-          - nom: macOS Apple Silicon
-            plateforme: macos-14
-            args: '--target aarch64-apple-darwin'
-            rust_target: aarch64-apple-darwin
-
-          - nom: macOS Intel
-            plateforme: macos-13
-            args: '--target x86_64-apple-darwin'
-            rust_target: x86_64-apple-darwin
+          # Un seul artefact macOS, universel : il tourne sur les Mac Intel
+          # comme sur les Apple Silicon. Les compiler séparément demandait deux
+          # machines, dont une image macOS 13 que GitHub a retirée — et les
+          # minutes macOS sont facturées dix fois le tarif Linux.
+          - nom: macOS (universel)
+            plateforme: macos-15
+            args: '--target universal-apple-darwin'
+            cibles_rust: aarch64-apple-darwin,x86_64-apple-darwin
 
           # Ubuntu 22.04 et non une version plus récente : la glibc du runner
           # fixe la version minimale requise chez l'utilisateur. Compiler sur
@@ -36,7 +93,7 @@ jobs:
           - nom: Linux x86_64
             plateforme: ubuntu-22.04
             args: ''
-            rust_target: x86_64-unknown-linux-gnu
+            cibles_rust: x86_64-unknown-linux-gnu
 
     steps:
       - uses: actions/checkout@v5
@@ -63,25 +120,61 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_target }}
+          targets: ${{ matrix.cibles_rust }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ${{ matrix.rust_target }}
+          key: ${{ matrix.plateforme }}
 
       - run: npm ci
 
-      # Les artefacts macOS ne sont ni signes ni notarises a ce stade : au
+      # Les identifiants Google entrent dans le binaire à la compilation :
+      # une application installée n'a pas de `.env` à côté d'elle, et un
+      # utilisateur n'a pas à créer un projet Google Cloud pour lire son
+      # courrier. Ce ne sont pas des secrets au sens strict — Google admet
+      # qu'une application de bureau ne peut rien cacher dans un binaire
+      # distribué, et la sécurité du flux repose sur PKCE — mais ils restent
+      # hors du dépôt, dans les secrets du projet.
+      #
+      # Absents, la compilation réussit quand même : le binaire est utilisable
+      # par un développeur qui pose son propre `.env`, et l'étape ci-dessous le
+      # dit assez fort pour qu'on ne publie pas une version muette par
+      # inadvertance.
+      #
+      # Le secret passe par l'environnement et non par interpolation dans le
+      # script : une valeur interpolée est recopiée telle quelle dans le shell,
+      # où un contenu inattendu deviendrait une commande.
+      - name: Identifiants Google
+        env:
+          CLIENT_ID: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -z "$CLIENT_ID" ]; then
+            echo "::warning::MAILFLOW_GOOGLE_CLIENT_ID absent des secrets du dépôt : la version publiée ne pourra pas se connecter à Gmail."
+          else
+            echo "Identifiants présents, ils seront figés dans le binaire."
+          fi
+
+      # Les artefacts macOS ne sont ni signés ni notarisés à ce stade : au
       # premier lancement, Gatekeeper les bloque et l'utilisateur doit passer
       # par clic droit puis « Ouvrir ». Signer demande un compte Apple Developer
       # (99 $/an) ; les secrets se branchent alors ici sans toucher au reste.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAILFLOW_GOOGLE_CLIENT_ID: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_ID }}
+          MAILFLOW_GOOGLE_CLIENT_SECRET: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v0.0.0-dev-{0}', github.run_number) }}
-          releaseName: 'MailFlow ${{ github.ref_type == ''tag'' && github.ref_name || ''(build de developpement)'' }}'
+          releaseName: 'MailFlow ${{ github.ref_type == ''tag'' && github.ref_name || ''(build de développement)'' }}'
+          releaseBody: |
+            Téléchargez le fichier correspondant à votre machine :
+
+            - **macOS** — `.dmg` (universel : Intel et Apple Silicon).
+              Non signé : au premier lancement, faites un clic droit sur
+              l'application puis « Ouvrir », sinon macOS la refuse.
+            - **Linux** — `.AppImage` pour toutes les distributions,
+              ou `.deb` pour Debian et Ubuntu.
           releaseDraft: true
           prerelease: ${{ github.ref_type != 'tag' }}
           args: ${{ matrix.args }}

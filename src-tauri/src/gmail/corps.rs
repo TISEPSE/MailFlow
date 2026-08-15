@@ -350,6 +350,46 @@ fn fin_d_attribut(bas: &str, debut: usize) -> usize {
         .map_or(bas.len(), |p| decalage + p)
 }
 
+/// Dossier où déposer les corps déjà chargés.
+///
+/// `$XDG_RUNTIME_DIR` de préférence : le système l'efface à chaque démarrage de
+/// la machine. Fermer et rouvrir MailFlow retrouve donc tout, mais éteindre
+/// l'ordinateur remet à zéro — le contenu des messages ne s'installe jamais
+/// durablement sur le disque.
+pub fn dossier_cache() -> PathBuf {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+
+    base.join("mailflow").join("corps")
+}
+
+/// Chemin du fichier d'un message.
+///
+/// L'identifiant vient de Gmail, mais il ne sert jamais tel quel comme nom de
+/// fichier : la même précaution que pour les logos, pour la même raison.
+pub fn chemin_cache(dossier: &Path, id: &str) -> PathBuf {
+    let sur: String = id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    dossier.join(format!("{sur}.json"))
+}
+
+/// Lit un corps déjà rangé, ou `None`.
+pub fn lire(dossier: &Path, id: &str) -> Option<CorpsMessage> {
+    let texte = std::fs::read_to_string(chemin_cache(dossier, id)).ok()?;
+    serde_json::from_str(&texte).ok()
+}
+
+/// Range un corps. Un échec d'écriture n'est pas une raison de ne rien rendre.
+pub fn ranger(dossier: &Path, id: &str, corps: &CorpsMessage) {
+    let _ = std::fs::create_dir_all(dossier);
+    if let Ok(texte) = serde_json::to_string(corps) {
+        let _ = std::fs::write(chemin_cache(dossier, id), texte);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -661,45 +701,5 @@ mod tests {
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(vec![b'a'; TAILLE_MAX + 1]);
 
         assert!(decoder(&enorme).is_none());
-    }
-}
-
-/// Dossier où déposer les corps déjà chargés.
-///
-/// `$XDG_RUNTIME_DIR` de préférence : le système l'efface à chaque démarrage de
-/// la machine. Fermer et rouvrir MailFlow retrouve donc tout, mais éteindre
-/// l'ordinateur remet à zéro — le contenu des messages ne s'installe jamais
-/// durablement sur le disque.
-pub fn dossier_cache() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-
-    base.join("mailflow").join("corps")
-}
-
-/// Chemin du fichier d'un message.
-///
-/// L'identifiant vient de Gmail, mais il ne sert jamais tel quel comme nom de
-/// fichier : la même précaution que pour les logos, pour la même raison.
-pub fn chemin_cache(dossier: &Path, id: &str) -> PathBuf {
-    let sur: String = id
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    dossier.join(format!("{sur}.json"))
-}
-
-/// Lit un corps déjà rangé, ou `None`.
-pub fn lire(dossier: &Path, id: &str) -> Option<CorpsMessage> {
-    let texte = std::fs::read_to_string(chemin_cache(dossier, id)).ok()?;
-    serde_json::from_str(&texte).ok()
-}
-
-/// Range un corps. Un échec d'écriture n'est pas une raison de ne rien rendre.
-pub fn ranger(dossier: &Path, id: &str, corps: &CorpsMessage) {
-    let _ = std::fs::create_dir_all(dossier);
-    if let Ok(texte) = serde_json::to_string(corps) {
-        let _ = std::fs::write(chemin_cache(dossier, id), texte);
     }
 }

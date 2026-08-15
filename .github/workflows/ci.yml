@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Appelée telle quelle par la publication : un tag ne déclenche pas les
+  # déclencheurs ci-dessus, et personne ne devrait publier une version dont
+  # les tests n'ont pas tourné.
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
