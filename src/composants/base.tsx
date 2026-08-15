@@ -123,6 +123,10 @@ export function Pastille({
         fontSize: taille * 0.38,
       }}
     >
+      {/* Pas de correction verticale ici, et c'est mesuré : l'encre des
+          initiales tombe à moins d'un demi-pixel du centre du disque, à 40
+          comme à 64 pixels. Une correction « optique » ajoutée à l'œil les
+          décalait d'un pixel vers le bas. */}
       {texte}
     </div>
   )

@@ -78,7 +78,12 @@ export function Recherche({
       // arrive naturellement, plutôt qu'au centre exact d'où la liste
       // descendrait hors du cadre.
       className="fixed inset-0 z-50 flex items-start justify-center px-6 pt-[12vh]"
-      style={{ background: 'rgb(0 0 0 / 40%)', backdropFilter: 'blur(3px)' }}
+      // Même fond que les autres fenêtres : deux flous différents pour deux
+      // fenêtres de la même application se remarquent, et rien ne le justifie.
+      style={{
+        background: 'rgb(0 0 0 / 40%)',
+        backdropFilter: 'blur(10px) saturate(120%)',
+      }}
     >
     <div
       ref={cadre}
