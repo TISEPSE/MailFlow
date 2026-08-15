@@ -132,6 +132,14 @@ export default function App() {
     (Avancement & { etape: EtapeChargement }) | null
   >(null)
 
+  /** Vrai pendant toute recherche de messages, écran de chargement ou non.
+   *
+   *  Le relevé périodique et le bouton « Actualiser » n'ouvrent pas l'écran de
+   *  chargement — ils ne doivent pas effacer la boîte sous les yeux de
+   *  l'utilisateur — mais ils cherchent bel et bien, et les compteurs affichent
+   *  pendant ce temps un total qui n'est plus le bon. */
+  const [enRecherche, setEnRecherche] = useState(false)
+
   /** Vrai pendant un chargement complet, et lui seul.
    *
    *  Le relevé périodique passe par la même commande, donc par le même
@@ -205,6 +213,7 @@ export default function App() {
   }, [annoncer])
 
   const relever = useCallback(async () => {
+    setEnRecherche(true)
     try {
       const messages = await boiteLister()
       setBoite(messages)
@@ -222,6 +231,8 @@ export default function App() {
       annoncer(messageDErreur(e), true)
       setPremierReleve(false)
       return null
+    } finally {
+      setEnRecherche(false)
     }
   }, [annoncer])
 
@@ -426,7 +437,7 @@ export default function App() {
    *  Afficher « 0 » pendant ce temps affirme une boîte vide ; un compteur qui
    *  tourne dit qu'on cherche encore. Les règles, elles, viennent du disque et
    *  sont connues tout de suite : leur compte reste. */
-  const releveEnCours = premierReleve || avancement !== null
+  const releveEnCours = premierReleve || enRecherche || avancement !== null
 
 
   return (
@@ -707,6 +718,7 @@ export default function App() {
               frequence={prefs.frequence}
               onFrequence={(f: Frequence) => regler({ frequence: f })}
               onRevoirLeGuide={() => regler({ guideVu: false })}
+              onErreur={(m) => annoncer(m, true)}
               enCours={enCours}
               onConnecter={() =>
                 void agir(async () => {

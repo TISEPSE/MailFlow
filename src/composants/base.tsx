@@ -664,7 +664,14 @@ export function Vide({
       </div>
       {action && (
         <div className="pt-2">
-          <Bouton variante="principal" icone={action.icone} onClick={action.onClick}>
+          <Bouton
+            variante="principal"
+            icone={action.icone}
+            // Ce bouton conclut une page entière : à 14 pixels, l'icône
+            // paraissait posée à côté du texte plutôt qu'avec lui.
+            tailleIcone={17}
+            onClick={action.onClick}
+          >
             {action.libelle}
           </Bouton>
         </div>
@@ -683,12 +690,15 @@ export function Bouton({
   titre,
   enAttente = false,
   compact = false,
+  tailleIcone = 14,
   className = '',
 }: {
   children: ReactNode
   onClick: () => void
   variante?: 'principal' | 'secondaire' | 'discret' | 'danger'
   icone?: NomIcone
+  /** Un dessin de 14 pixels se perd dans un bouton de pleine taille. */
+  tailleIcone?: number
   disabled?: boolean
   titre?: string
   /** Fait tourner l'icône tant que l'action n'a pas rendu la main. */
@@ -715,7 +725,7 @@ export function Bouton({
         compact ? 'h-8 px-3' : 'h-9 px-3.5'
       } flex-none items-center justify-center gap-1.5 rounded-lg text-xs leading-none font-semibold whitespace-nowrap ${className}`}
     >
-      {icone && <Icone nom={icone} taille={14} compenser tourne={enAttente} />}
+      {icone && <Icone nom={icone} taille={tailleIcone} compenser tourne={enAttente} />}
       {children}
     </button>
   )

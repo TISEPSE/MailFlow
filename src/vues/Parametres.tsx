@@ -18,7 +18,13 @@ import { Bloc, Bouton, Icone, Interrupteur, Segments } from '../composants/base'
 import { LogoGoogle } from '../composants/LogoGoogle'
 import { FREQUENCES, type Frequence } from '../lib/preferences'
 import { initiales } from '../lib/presentation'
-import type { CompteConnu, EtatApplication, ProfilCompte } from '../types/backend'
+import { majOuvrir, majVerifier, messageDErreur } from '../lib/tauri'
+import type {
+  CompteConnu,
+  EtatApplication,
+  ProfilCompte,
+  VerificationMaj,
+} from '../types/backend'
 
 const ACCENTS = ['#2F6BFF', '#1F7A5A', '#4C3BCF', '#C2410C'] as const
 
@@ -40,6 +46,7 @@ export function Parametres({
   onAjouterCompte,
   onOublierCompte,
   onRevoirLeGuide,
+  onErreur,
   enCours,
 }: {
   etat: EtatApplication
@@ -60,6 +67,8 @@ export function Parametres({
   onOublierCompte: (adresse: string) => void
   /** Réaffiche le guide de première ouverture. */
   onRevoirLeGuide: () => void
+  /** Annonce une panne réseau sans faire disparaître la page. */
+  onErreur: (message: string) => void
   enCours: boolean
 }) {
   return (
@@ -132,6 +141,8 @@ export function Parametres({
               Afficher
             </Bouton>
           </Reglage>
+
+          <MiseAJour onErreur={onErreur} />
         </Bloc>
 
         <Bloc titre="Synchronisation Gmail">
@@ -623,5 +634,65 @@ function Statut({ ok }: { ok: boolean }) {
       <Icone nom={ok ? 'check_circle' : 'error'} taille={17} rempli />
       {ok ? 'disponible' : 'indisponible'}
     </span>
+  )
+}
+
+/**
+ * Vérification des mises à jour.
+ *
+ * Rien n'est téléchargé ni installé ici : on demande à GitHub quelle est la
+ * dernière version publiée, et on ouvre la page si elle est plus récente. La
+ * mise à jour silencieuse supposerait une paire de clés de signature, faute de
+ * quoi l'application exécuterait un binaire reçu du réseau sur parole.
+ */
+function MiseAJour({ onErreur }: { onErreur: (message: string) => void }) {
+  const [etat, setEtat] = useState<'repos' | 'verifie' | 'fait'>('repos')
+  const [resultat, setResultat] = useState<VerificationMaj | null>(null)
+
+  const verifier = async () => {
+    setEtat('verifie')
+    try {
+      const v = await majVerifier()
+      setResultat(v)
+      setEtat('fait')
+    } catch (e) {
+      onErreur(messageDErreur(e))
+      setEtat('repos')
+    }
+  }
+
+  const detail = () => {
+    if (etat === 'verifie') return 'Interrogation de GitHub…'
+    if (!resultat) return "MailFlow demandera à GitHub s'il existe une version plus récente."
+    if (resultat.disponible) {
+      return `Version ${resultat.versionPubliee} disponible — vous avez la ${resultat.versionActuelle}.`
+    }
+    if (!resultat.versionPubliee) {
+      return "Aucune version n'est encore publiée sur le dépôt."
+    }
+    return `Vous avez la dernière version (${resultat.versionActuelle}).`
+  }
+
+  return (
+    <Reglage icone="refresh" titre="Mises à jour" detail={detail()}>
+      {resultat?.disponible ? (
+        <Bouton
+          variante="principal"
+          icone="open_in_new"
+          onClick={() => void majOuvrir().catch((e) => onErreur(messageDErreur(e)))}
+        >
+          Télécharger
+        </Bouton>
+      ) : (
+        <Bouton
+          icone="refresh"
+          enAttente={etat === 'verifie'}
+          disabled={etat === 'verifie'}
+          onClick={() => void verifier()}
+        >
+          {etat === 'verifie' ? 'Vérification…' : 'Vérifier'}
+        </Bouton>
+      )}
+    </Reglage>
   )
 }

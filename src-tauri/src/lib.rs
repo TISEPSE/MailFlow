@@ -18,6 +18,7 @@ pub mod error;
 pub mod gmail;
 pub mod html;
 pub mod llm;
+pub mod maj;
 pub mod rules;
 pub mod secrets;
 
@@ -81,6 +82,8 @@ pub fn run() {
             commands::compte_ajouter,
             commands::compte_oublier,
             commands::logos_expediteurs,
+            commands::maj_verifier,
+            commands::maj_ouvrir,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de l'application Tauri");

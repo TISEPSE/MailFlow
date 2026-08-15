@@ -6,6 +6,7 @@
  * date. Pas de corps de message — c'est du HTML écrit par un inconnu, et il ne
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
+import { useState } from 'react'
 import {
   HAUTEUR_LIGNE,
   Icone,
@@ -211,17 +212,65 @@ function Destinataires({
   message: MessageAffiche
   onCopier?: (adresse: string) => void
 }) {
+  // Ouvert par défaut : c'est l'information qu'on est venu chercher. Le repli
+  // est là pour les messages sans intérêt de ce côté, et pour rendre de la
+  // hauteur au corps quand la fenêtre est basse. Le choix vaut pour la
+  // session : le refaire à chaque message serait pire que le panneau lui-même.
+  const [ouvert, setOuvert] = useState(true)
+
   const lignes: { role: string; contacts: { nom: string; adresse: string }[] }[] = [
     { role: 'De', contacts: [{ nom: message.nom, adresse: message.adresse }] },
     { role: 'À', contacts: message.destinataires },
     { role: 'Copie', contacts: message.copies },
   ].filter((l) => l.contacts.some((c) => c.adresse))
 
+  const total = message.destinataires.length + message.copies.length
+
   return (
     <div
-      className="flex max-h-28 flex-none flex-col gap-1 overflow-y-auto border-b px-6 py-2.5"
+      className="relative flex flex-none flex-col border-b"
       style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
     >
+      <button
+        type="button"
+        onClick={() => setOuvert(!ouvert)}
+        aria-expanded={ouvert}
+        title={ouvert ? 'Masquer les destinataires' : 'Afficher les destinataires'}
+        className="survolable absolute top-1.5 right-3 z-10 flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold"
+        style={{ color: 'var(--sub)' }}
+      >
+        {!ouvert && total > 0 && (
+          <span>
+            {total} destinataire{total > 1 ? 's' : ''}
+          </span>
+        )}
+        <Icone
+          nom="expand_more"
+          taille={15}
+          style={{
+            transform: ouvert ? 'rotate(180deg)' : undefined,
+            transition: 'transform 160ms ease',
+          }}
+        />
+      </button>
+
+      {!ouvert ? (
+        // Replié, le panneau garde la ligne « De » : savoir qui écrit reste
+        // utile même quand on ne veut pas la liste entière.
+        <div className="flex items-baseline gap-2 py-2.5 pr-28 pl-6">
+          <span
+            className="w-[42px] flex-none text-right text-[11px] font-semibold"
+            style={{ color: 'var(--sub)' }}
+          >
+            De
+          </span>
+          <AdresseCopiable
+            contact={{ nom: message.nom, adresse: message.adresse }}
+            onCopier={onCopier}
+          />
+        </div>
+      ) : (
+        <div className="flex max-h-28 flex-col gap-1 overflow-y-auto py-2.5 pr-28 pl-6">
       {lignes.map(({ role, contacts }) => (
         <div key={role} className="flex items-baseline gap-2">
           <span
@@ -240,6 +289,8 @@ function Destinataires({
           </span>
         </div>
       ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -267,15 +318,16 @@ function AdresseCopiable({
       type="button"
       onClick={() => void copier()}
       title={`Copier ${contact.adresse}`}
-      className="adresse inline-flex max-w-full items-baseline gap-1.5 rounded px-1 py-0.5 text-left"
+      className="adresse inline-flex max-w-full items-baseline gap-1.5 text-left"
     >
       {contact.nom && contact.nom !== contact.adresse && (
         <span className="text-[12px] font-medium">{contact.nom}</span>
       )}
-      {/* `break-all` : une adresse longue se poursuit à la ligne suivante au
-          lieu de déborder du cadre. */}
+      {/* `.valeur` porte le survol : c'est l'adresse qu'on copie, et elle
+          seule doit s'allumer. `break-all` la fait continuer à la ligne
+          suivante plutôt que déborder du cadre. */}
       <span
-        className="font-mono text-[11px] break-all"
+        className="valeur font-mono text-[11px] break-all"
         style={{ color: 'var(--sub)' }}
       >
         {contact.adresse}

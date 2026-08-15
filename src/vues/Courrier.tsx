@@ -228,7 +228,9 @@ export function Courrier({
                 Supprimer de Gmail, corbeille comprise. */}
             <Bouton
               compact
+              variante="danger"
               icone="delete"
+              tailleIcone={15}
               onClick={() => onSupprimer(choisi.id)}
               disabled={enCours}
               titre="Mettre à la corbeille — récupérable 30 jours"

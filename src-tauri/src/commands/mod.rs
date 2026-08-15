@@ -661,6 +661,41 @@ fn url_mailto(destinataire: &str, sujet: &str, copies: &[String]) -> Resultat<St
     Ok(url)
 }
 
+/// Demande à GitHub s'il existe une version plus récente.
+///
+/// Rien n'est téléchargé ni installé : la commande rend un constat, et c'est
+/// l'utilisateur qui décide d'aller voir. La mise à jour silencieuse
+/// supposerait une paire de clés de signature — voir [`crate::maj`].
+#[tauri::command]
+pub async fn maj_verifier(app: AppHandle) -> Resultat<crate::maj::Verification> {
+    let verification = crate::maj::verifier(&app.package_info().version.to_string()).await?;
+
+    log::info!(
+        "mise à jour : publiée={:?}, disponible={}",
+        verification.version_publiee,
+        verification.disponible
+    );
+    Ok(verification)
+}
+
+/// Ouvre la page d'une publication dans le navigateur du système.
+///
+/// L'adresse n'est pas reçue du frontend mais redemandée à GitHub : une adresse
+/// qui traverserait l'IPC pourrait être remplacée en chemin, et ce bouton
+/// ouvrirait alors une page choisie par quelqu'un d'autre.
+#[tauri::command]
+pub async fn maj_ouvrir(app: AppHandle) -> Resultat<()> {
+    let verification = crate::maj::verifier(&app.package_info().version.to_string()).await?;
+
+    let Some(adresse) = verification.adresse else {
+        return Err(AppError::Reseau("aucune version publiée".into()));
+    };
+
+    tauri_plugin_opener::open_url(&adresse, None::<&str>)
+        .map_err(|e| AppError::Config(format!("navigateur injoignable : {e}")))?;
+    Ok(())
+}
+
 /// Met un message à la corbeille.
 ///
 /// Le geste du bouton Supprimer de Gmail : le message quitte la boîte et reste

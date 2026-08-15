@@ -17,6 +17,7 @@ import type {
   ProfilCompte,
   RapportExecution,
   Regle,
+  VerificationMaj,
 } from '../types/backend'
 
 /** Vrai lorsqu'une valeur rejetée a la forme d'une erreur backend. */
@@ -182,6 +183,21 @@ export function messageCorbeille(id: string): Promise<void> {
  */
 export function messageMarquerLu(id: string): Promise<void> {
   return invoke<void>('message_marquer_lu', { id })
+}
+
+/**
+ * Demande a GitHub s'il existe une version plus recente.
+ *
+ * Rien n'est telecharge ni installe : la commande rend un constat. La mise a
+ * jour silencieuse supposerait une paire de cles de signature.
+ */
+export function majVerifier(): Promise<VerificationMaj> {
+  return invoke<VerificationMaj>('maj_verifier')
+}
+
+/** Ouvre la page de la publication dans le navigateur du systeme. */
+export function majOuvrir(): Promise<void> {
+  return invoke<void>('maj_ouvrir')
 }
 
 /** Adresse du compte relié, ou `null` si aucun ne l'est. */

@@ -268,13 +268,28 @@ button:not(:disabled),
   background: color-mix(in oklab, var(--accent) 22%, var(--card));
 }
 
+/* Rouge, et bordé comme les autres boutons : « Supprimer » doit se lire comme
+   un bouton à part entière, pas comme un lien discret. Le rouge dit ce qu'il
+   fait avant qu'on ne lise le mot. */
 .bouton-danger {
-  background: transparent;
+  background: var(--card);
   color: #c2410c;
+  border: 1px solid color-mix(in oklab, #c2410c 32%, var(--line));
 }
 
 .bouton-danger:hover:not(:disabled) {
-  background: color-mix(in oklab, #c2410c 12%, transparent);
+  background: color-mix(in oklab, #c2410c 10%, var(--card));
+  border-color: color-mix(in oklab, #c2410c 55%, var(--line));
+}
+
+[data-mf='sombre'] .bouton-danger {
+  color: #f98a5e;
+  border-color: color-mix(in oklab, #f98a5e 30%, var(--line));
+}
+
+[data-mf='sombre'] .bouton-danger:hover:not(:disabled) {
+  background: color-mix(in oklab, #f98a5e 14%, var(--card));
+  border-color: color-mix(in oklab, #f98a5e 50%, var(--line));
 }
 
 /* Bouton réduit à son icône : il gagne un fond et son icône s'assombrit.
@@ -346,17 +361,24 @@ button:not(:disabled),
 /* Adresse d'un correspondant, dans l'en-tête de lecture.
 
    Rien ne dit qu'elle est cliquable tant qu'on ne la survole pas : le fond qui
-   apparaît alors l'annonce, sans meubler la ligne d'un bouton de plus. */
-.adresse {
+   apparaît alors l'annonce, sans meubler la ligne d'un bouton de plus.
+
+   Le fond ne prend que l'adresse, jamais le nom qui la précède. C'est
+   l'adresse qu'on copie ; surligner « JEHANNIN AGNES - EPLEFPA-RENNES… » avec
+   elle désignait une zone bien plus large que ce que le clic produit. */
+.adresse .valeur {
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: -1px -4px;
   background: transparent;
   transition: background-color 120ms ease;
 }
 
-.adresse:hover {
+.adresse:hover .valeur {
   background: var(--faint);
 }
 
-.adresse:active {
+.adresse:active .valeur {
   background: var(--line);
 }
 

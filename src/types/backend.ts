@@ -39,6 +39,15 @@ export interface CorpsMessage {
   texte: string | null
 }
 
+/** Miroir de `maj::Verification`. */
+export interface VerificationMaj {
+  versionActuelle: string
+  /** `null` quand le depot n'a encore aucune publication definitive. */
+  versionPubliee: string | null
+  disponible: boolean
+  adresse: string | null
+}
+
 /** Miroir de `commands::LibelleAffiche`. */
 export interface LibelleGmail {
   id: string
