@@ -488,7 +488,10 @@ export default function App() {
   const ajouterUnCompte = () =>
     agir(
       async () => {
-        setAvancement({ faits: 0, total: 0, etape: 'releve' })
+        // L'étape le dit : on n'ouvre pas une boîte, on attend Google dans le
+        // navigateur. L'écran de relevé, ici, décrivait autre chose que ce qui
+        // se passait — et ne disait pas qu'il fallait finir dans l'onglet.
+        setAvancement({ faits: 0, total: 0, etape: 'connexion' })
         await compteAjouter()
         setBoite([])
         setPremierReleve(true)
@@ -555,6 +558,7 @@ export default function App() {
           compteConnecte={etat?.compteConnecte ?? false}
           onConnecter={() =>
             void agir(async () => {
+              setAvancement({ faits: 0, total: 0, etape: 'connexion' })
               await googleConnecter()
               return 'Compte Google relié.'
             })

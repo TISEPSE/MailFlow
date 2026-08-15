@@ -102,52 +102,9 @@ export function Parametres({
           onBasculer={onBasculer}
           onAjouterCompte={onAjouterCompte}
           onOublierCompte={onOublierCompte}
+          melange={melange}
+          onMelanger={onMelanger}
         />
-
-        {/* Le compte fictif a sa carte, comme les vrais : c'est ici qu'on
-            regarde quel compte est actif, et la vue mélangée n'y figurait pas
-            alors même qu'elle pouvait être celle qu'on regardait. */}
-        {comptes.length > 1 && (
-          <div
-            className="mb-4 flex items-center gap-4 rounded-2xl border px-5 py-4"
-            style={{
-              borderColor: melange
-                ? 'color-mix(in oklab, var(--accent) 45%, var(--line))'
-                : 'var(--line)',
-              background: melange ? 'var(--accent-soft)' : 'var(--card)',
-            }}
-          >
-            <span
-              className="flex h-11 w-11 flex-none items-center justify-center rounded-full"
-              style={{ background: melange ? 'var(--card)' : 'var(--accent-soft)' }}
-            >
-              <Icone nom="groups" taille={22} style={{ color: 'var(--accent-fg)' }} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-[15px] font-semibold tracking-tight">
-                Tous les comptes
-              </div>
-              <div className="pt-0.5 text-[13px]" style={{ color: 'var(--sub)' }}>
-                {melange
-                  ? `Vue active — ${comptes.length} boîtes réunies dans les mêmes pages.`
-                  : `Réunit vos ${comptes.length} boîtes dans les mêmes pages, chaque message marqué de son compte.`}
-              </div>
-            </div>
-            {melange ? (
-              <span
-                className="flex flex-none items-center gap-1.5 text-[13px] font-semibold"
-                style={{ color: 'var(--accent-fg)' }}
-              >
-                <Icone nom="check_circle" taille={17} rempli />
-                Vue active
-              </span>
-            ) : (
-              <BoutonCarte principal onClick={onMelanger} icone="groups">
-                Afficher
-              </BoutonCarte>
-            )}
-          </div>
-        )}
 
         <Bloc titre="Apparence">
           <Reglage
@@ -299,6 +256,8 @@ export function Parametres({
  * différence doit sauter aux yeux avant même de lire le texte.
  */
 function CarteCompte({
+  melange,
+  onMelanger,
   connecte,
   profil,
   accent,
@@ -322,6 +281,8 @@ function CarteCompte({
   onBasculer: (adresse: string) => void
   onAjouterCompte: () => void
   onOublierCompte: (adresse: string) => void
+  melange: boolean
+  onMelanger: () => void
 }) {
   const [listeOuverte, setListeOuverte] = useState(false)
   const autres = comptes.filter((c) => !c.actif)
@@ -408,6 +369,12 @@ function CarteCompte({
                 onAjouterCompte()
               }}
               onOublierCompte={onOublierCompte}
+              melange={melange}
+              onMelanger={() => {
+                setListeOuverte(false)
+                onMelanger()
+              }}
+              plusieurs={comptes.length > 1}
             />
           </div>
         </div>
@@ -430,6 +397,9 @@ function ChoixDeCompte({
   onBasculer,
   onAjouterCompte,
   onOublierCompte,
+  melange,
+  onMelanger,
+  plusieurs,
 }: {
   autres: CompteConnu[]
   enCours: boolean
@@ -437,6 +407,11 @@ function ChoixDeCompte({
   onBasculer: (adresse: string) => void
   onAjouterCompte: () => void
   onOublierCompte: (adresse: string) => void
+  melange: boolean
+  onMelanger: () => void
+  /** Vrai à partir de deux comptes : à un seul, la vue mélangée montrerait
+   *  exactement la même chose que la boîte. */
+  plusieurs: boolean
 }) {
   const [aRetirer, setARetirer] = useState<string | null>(null)
 
@@ -447,6 +422,47 @@ function ChoixDeCompte({
       className="mt-4 w-full rounded-xl border p-2"
       style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
     >
+      {/* La vue mélangée est un choix de compte, pas un réglage à part : c'est
+          ici qu'on vient pour décider quelle boîte on regarde. */}
+      {plusieurs && (
+        <>
+          <button
+            type="button"
+            onClick={onMelanger}
+            disabled={enCours || melange}
+            aria-current={melange || undefined}
+            className="survolable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left disabled:opacity-100"
+            style={melange ? { background: 'var(--accent-soft)' } : undefined}
+          >
+            <span
+              className="flex h-9 w-9 flex-none items-center justify-center rounded-full"
+              style={{ background: melange ? 'var(--card)' : 'var(--accent-soft)' }}
+            >
+              <Icone nom="groups" taille={18} style={{ color: 'var(--accent-fg)' }} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13.5px] font-semibold">
+                Tous les comptes
+              </span>
+              <span className="block truncate text-[12px]" style={{ color: 'var(--sub)' }}>
+                {melange
+                  ? 'Vue active'
+                  : `Réunit vos ${autres.length + 1} boîtes dans les mêmes pages`}
+              </span>
+            </span>
+            {melange && (
+              <Icone
+                nom="check_circle"
+                taille={17}
+                rempli
+                style={{ color: 'var(--accent-fg)' }}
+              />
+            )}
+          </button>
+          <div className="mx-2 my-1.5 border-t" style={{ borderColor: 'var(--line)' }} />
+        </>
+      )}
+
       {autres.length === 0 ? (
         <p className="px-3 py-2.5 text-[13px]" style={{ color: 'var(--sub)' }}>
           Aucun autre compte enregistré. Ajoutez-en un : celui-ci restera
@@ -593,15 +609,19 @@ function BoutonCarte({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      // Hauteur explicite : sans elle, la bordure du bouton clair s'ajoutait à
-      // sa taille et les deux boutons voisins ne faisaient pas la même hauteur.
-      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex h-11 flex-none items-center justify-center gap-2 rounded-xl px-5 text-[14px] leading-none font-semibold`}
+      // Toute la géométrie en `em` : hauteur, rembourrage, écart et taille de
+      // l'icône suivent la taille du texte. Régler le texte suffit alors à
+      // régler le bouton, au lieu de reprendre quatre valeurs en pixels dont
+      // chacune peut se désaccorder des autres.
+      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex flex-none items-center justify-center gap-[0.5em] rounded-xl font-semibold`}
+      style={{
+        fontSize: '0.95rem',
+        height: '2.9em',
+        paddingInline: '1.15em',
+        lineHeight: 1,
+      }}
     >
-      {/* 18 et non 15 : dans un bouton de 44 pixels, un dessin de 15 se perd
-          à côté d'un texte de 14. Sans `compenser` : sa correction verticale
-          d'un pixel, faite pour les petits boutons, se lisait ici comme un
-          défaut d'alignement. */}
-      {icone && <Icone nom={icone} taille={18} />}
+      {icone && <Icone nom={icone} taille="1.3em" className="icone-bouton" />}
       {children}
     </button>
   )

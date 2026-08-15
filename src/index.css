@@ -655,3 +655,24 @@ button:not(:disabled),
 .croix-etiquette:active {
   background: color-mix(in srgb, currentColor 30%, transparent);
 }
+
+/* Accord d'une icône et du texte qu'elle accompagne, dans un bouton.
+
+   Le problème est optique, pas géométrique. Centrer les boîtes aligne le
+   *cadre* du texte, or son centre visuel — le milieu des capitales — se trouve
+   plus haut que le milieu de son cadre, qui réserve la place des jambages.
+   L'icône, elle, est centrée sur son encre. À boîtes centrées, l'œil lit donc
+   l'icône trop haute.
+
+   Le décalage est exprimé en `em` : il suit la taille du texte de lui-même, et
+   le réglage vaut pour toutes les tailles de bouton au lieu d'être refait à
+   chaque fois en pixels. */
+.icone-bouton {
+  transform: translateY(0.055em);
+}
+
+/* La rotation a besoin du même canal : elle l'emporte, et l'écart d'un
+   vingtième d'em ne se voit pas sur un dessin qui tourne. */
+.icone-bouton.tourne {
+  transform: none;
+}

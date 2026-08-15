@@ -32,7 +32,9 @@ export function Icone({
   tourne = false,
 }: {
   nom: NomIcone
-  taille?: number
+  /** En pixels, ou toute longueur CSS — `'1.15em'` la lie à la taille du
+   *  texte voisin, ce qui règle l'accord une fois pour toutes. */
+  taille?: number | string
   className?: string
   style?: CSSProperties
   rempli?: boolean
@@ -53,8 +55,10 @@ export function Icone({
   // qu'elle accompagne, et déborde donc sous la ligne de base. Centrer les
   // boîtes ne suffit pas ; l'œil lit un décalage vers le bas. Un léger
   // relèvement la ramène dans la bande des capitales.
-  const marge = compenser ? -Math.round(taille * MARGE_ENCRE[nom]) : 0
-  const releve = compenser ? Math.max(1, Math.round(taille * 0.07)) : 0
+  // Les marges de compensation ne valent que pour une taille en pixels : en
+  // `em`, la géométrie suit le texte et n'a rien à rattraper.
+  const enPixels = typeof taille === 'number' ? taille : null
+  const marge = compenser && enPixels ? -Math.round(enPixels * MARGE_ENCRE[nom]) : 0
 
   return (
     <svg
@@ -67,10 +71,6 @@ export function Icone({
       style={{
         fill: 'currentColor',
         marginInline: marge || undefined,
-        // Une translation ne déplace rien dans la mise en page, contrairement
-        // à une marge : les libellés restent où ils sont. Elle cède la place à
-        // la rotation, qui a besoin du même canal.
-        transform: !tourne && releve ? `translateY(-${releve}px)` : undefined,
         ...style,
       }}
     >
@@ -558,12 +558,23 @@ export function SqueletteLecture() {
   )
 }
 
-/** Les deux attentes du chargement, dans l'ordre où on les subit. */
-export type EtapeChargement = 'releve' | 'corps'
+/** Les attentes que l'écran de chargement annonce. */
+export type EtapeChargement = 'releve' | 'corps' | 'connexion'
 
 const INTITULES: Record<EtapeChargement, string> = {
   releve: 'Relevé de vos messages…',
   corps: 'Préparation de votre boîte…',
+  connexion: 'Autorisation en cours dans votre navigateur',
+}
+
+/** Ce que l'écran dit sous la barre, selon l'étape. */
+const EXPLICATIONS: Record<EtapeChargement, string> = {
+  releve:
+    'Les messages sont chargés une fois pour toutes. Ils resteront instantanés à la prochaine ouverture.',
+  corps:
+    'Les messages sont chargés une fois pour toutes. Ils resteront instantanés à la prochaine ouverture.',
+  connexion:
+    "Terminez la connexion dans l'onglet qui vient de s'ouvrir. MailFlow attend cinq minutes, puis abandonne — vous pourrez relancer.",
 }
 
 /**
@@ -604,12 +615,18 @@ export function Progression({
           className="relative flex h-20 w-20 items-center justify-center rounded-full"
           style={{ background: 'var(--accent-soft)' }}
         >
-          <Icone nom="inbox" taille={34} style={{ color: 'var(--accent-fg)' }} />
+          <Icone
+            nom={etape === 'connexion' ? 'person' : 'inbox'}
+            taille={34}
+            style={{ color: 'var(--accent-fg)' }}
+          />
         </span>
       </div>
 
       <div className="text-[20px] font-semibold tracking-tight">
-        {indetermine ? 'Ouverture de votre boîte…' : INTITULES[etape]}
+        {etape === 'connexion' || !indetermine
+          ? INTITULES[etape]
+          : 'Ouverture de votre boîte…'}
       </div>
 
       <div className="flex w-80 max-w-full flex-col gap-2">
@@ -636,17 +653,18 @@ export function Progression({
           style={{ color: 'var(--sub)' }}
         >
           <span>
-            {indetermine
-              ? 'relevé des messages'
-              : `${faits} sur ${total} message${total > 1 ? 's' : ''}`}
+            {etape === 'connexion'
+              ? 'en attente de Google'
+              : indetermine
+                ? 'relevé des messages'
+                : `${faits} sur ${total} message${total > 1 ? 's' : ''}`}
           </span>
           <span>{indetermine ? '' : `${part} %`}</span>
         </div>
       </div>
 
       <p className="max-w-md text-center text-[13.5px]" style={{ color: 'var(--sub)' }}>
-        Les messages sont chargés une fois pour toutes. Ils resteront
-        instantanés jusqu'au prochain redémarrage de l'ordinateur.
+        {EXPLICATIONS[etape]}
       </p>
     </div>
   )
@@ -711,15 +729,15 @@ export function Bouton({
   titre,
   enAttente = false,
   compact = false,
-  tailleIcone = 14,
+  tailleIcone = '1.2em',
   className = '',
 }: {
   children: ReactNode
   onClick: () => void
   variante?: 'principal' | 'secondaire' | 'discret' | 'danger'
   icone?: NomIcone
-  /** Un dessin de 14 pixels se perd dans un bouton de pleine taille. */
-  tailleIcone?: number
+  /** En `em` par défaut : l'icône suit la taille du texte du bouton. */
+  tailleIcone?: number | string
   disabled?: boolean
   titre?: string
   /** Fait tourner l'icône tant que l'action n'a pas rendu la main. */
@@ -746,7 +764,14 @@ export function Bouton({
         compact ? 'h-8 px-3' : 'h-9 px-3.5'
       } flex-none items-center justify-center gap-1.5 rounded-lg text-xs leading-none font-semibold whitespace-nowrap ${className}`}
     >
-      {icone && <Icone nom={icone} taille={tailleIcone} compenser tourne={enAttente} />}
+      {icone && (
+        <Icone
+          nom={icone}
+          taille={tailleIcone}
+          className="icone-bouton"
+          tourne={enAttente}
+        />
+      )}
       {children}
     </button>
   )
