@@ -149,6 +149,21 @@ async function rendre(
   const lecture = pdfjs.getDocument({
     data: new Uint8Array(octets),
     CanvasFactory: ToilesHorsEcran,
+
+    // Les glyphes sont dessinés trait par trait, et non par une police
+    // installée à la volée.
+    //
+    // Sans cela, pdf.js déclare les polices du document au moteur, par
+    // `document.fonts` — un objet qui n'existe pas dans un fil. L'installation
+    // échouait donc en silence et chaque lettre sortait en rectangle vide.
+    // C'est ce que montrait l'aperçu d'une facture : la mise en page juste, le
+    // logo juste, et pas un caractère lisible.
+    //
+    // Le tracé direct est aussi le choix le plus sûr : aucune police venue d'un
+    // inconnu n'est confiée au moteur de rendu de caractères du système, qui
+    // est un analyseur de format de plus.
+    disableFontFace: true,
+
     // Rien ne part sur le réseau et rien n'est compilé à la volée : tout ce
     // qu'il faut lire est déjà là, et ce qui manque manquera.
     useWasm: false,
