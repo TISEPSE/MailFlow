@@ -435,14 +435,18 @@ function Corps({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CorpsIsole corps={corps} extrait={message.extrait} />
+      {/* Les fichiers joints d'abord, sous l'en-tête : sous le corps, ils se
+          retrouvaient plaqués au bas de la fenêtre, à plusieurs centimètres du
+          message quand celui-ci tenait en trois lignes. Ils appartiennent à la
+          lettre, ils se placent avec elle. */}
       <PiecesJointes message={message.id} pieces={corps?.pieces ?? []} />
+      <CorpsIsole corps={corps} extrait={message.extrait} />
     </div>
   )
 }
 
 /**
- * Les fichiers joints, sous le message.
+ * Les fichiers joints, sous l'en-tête du message.
  *
  * Un clic ouvre l'aperçu ; l'enregistrement est un second geste, dans la
  * fenêtre. C'est l'ordre naturel — on regarde d'abord ce qu'on a reçu, on
@@ -471,7 +475,7 @@ function PiecesJointes({
 
   return (
     <div
-      className="flex flex-none flex-wrap items-center gap-2 border-t px-9 py-3"
+      className="flex flex-none flex-wrap items-center gap-2 border-b px-9 py-3"
       style={{ borderColor: 'var(--line)' }}
     >
       <span className="text-[0.75rem] font-semibold" style={{ color: 'var(--sub)' }}>

@@ -169,6 +169,18 @@ button:not(:disabled),
   outline-offset: 2px;
 }
 
+/* Sauf dans un champ de saisie, où il n'apprend rien.
+
+   Un curseur y clignote déjà, et c'est un repère plus sûr que l'anneau : il dit
+   non seulement que le champ a le focus, mais où le prochain caractère
+   s'écrira. L'anneau, lui, encadrait en permanence la fenêtre de recherche, qui
+   donne le focus à son champ dès qu'elle s'ouvre — un cadre bleu qui ne
+   disparaissait jamais et n'annonçait rien. */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
 /* Tuiles de la liste de messages, à la manière de Gmail.
 
    Un message déjà lu — ou qu'on vient d'ouvrir ici — prend le gris du fond de

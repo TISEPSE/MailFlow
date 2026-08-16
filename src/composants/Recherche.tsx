@@ -90,7 +90,7 @@ export function Recherche({
       role="dialog"
       aria-modal="true"
       aria-label="Rechercher dans tous les messages"
-      className="apparait relative w-full max-w-2xl overflow-hidden rounded-2xl border"
+      className="apparait relative w-full max-w-3xl overflow-hidden rounded-2xl border"
       style={{
         background: 'var(--card)',
         borderColor: 'var(--line)',
@@ -98,10 +98,10 @@ export function Recherche({
       }}
     >
       <div
-        className="flex h-14 items-center gap-3 border-b px-4"
+        className="flex h-16 items-center gap-3.5 border-b px-5"
         style={{ borderColor: ouvert ? 'var(--line)' : 'transparent' }}
       >
-        <Icone nom="search" taille="1.25rem" style={{ color: 'var(--sub)' }} />
+        <Icone nom="search" taille="1.375rem" style={{ color: 'var(--sub)' }} />
         <input
           ref={champ}
           type="text"
@@ -109,7 +109,7 @@ export function Recherche({
           onChange={(e) => setQ(e.target.value)}
           placeholder="Rechercher un message, un expéditeur, une phrase…"
           aria-label="Rechercher dans tous les messages"
-          className="selectionnable min-w-0 flex-1 bg-transparent text-[0.9375rem] outline-none"
+          className="selectionnable min-w-0 flex-1 bg-transparent text-[1.0625rem] outline-none"
           style={{ color: 'var(--fg)' }}
         />
         {q && (
@@ -122,7 +122,7 @@ export function Recherche({
             aria-label="Effacer la recherche"
             className="bouton bouton-icone flex-none rounded-md p-1"
           >
-            <Icone nom="close" taille="0.8125rem" />
+            <Icone nom="close" taille="0.9375rem" />
           </button>
         )}
       </div>
@@ -130,7 +130,7 @@ export function Recherche({
       {ouvert ? (
         <div>
           {resultats.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[0.7812rem]" style={{ color: 'var(--sub)' }}>
+            <p className="px-5 py-7 text-center text-[0.8438rem]" style={{ color: 'var(--sub)' }}>
               Aucun message ne correspond à « {q.trim()} ».
             </p>
           ) : (
@@ -146,40 +146,40 @@ export function Recherche({
                       onOuvrir(message)
                       onFermer()
                     }}
-                    className="survolable flex w-full items-center gap-2.5 border-b px-3 py-2.5 text-left last:border-b-0"
+                    className="survolable flex w-full items-center gap-3 border-b px-4 py-3 text-left last:border-b-0"
                     style={{ borderColor: 'var(--line)' }}
                   >
                     <Pastille
                       texte={initiales(message.nom)}
-                      taille="1.625rem"
+                      taille="1.875rem"
                       fond={fond}
                       couleur={encre}
                       logo={logos[domaineDe(message.adresse)]}
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[0.7812rem] font-semibold">
+                        <span className="min-w-0 flex-1 truncate text-[0.875rem] font-semibold">
                           {message.nom}
                         </span>
                         <span
-                          className="flex-none font-mono text-[0.625rem]"
+                          className="flex-none font-mono text-[0.6875rem]"
                           style={{ color: 'var(--sub)' }}
                         >
                           {heureCourte(message.date)}
                         </span>
                       </span>
-                      <span className="block truncate text-[0.75rem]">
+                      <span className="block truncate text-[0.8125rem]">
                         {message.sujet || '(sans objet)'}
                       </span>
                     </span>
                     <span className="flex flex-none flex-col items-end gap-1">
                       <span
-                        className="rounded px-1.5 py-px text-[0.5938rem] font-semibold"
+                        className="rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold"
                         style={{ background: doux, color: solide }}
                       >
                         {VUES[message.categorie]}
                       </span>
-                      <span className="text-[0.5938rem]" style={{ color: 'var(--sub)' }}>
+                      <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
                         dans le {OU[ou]}
                       </span>
                     </span>
@@ -190,7 +190,7 @@ export function Recherche({
           )}
         </div>
       ) : (
-        <p className="px-4 py-6 text-center text-[0.7812rem]" style={{ color: 'var(--sub)' }}>
+        <p className="px-5 py-7 text-center text-[0.8438rem]" style={{ color: 'var(--sub)' }}>
           Cherchez un expéditeur, un sujet, une phrase — dans toutes les pages à
           la fois. <kbd>Échap</kbd> pour fermer.
         </p>
