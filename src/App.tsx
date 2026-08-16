@@ -997,12 +997,6 @@ export default function App() {
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
-              onModifierRegle={(id, r) =>
-                agir(async () => {
-                  setRegles(await regleModifier(id, r))
-                  return `Règle modifiée pour ${r.nom_affichage || r.expediteur}.`
-                })
-              }
               // Les formations ne se devinent pas : la page vide doit donc
               // offrir le geste qui la remplit, sur place. La renvoyer vers la
               // page des règles imposait un détour et trois réglages là où une
