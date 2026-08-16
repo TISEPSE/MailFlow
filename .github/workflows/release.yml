@@ -161,7 +161,17 @@ jobs:
             echo "Identifiants présents, ils seront figés dans le binaire."
           fi
 
-      # Les artefacts macOS ne sont ni signés ni notarisés à ce stade :
+      # `bundle.macOS.signingIdentity` vaut « - » : signature ad hoc.
+      #
+      # Elle ne remplace pas un certificat Apple — Gatekeeper la refuse tout
+      # autant — mais elle donne à l'application une identité stable au sein
+      # d'une même version. Sans identité, macOS ne sait pas à qui accorder
+      # l'accès au trousseau : le « Toujours autoriser » n'a rien à quoi
+      # s'accrocher, et la demande de mot de passe revient sans fin, comme si
+      # la réponse était fausse. Avec une signature ad hoc, l'autorisation tient
+      # jusqu'à la version suivante.
+      #
+      # Les artefacts macOS ne sont pour autant ni signés ni notarisés :
       # Gatekeeper les bloque au premier lancement, et le contournement passe
       # désormais par les Réglages Système — Apple a retiré le clic droit puis
       # « Ouvrir » dans macOS 15. Sur un public non technique, ce détour est
