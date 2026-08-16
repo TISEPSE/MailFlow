@@ -32,11 +32,24 @@ export interface ProfilCompte {
   photo: string | null
 }
 
+/** Miroir de `gmail::corps::PieceJointe`. */
+export interface PieceJointe {
+  /** Nom choisi par l'expéditeur : à afficher, jamais à employer tel quel
+   *  comme nom de fichier. Le backend l'assainit avant d'écrire. */
+  nom: string
+  typeMime: string
+  taille: number
+  id: string
+}
+
 /** Miroir de `gmail::corps::CorpsMessage`. */
 export interface CorpsMessage {
   /** HTML de l'expéditeur, désinfecté. À n'afficher qu'en bac à sable. */
   html: string | null
   texte: string | null
+  /** Les fichiers joints, sans leur contenu. Les images déjà intégrées au
+   *  document n'y figurent pas : elles sont sous les yeux du lecteur. */
+  pieces: PieceJointe[]
 }
 
 /** Miroir de `maj::Verification`. */

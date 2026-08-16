@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CAPACITE, creerCache, ranger } from './corps'
 import type { CorpsMessage } from '../types/backend'
 
-const corps = (html: string): CorpsMessage => ({ html, texte: null })
+const corps = (html: string): CorpsMessage => ({ html, texte: null, pieces: [] })
 
 describe('cache des corps', () => {
   it('rend ce qui a été rangé', () => {

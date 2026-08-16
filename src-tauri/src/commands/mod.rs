@@ -531,6 +531,16 @@ where
 
         let table = rapatrier_les_images(client, id, html, &pieces).await;
         trouve.html = Some(corps::substituer_images(html, &table));
+
+        // Une image intégrée au document est une pièce jointe pour Gmail, mais
+        // pas pour le lecteur : elle est déjà sous ses yeux. La proposer au
+        // téléchargement reviendrait à offrir d'enregistrer ce qu'il regarde.
+        let integrees: std::collections::HashSet<&str> = table
+            .keys()
+            .filter_map(|source| pieces.get(source).map(String::as_str))
+            .collect();
+
+        trouve.pieces.retain(|p| !integrees.contains(p.id.as_str()));
     }
 
     log::info!(
@@ -543,6 +553,95 @@ where
     );
     corps::ranger(dossier, id, &trouve);
     Ok(trouve)
+}
+
+/// Enregistre une pièce jointe dans le dossier de téléchargement.
+///
+/// Elle est **enregistrée, jamais ouverte**. Ouvrir un fichier venu d'un e-mail
+/// reviendrait à laisser un expéditeur choisir quel programme démarre sur la
+/// machine — c'est précisément ce que la liste blanche de schémas interdit par
+/// ailleurs. L'utilisateur ouvre lui-même ce qu'il a décidé d'enregistrer.
+///
+/// Le nom vient de l'expéditeur : il est assaini avant de toucher au disque.
+/// `../../.bashrc` doit devenir un nom de fichier, pas un chemin.
+#[tauri::command]
+pub async fn piece_jointe_enregistrer(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    message: String,
+    piece: String,
+    nom: String,
+) -> Resultat<String> {
+    let dossier = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().home_dir())
+        .map_err(|e| AppError::Config(format!("dossier de téléchargement introuvable : {e}")))?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let octets = client.piece_jointe(&message, &piece).await?;
+
+    std::fs::create_dir_all(&dossier)
+        .map_err(|e| AppError::Config(format!("dossier de téléchargement inutilisable : {e}")))?;
+
+    let chemin = chemin_libre(&dossier, &nom_de_fichier_sur(&nom));
+
+    std::fs::write(&chemin, &octets)
+        .map_err(|e| AppError::Config(format!("enregistrement impossible : {e}")))?;
+
+    log::info!("pièce jointe enregistrée, {} octets", octets.len());
+    Ok(chemin.display().to_string())
+}
+
+/// Réduit un nom fourni par un tiers à un nom de fichier inoffensif.
+///
+/// Seul le dernier segment est retenu, et les caractères qui ont un sens pour un
+/// système de fichiers sont remplacés. Un nom qui ne laisserait rien devient
+/// `piece-jointe`, plutôt qu'un fichier caché ou sans nom.
+pub fn nom_de_fichier_sur(brut: &str) -> String {
+    let dernier = brut.rsplit(['/', '\\']).next().unwrap_or(brut);
+
+    let nettoye: String = dernier
+        .chars()
+        .map(|c| match c {
+            // Les caractères de contrôle et ceux que Windows refuse.
+            c if c.is_control() => '_',
+            ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c => c,
+        })
+        .collect();
+
+    let nettoye = nettoye.trim().trim_matches('.').trim();
+
+    if nettoye.is_empty() {
+        "piece-jointe".to_string()
+    } else {
+        // Les systèmes de fichiers courants s'arrêtent à 255 octets.
+        nettoye.chars().take(120).collect()
+    }
+}
+
+/// Un chemin qui n'écrase rien : `facture.pdf`, puis `facture (2).pdf`.
+pub fn chemin_libre(dossier: &std::path::Path, nom: &str) -> PathBuf {
+    let direct = dossier.join(nom);
+    if !direct.exists() {
+        return direct;
+    }
+
+    let (base, extension) = match nom.rsplit_once('.') {
+        Some((b, e)) if !b.is_empty() => (b, format!(".{e}")),
+        _ => (nom, String::new()),
+    };
+
+    // Borné : au-delà, on écrase plutôt que de boucler sans fin sur un dossier
+    // qui contiendrait déjà mille homonymes.
+    for n in 2..1000 {
+        let essai = dossier.join(format!("{base} ({n}){extension}"));
+        if !essai.exists() {
+            return essai;
+        }
+    }
+    direct
 }
 
 /// Avancement du préchargement, envoyé à l'interface.
@@ -1308,5 +1407,61 @@ mod tests {
         let url = url_mailto("a@b.fr", "x", &copies(&["a@b.fr"])).unwrap();
 
         assert!(!url.contains("&cc="), "{url}");
+    }
+}
+
+#[cfg(test)]
+mod tests_pieces_jointes {
+    use super::{chemin_libre, nom_de_fichier_sur};
+
+    #[test]
+    fn un_nom_ordinaire_est_conserve() {
+        assert_eq!(
+            nom_de_fichier_sur("Facture été 2026.pdf"),
+            "Facture été 2026.pdf"
+        );
+    }
+
+    #[test]
+    fn un_nom_ne_peut_pas_sortir_du_dossier() {
+        // Le nom vient de l'expéditeur : c'est la seule chaîne de ce module qui
+        // désigne un fichier sans que l'utilisateur l'ait tapée.
+        for hostile in [
+            "../../.bashrc",
+            "../../../etc/passwd",
+            "..\\..\\Windows\\System32\\cmd.exe",
+            "/etc/shadow",
+        ] {
+            let sur = nom_de_fichier_sur(hostile);
+            assert!(
+                !sur.contains('/') && !sur.contains('\\') && !sur.starts_with('.'),
+                "« {hostile} » a donné « {sur} »"
+            );
+        }
+    }
+
+    #[test]
+    fn un_nom_qui_ne_laisse_rien_reste_nommable() {
+        // Sans repli, on écrirait un fichier sans nom, ou pire un fichier caché.
+        for vide in ["", "   ", "...", "/", "../"] {
+            assert_eq!(nom_de_fichier_sur(vide), "piece-jointe", "pour « {vide} »");
+        }
+    }
+
+    #[test]
+    fn un_nom_demesure_est_ramene_a_ce_qu_un_disque_accepte() {
+        let long = "a".repeat(500) + ".pdf";
+        assert!(nom_de_fichier_sur(&long).chars().count() <= 120);
+    }
+
+    #[test]
+    fn deux_pieces_du_meme_nom_ne_s_ecrasent_pas() {
+        let dossier = tempfile::tempdir().unwrap();
+        let premier = chemin_libre(dossier.path(), "facture.pdf");
+        std::fs::write(&premier, b"un").unwrap();
+
+        let second = chemin_libre(dossier.path(), "facture.pdf");
+        assert_ne!(premier, second);
+        assert_eq!(second.file_name().unwrap(), "facture (2).pdf");
     }
 }

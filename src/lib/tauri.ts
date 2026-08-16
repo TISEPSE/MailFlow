@@ -151,6 +151,19 @@ export function messageCorps(id: string): Promise<CorpsMessage> {
   return invoke<CorpsMessage>('message_corps', { id })
 }
 
+/** Enregistre une pièce jointe et rend le chemin du fichier écrit.
+ *
+ *  Enregistrée, jamais ouverte : ouvrir un fichier venu d'un e-mail laisserait
+ *  un expéditeur choisir quel programme démarre. L'utilisateur ouvre lui-même
+ *  ce qu'il a décidé de garder. */
+export function pieceJointeEnregistrer(
+  message: string,
+  piece: string,
+  nom: string,
+): Promise<string> {
+  return invoke<string>('piece_jointe_enregistrer', { message, piece, nom })
+}
+
 /** Libelles crees par l'utilisateur, par ordre alphabetique. */
 export function libellesLister(): Promise<LibelleGmail[]> {
   return invoke<LibelleGmail[]>('libelles_lister')

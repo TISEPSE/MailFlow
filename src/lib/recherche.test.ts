@@ -61,7 +61,7 @@ describe('chercher', () => {
 
   it('trouve dans le corps quand il est en mémoire', () => {
     const corps = new Map<string, CorpsMessage>([
-      ['m1', { html: null, texte: 'Rendez-vous mardi à la scierie.' }],
+      ['m1', { html: null, texte: 'Rendez-vous mardi à la scierie.', pieces: [] }],
     ])
 
     const t = chercher([message('m1')], 'scierie', corps)

@@ -41,11 +41,33 @@ const TAILLE_MAX: usize = 2 * 1024 * 1024;
 /// document qui ferait attendre l'utilisateur sans rien lui apprendre de plus.
 pub const IMAGES_MAX: usize = 40;
 
+/// Un fichier joint au message.
+///
+/// Les images intégrées au corps n'en font pas partie : elles sont déjà dans le
+/// document, et les lister reviendrait à proposer de télécharger ce qu'on est en
+/// train de regarder.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PieceJointe {
+    /// Nom tel que l'expéditeur l'a écrit. Jamais employé comme nom de fichier
+    /// sans assainissement — voir `commands::piece_jointe_enregistrer`.
+    pub nom: String,
+    pub type_mime: String,
+    pub taille: u64,
+    /// Identifiant Gmail, à redemander pour obtenir le contenu.
+    pub id: String,
+}
+
 /// Ce qu'on a su tirer d'un message.
 #[derive(Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CorpsMessage {
     pub html: Option<String>,
     pub texte: Option<String>,
+
+    /// Les fichiers joints, sans leur contenu : une lettre peut en porter
+    /// plusieurs mégaoctets, qu'on ne rapatrie que sur demande.
+    #[serde(default)]
+    pub pieces: Vec<PieceJointe>,
 }
 
 impl CorpsMessage {
@@ -91,6 +113,19 @@ fn collecter(charge: &Charge, corps: &mut CorpsMessage) {
     // Une pièce jointe porte un nom de fichier. Son contenu n'est pas le corps
     // du message, même quand son type est `text/html`.
     let piece_jointe = charge.filename.as_deref().is_some_and(|f| !f.is_empty());
+
+    if piece_jointe
+        && let Some(nom) = charge.filename.as_deref()
+        && let Some(body) = charge.body.as_ref()
+        && let Some(id) = body.attachment_id.as_deref()
+    {
+        corps.pieces.push(PieceJointe {
+            nom: nom.to_string(),
+            type_mime: mime.to_string(),
+            taille: body.size.unwrap_or(0),
+            id: id.to_string(),
+        });
+    }
 
     if !piece_jointe && let Some(donnees) = charge.body.as_ref().and_then(|b| b.data.as_deref()) {
         match mime {
@@ -715,6 +750,7 @@ mod tests {
         let corps = CorpsMessage {
             html: Some("<p>a</p>".into()),
             texte: None,
+            pieces: Vec::new(),
         };
 
         ranger(dossier.path(), "m1", &corps);
@@ -753,6 +789,7 @@ mod tests {
             CorpsMessage {
                 html: Some("<p>bonjour</p>".into()),
                 texte: None,
+                pieces: Vec::new(),
             }
         }
 

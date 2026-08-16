@@ -75,6 +75,7 @@ pub fn run() {
             commands::cache_taille,
             commands::message_corps,
             commands::corps_precharger,
+            commands::piece_jointe_enregistrer,
             commands::message_ranger,
             commands::libelles_lister,
             commands::libelle_creer,

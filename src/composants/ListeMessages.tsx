@@ -21,7 +21,13 @@ import {
   initiales,
   palette,
 } from '../lib/presentation'
-import type { CompteConnu, CorpsMessage, MessageAffiche } from '../types/backend'
+import { pieceJointeEnregistrer } from '../lib/tauri'
+import type {
+  CompteConnu,
+  CorpsMessage,
+  MessageAffiche,
+  PieceJointe,
+} from '../types/backend'
 
 export function ListeMessages({
   messages,
@@ -426,7 +432,98 @@ function Corps({
     return <div className="min-h-0 flex-1" />
   }
 
-  return <CorpsIsole corps={corps} extrait={message.extrait} />
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <CorpsIsole corps={corps} extrait={message.extrait} />
+      <PiecesJointes message={message.id} pieces={corps?.pieces ?? []} />
+    </div>
+  )
+}
+
+/** Taille lisible : « 380 Ko », « 2,4 Mo ». */
+function poids(octets: number): string {
+  if (octets < 1024) return `${octets} o`
+  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`
+  return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`
+}
+
+/**
+ * Les fichiers joints, sous le message.
+ *
+ * Enregistrés, jamais ouverts. Ouvrir un fichier venu d'un e-mail reviendrait à
+ * laisser un expéditeur choisir quel programme démarre sur la machine — c'est
+ * ce que la liste blanche de schémas interdit par ailleurs, et un fichier joint
+ * n'est pas plus digne de confiance qu'un lien. L'utilisateur ouvre lui-même ce
+ * qu'il a décidé de garder, depuis son dossier de téléchargement.
+ *
+ * Le contenu n'est demandé à Gmail qu'au clic : une lettre peut porter
+ * plusieurs mégaoctets qu'on ne rapatrie pas pour rien.
+ */
+function PiecesJointes({
+  message,
+  pieces,
+}: {
+  message: string
+  pieces: readonly PieceJointe[]
+}) {
+  const [enCours, setEnCours] = useState<string | null>(null)
+  const [enregistrees, setEnregistrees] = useState<Record<string, string>>({})
+
+  if (pieces.length === 0) return null
+
+  const enregistrer = async (p: PieceJointe) => {
+    if (enCours) return
+    setEnCours(p.id)
+    try {
+      const chemin = await pieceJointeEnregistrer(message, p.id, p.nom)
+      setEnregistrees((connues) => ({ ...connues, [p.id]: chemin }))
+    } catch (e) {
+      console.error('pièce jointe non enregistrée', e)
+    } finally {
+      setEnCours(null)
+    }
+  }
+
+  return (
+    <div
+      className="flex flex-none flex-wrap items-center gap-2 border-t px-9 py-3"
+      style={{ borderColor: 'var(--line)' }}
+    >
+      <span className="text-[0.75rem] font-semibold" style={{ color: 'var(--sub)' }}>
+        {pieces.length === 1 ? 'Pièce jointe' : `${pieces.length} pièces jointes`}
+      </span>
+
+      {pieces.map((p) => {
+        const range = enregistrees[p.id]
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => void enregistrer(p)}
+            disabled={enCours !== null}
+            title={range ? `Enregistrée dans ${range}` : `Enregistrer ${p.nom}`}
+            className="bouton bouton-neutre inline-flex max-w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.75rem] font-semibold"
+          >
+            <Icone
+              nom={range ? 'check_circle' : 'archive'}
+              taille="1.1em"
+              rempli={Boolean(range)}
+              tourne={enCours === p.id}
+              style={range ? { color: 'var(--accent-fg)' } : undefined}
+            />
+            <span className="min-w-0 truncate">{p.nom}</span>
+            <span style={{ color: 'var(--sub)' }}>{poids(p.taille)}</span>
+          </button>
+        )
+      })}
+
+      {Object.keys(enregistrees).length > 0 && (
+        <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+          Enregistrée dans vos téléchargements.
+        </span>
+      )}
+    </div>
+  )
 }
 
 /**

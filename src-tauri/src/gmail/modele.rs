@@ -91,6 +91,11 @@ pub struct CorpsPartie {
 
     #[serde(default)]
     pub attachment_id: Option<String>,
+
+    /// Taille en octets, telle que Gmail l'annonce. Sert à dire à l'utilisateur
+    /// ce qu'il s'apprête à télécharger avant qu'il ne le demande.
+    #[serde(default)]
+    pub size: Option<u64>,
 }
 
 /// Réponse de `users.labels.list`.
