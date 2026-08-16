@@ -7,7 +7,6 @@ import {
   Toasts,
   Vide,
   type EtapeChargement,
-  type Toast,
 } from './composants/base'
 import type { NomIcone } from './composants/glyphes'
 import { Courrier, type Proposition } from './vues/Courrier'
@@ -17,11 +16,10 @@ import { Newsletters } from './vues/Newsletters'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, ranger, type CacheCorps } from './lib/corps'
+import { useLogos, usePreferences, useToasts } from './lib/crochets'
 import { autresQueMoi } from './lib/reponse'
 import {
-  DEFAUTS,
   MINUTES,
-  ecrirePreferences,
   lirePreferences,
   type Frequence,
 } from './lib/preferences'
@@ -42,7 +40,6 @@ import {
   EVENEMENT_RELEVE,
   type Avancement,
   comptesLister,
-  logosExpediteurs,
   gmailSynchroniser,
   googleConnecter,
   googleDeconnecter,
@@ -121,7 +118,7 @@ export default function App() {
   const [regles, setRegles] = useState<JeuDeRegles | null>(null)
   const [boite, setBoite] = useState<MessageAffiche[]>([])
   const [vue, setVue] = useState<Vue>('humain')
-  const [prefs, setPrefs] = useState(DEFAUTS)
+  const { prefs, regler } = usePreferences()
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
   const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [libelles, setLibelles] = useState<LibelleGmail[]>([])
@@ -190,45 +187,13 @@ export default function App() {
   /** Fenêtre d'ajout d'un expéditeur aux rappels de formation. */
   const [ajoutFormation, setAjoutFormation] = useState(false)
   const boutonProfil = useRef<HTMLButtonElement>(null)
-  const [logos, setLogos] = useState<Record<string, string>>({})
+  const { logos, chercher: chercherLesLogos } = useLogos()
 
   const { sombre, accent, barreRepliee: repliee } = prefs
 
-  // Relues une fois au montage : `localStorage` n'existe pas au moment où
-  // l'état initial est calculé côté rendu serveur, et l'application doit
-  // s'afficher même sans dépôt disponible.
-  useEffect(() => setPrefs(lirePreferences()), [])
-
-  const regler = useCallback((champs: Partial<typeof DEFAUTS>) => {
-    setPrefs((p) => {
-      const suivant = { ...p, ...champs }
-      ecrirePreferences(suivant)
-      return suivant
-    })
-  }, [])
   const [enCours, setEnCours] = useState(false)
 
-  /** Messages passagers, empilés en haut à gauche.
-   *
-   *  Une liste et non un seul : deux actions rapprochées doivent se voir
-   *  toutes les deux, au lieu que la seconde efface la première. */
-  const [toasts, setToasts] = useState<Toast[]>([])
-
-  const retirerToast = useCallback((id: number) => {
-    setToasts((liste) => liste.filter((t) => t.id !== id))
-  }, [])
-
-  const annoncer = useCallback(
-    (texte: string, erreur = false) => {
-      const id = Date.now() + Math.random()
-      setToasts((liste) => [...liste, { id, texte, erreur }])
-      // La barre de décompte prévient la sortie et déclenche le retrait ; ce
-      // minuteur n'est qu'un filet, pour le cas où l'animation ne se joue pas
-      // — fenêtre en arrière-plan, animations coupées par le système.
-      window.setTimeout(() => retirerToast(id), 3400)
-    },
-    [retirerToast],
-  )
+  const { toasts, annoncer, retirer: retirerToast } = useToasts()
 
   const rafraichir = useCallback(async () => {
     try {
@@ -253,13 +218,6 @@ export default function App() {
 
   /** Demande les logos des expéditeurs. Ils partent sur le réseau, et la boîte
    *  doit s'afficher sans les attendre. */
-  const chercherLesLogos = useCallback((messages: MessageAffiche[]) => {
-    const adresses = [...new Set(messages.map((m) => m.adresse))].filter(Boolean)
-    logosExpediteurs(adresses)
-      .then((trouves) => setLogos((connus) => ({ ...connus, ...trouves })))
-      .catch(() => undefined)
-  }, [])
-
   /**
    * Affiche le dernier relevé rangé sur le disque, sans toucher au réseau.
    *
