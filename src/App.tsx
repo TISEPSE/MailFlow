@@ -51,6 +51,7 @@ import {
   repondreAuMessage,
   messageCorbeille,
   regleAjouter,
+  regleModifier,
   regleBasculer,
   regleSupprimer,
   reglesLister,
@@ -907,6 +908,12 @@ export default function App() {
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
+              onModifierRegle={(id, r) =>
+                agir(async () => {
+                  setRegles(await regleModifier(id, r))
+                  return `Règle modifiée pour ${r.nom_affichage || r.expediteur}.`
+                })
+              }
             />
           ) : vue === 'newsletter' ? (
             <Newsletters
@@ -988,6 +995,12 @@ export default function App() {
                 agir(async () => {
                   setRegles(await regleAjouter(r))
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
+                })
+              }
+              onModifierRegle={(id, r) =>
+                agir(async () => {
+                  setRegles(await regleModifier(id, r))
+                  return `Règle modifiée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
               // Les formations ne se devinent pas : la page vide doit donc

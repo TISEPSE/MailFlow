@@ -70,6 +70,38 @@ impl RuleSet {
         }
     }
 
+    /// Remplace une règle par une autre, à sa place dans la liste.
+    ///
+    /// Distinct d'[`ajouter`](Self::ajouter), qui reconnaît une règle à son
+    /// expéditeur : on modifie ici une règle **désignée**, et son expéditeur
+    /// peut justement faire partie de ce qu'on change — passer de
+    /// `messages-noreply@linkedin.com` à `@linkedin.com`, par exemple. Retrouver
+    /// la règle par son adresse serait alors impossible.
+    ///
+    /// Elle garde son rang : une règle qu'on corrige ne doit pas sauter en tête
+    /// de liste, où l'on perdrait de vue celle qu'on vient de relire.
+    ///
+    /// Une modification qui viserait l'expéditeur d'une **autre** règle
+    /// supprime cette autre : deux règles sur un même expéditeur se
+    /// contrediraient sans que l'interface puisse le montrer.
+    ///
+    /// Rend `false` si l'identifiant n'existe pas.
+    pub fn modifier(&mut self, id: &str, regle: Rule) -> bool {
+        let Some(rang) = self.automations.iter().position(|r| r.id == id) else {
+            return false;
+        };
+
+        let cible = regle.cible_normalisee();
+        self.automations[rang] = regle;
+
+        // Le doublon éventuel est retiré après coup, en épargnant la règle
+        // qu'on vient de poser — sans quoi on l'effacerait elle-même.
+        self.automations
+            .retain(|r| r.id == id || cible.is_none() || r.cible_normalisee() != cible);
+
+        true
+    }
+
     /// Retire une règle. Rend `false` si l'identifiant n'existe pas.
     pub fn supprimer(&mut self, id: &str) -> bool {
         let avant = self.automations.len();
@@ -353,6 +385,83 @@ mod tests {
             libelle: None,
             frequence: None,
             heure_execution: None,
+        }
+    }
+
+    mod modification {
+        use super::*;
+
+        fn jeu(expediteurs: &[&str]) -> RuleSet {
+            let mut set = RuleSet::default();
+            for (n, e) in expediteurs.iter().enumerate() {
+                let mut r = regle(e, Action::ClasserSeulement);
+                r.id = format!("rule_{n}");
+                set.automations.push(r);
+            }
+            set
+        }
+
+        #[test]
+        fn l_expediteur_peut_changer_ce_qui_est_tout_l_interet() {
+            // Le geste attendu : corriger une règle trop étroite en règle de
+            // domaine. Retrouver la règle par son adresse serait impossible,
+            // puisque c'est l'adresse qu'on change.
+            let mut set = jeu(&["messages-noreply@linkedin.com"]);
+            let mut voulue = regle("@linkedin.com", Action::ClasserSeulement);
+            voulue.id = "rule_0".into();
+
+            assert!(set.modifier("rule_0", voulue));
+            assert_eq!(set.automations.len(), 1);
+            assert_eq!(
+                set.regles_pour("notifications-noreply@linkedin.com").len(),
+                1,
+                "la règle corrigée doit désormais prendre tout le domaine"
+            );
+        }
+
+        #[test]
+        fn la_regle_modifiee_garde_son_rang() {
+            // Une règle qu'on corrige ne doit pas sauter en tête de liste :
+            // on perdrait de vue celle qu'on vient de relire.
+            let mut set = jeu(&["a@x.fr", "b@x.fr", "c@x.fr"]);
+            let mut voulue = regle("b2@x.fr", Action::SupprimerToujours);
+            voulue.id = "rule_1".into();
+
+            assert!(set.modifier("rule_1", voulue));
+            assert_eq!(
+                set.automations
+                    .iter()
+                    .map(|r| r.expediteur.as_str())
+                    .collect::<Vec<_>>(),
+                ["a@x.fr", "b2@x.fr", "c@x.fr"]
+            );
+        }
+
+        #[test]
+        fn viser_l_expediteur_d_une_autre_regle_absorbe_celle_ci() {
+            // Deux règles sur un même expéditeur se contrediraient sans que
+            // l'interface puisse le montrer.
+            let mut set = jeu(&["a@x.fr", "b@x.fr"]);
+            let mut voulue = regle("b@x.fr", Action::SupprimerToujours);
+            voulue.id = "rule_0".into();
+
+            assert!(set.modifier("rule_0", voulue));
+            assert_eq!(set.automations.len(), 1, "il ne doit rester qu'une règle");
+            assert_eq!(
+                set.automations[0].id, "rule_0",
+                "celle qu'on vient de poser"
+            );
+        }
+
+        #[test]
+        fn un_identifiant_inconnu_ne_touche_a_rien() {
+            let mut set = jeu(&["a@x.fr"]);
+            assert!(!set.modifier(
+                "rule_inexistante",
+                regle("z@x.fr", Action::SupprimerToujours)
+            ));
+            assert_eq!(set.automations.len(), 1);
+            assert_eq!(set.automations[0].expediteur, "a@x.fr");
         }
     }
 

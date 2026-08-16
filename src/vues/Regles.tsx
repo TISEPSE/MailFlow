@@ -78,6 +78,25 @@ const ACTION: Record<LibelleAction, ActionRegle> = {
   'Mettre à la corbeille': 'supprimer_toujours',
 }
 
+/** Les mêmes tables à l'envers, pour rouvrir une règle sur ses propres choix.
+ *
+ *  Écrites une fois pour toutes et non maintenues à la main : une entrée
+ *  oubliée ici rouvrirait la règle sur un réglage qui n'est pas le sien, et le
+ *  formulaire l'enregistrerait tel quel. */
+const NOM_CATEGORIE = Object.fromEntries(
+  Object.entries(CATEGORIE_ONGLET).map(([nom, cat]) => [cat, nom]),
+) as Record<Categorie, (typeof CATEGORIES)[number]>
+
+const NOM_ACTION = Object.fromEntries(
+  Object.entries(ACTION).map(([nom, act]) => [act, nom]),
+) as Record<ActionRegle, LibelleAction>
+
+/** L'action absente du formulaire retombe sur la plus proche : une règle posée
+ *  à la main dans le fichier ne doit pas ouvrir un formulaire vide. */
+function nomAction(action: ActionRegle): LibelleAction {
+  return NOM_ACTION[action] ?? 'Archiver'
+}
+
 /**
  * Action proposée d'emblée pour une catégorie.
  *
@@ -97,6 +116,7 @@ export function Regles({
   onBasculer,
   onSupprimer,
   onCreerRegle,
+  onModifierRegle,
   expediteurs,
   libelles,
   sombre,
@@ -105,6 +125,7 @@ export function Regles({
   onBasculer: (id: string) => Promise<void>
   onSupprimer: (id: string) => Promise<void>
   onCreerRegle: (regle: Regle) => Promise<void>
+  onModifierRegle: (id: string, regle: Regle) => Promise<void>
   /** Expéditeurs de la boîte, proposés à la saisie. */
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
@@ -113,9 +134,15 @@ export function Regles({
   const [onglet, setOnglet] = useState<Onglet>('Toutes')
   const [recherche, setRecherche] = useState('')
   const [aConfirmer, setAConfirmer] = useState<string | null>(null)
-  const [formulaireOuvert, setFormulaireOuvert] = useState(false)
+  /** Ce que la fenêtre est en train de faire.
+   *
+   *  `null` : fermée. `'ajout'` : une règle neuve. Une règle : celle qu'on
+   *  modifie. Un seul état plutôt que deux booléens, pour qu'ouvrir l'un ferme
+   *  l'autre sans qu'on ait à y penser. */
+  const [fenetre, setFenetre] = useState<'ajout' | Regle | null>(null)
+  const enEdition = fenetre !== null && fenetre !== 'ajout' ? fenetre : undefined
 
-  const fermer = () => setFormulaireOuvert(false)
+  const fermer = () => setFenetre(null)
 
   const q = recherche.trim().toLowerCase()
   const visibles = regles
@@ -153,7 +180,7 @@ export function Regles({
 
         <button
           type="button"
-          onClick={() => setFormulaireOuvert(true)}
+          onClick={() => setFenetre('ajout')}
           aria-haspopup="dialog"
           className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 self-stretch rounded-xl px-4 text-[0.8125rem] leading-none font-semibold"
         >
@@ -261,14 +288,31 @@ export function Regles({
                       <Bouton onClick={() => setAConfirmer(null)}>Non</Bouton>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setAConfirmer(r.id)}
-                      aria-label={`Supprimer la règle : ${phrase(r)}`}
-                      className="bouton bouton-icone flex-none rounded-lg p-1.5"
-                    >
-                      <Icone nom="delete" taille="1.125rem" />
-                    </button>
+                    <div className="flex flex-none items-center gap-1">
+                      {/* Modifier plutôt que supprimer puis refaire : une règle
+                          se corrige souvent sur un seul point — une adresse trop
+                          étroite, une action qu'on regrette — et tout ressaisir
+                          pour si peu est une punition. */}
+                      <button
+                        type="button"
+                        onClick={() => setFenetre(r)}
+                        aria-label={`Modifier la règle : ${phrase(r)}`}
+                        title="Modifier"
+                        className="bouton bouton-icone flex-none rounded-lg p-1.5"
+                      >
+                        <Icone nom="edit" taille="1.125rem" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAConfirmer(r.id)}
+                        aria-label={`Supprimer la règle : ${phrase(r)}`}
+                        title="Supprimer"
+                        className="bouton bouton-icone flex-none rounded-lg p-1.5"
+                      >
+                        <Icone nom="delete" taille="1.125rem" />
+                      </button>
+                    </div>
                   )}
                 </div>
               )
@@ -277,19 +321,29 @@ export function Regles({
         </div>
       )}
 
-      {formulaireOuvert && (
+      {fenetre !== null && (
         <Modale
-          titre="Ajouter une règle"
-          sous="Elle vaudra pour tous les messages à venir de cet expéditeur."
+          titre={enEdition ? 'Modifier la règle' : 'Ajouter une règle'}
+          sous={
+            enEdition
+              ? 'Le changement vaudra pour les messages à venir ; les messages déjà triés restent où ils sont.'
+              : 'Elle vaudra pour tous les messages à venir de cet expéditeur.'
+          }
           onFermer={fermer}
         >
           <FormulaireAjout
+            // La clé force un formulaire neuf d'une règle à l'autre : sans
+            // elle, React garderait l'état de la précédente et rouvrirait la
+            // suivante sur les choix de sa voisine.
+            key={enEdition?.id ?? 'ajout'}
+            depuis={enEdition}
             expediteurs={expediteurs}
             libelles={libelles}
             sombre={sombre}
             onAnnuler={fermer}
             onValider={async (regle) => {
-              await onCreerRegle(regle)
+              if (enEdition) await onModifierRegle(enEdition.id, regle)
+              else await onCreerRegle(regle)
               fermer()
             }}
           />
@@ -312,21 +366,28 @@ function FormulaireAjout({
   expediteurs,
   libelles,
   sombre,
+  depuis,
 }: {
   onValider: (regle: Regle) => Promise<void>
   onAnnuler: () => void
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
   sombre: boolean
+  /** Règle à modifier. Absente, le formulaire en crée une. */
+  depuis?: Regle
 }) {
-  const depart = 'Publicités' as const
+  const depart = depuis ? NOM_CATEGORIE[depuis.categorie] : ('Publicités' as const)
 
-  const [adresse, setAdresse] = useState('')
+  const [adresse, setAdresse] = useState(depuis?.expediteur ?? '')
   const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>(depart)
-  const [choisiParDefaut, setChoisiParDefaut] = useState(true)
-  const [actionChoisie, setActionChoisie] = useState(false)
-  const [libelleAction, setLibelleAction] = useState<LibelleAction>(actionParDefaut(depart))
-  const [destination, setDestination] = useState('')
+  // Une règle relue a déjà ses choix : les redeviner reviendrait à les défaire
+  // sous les yeux de qui vient l'ouvrir pour n'y changer qu'une chose.
+  const [choisiParDefaut, setChoisiParDefaut] = useState(!depuis)
+  const [actionChoisie, setActionChoisie] = useState(Boolean(depuis))
+  const [libelleAction, setLibelleAction] = useState<LibelleAction>(
+    depuis ? nomAction(depuis.action) : actionParDefaut(depart),
+  )
+  const [destination, setDestination] = useState(depuis?.libelle ?? '')
   const [enCours, setEnCours] = useState(false)
 
   /** Change la catégorie, et l'action avec elle tant qu'on n'y a pas touché. */
@@ -344,6 +405,10 @@ function FormulaireAjout({
       categorie: CATEGORIE_ONGLET[categorie],
       action: ACTION[libelleAction],
     }),
+    // Une règle modifiée garde son identifiant et sa date : c'est la même
+    // règle, corrigée. En changer ferait apparaître une nouvelle venue et
+    // laisserait l'ancienne derrière.
+    ...(depuis ? { id: depuis.id, date_ajout: depuis.date_ajout } : {}),
     // La destination n'a de sens que pour un archivage : une règle qui met à la
     // corbeille avec un libellé promettrait un rangement qui n'aura pas lieu.
     ...(archive && destination ? { libelle: destination } : {}),

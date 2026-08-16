@@ -65,6 +65,7 @@ pub fn run() {
             commands::gmail_synchroniser,
             commands::regles_lister,
             commands::regle_ajouter,
+            commands::regle_modifier,
             commands::regle_supprimer,
             commands::regle_basculer,
             commands::boite_lister,

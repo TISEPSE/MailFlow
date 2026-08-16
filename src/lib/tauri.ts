@@ -90,6 +90,14 @@ export function regleAjouter(regle: Regle): Promise<JeuDeRegles> {
   return invoke<JeuDeRegles>('regle_ajouter', { regle })
 }
 
+/** Remplace une règle désignée par son identifiant.
+ *
+ *  Distinct de `regleAjouter`, qui reconnaît une règle à son expéditeur : c'est
+ *  souvent l'expéditeur lui-même qu'on vient corriger. */
+export function regleModifier(id: string, regle: Regle): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_modifier', { id, regle })
+}
+
 export function regleSupprimer(id: string): Promise<JeuDeRegles> {
   return invoke<JeuDeRegles>('regle_supprimer', { id })
 }

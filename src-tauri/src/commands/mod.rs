@@ -294,6 +294,25 @@ pub async fn regle_ajouter(app: AppHandle, regle: Rule) -> Resultat<RuleSet> {
     Ok(regles)
 }
 
+/// Remplace une règle existante, désignée par son identifiant.
+///
+/// Une commande à part plutôt qu'un `regle_ajouter` détourné : l'ajout
+/// reconnaît une règle à son expéditeur, or c'est justement l'expéditeur qu'on
+/// vient souvent corriger.
+#[tauri::command]
+pub async fn regle_modifier(app: AppHandle, id: String, regle: Rule) -> Resultat<RuleSet> {
+    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+
+    if regles.modifier(&id, regle) {
+        ecrire_regles(&app, &regles)?;
+        log::info!("règle {id} modifiée");
+    } else {
+        log::warn!("règle {id} introuvable, rien de modifié");
+    }
+
+    Ok(regles)
+}
+
 #[tauri::command]
 pub async fn regle_supprimer(app: AppHandle, id: String) -> Resultat<RuleSet> {
     let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
