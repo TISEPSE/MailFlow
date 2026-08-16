@@ -51,3 +51,18 @@ export function ranger(
 
   return suivant
 }
+
+/**
+ * Retire un corps du cache.
+ *
+ * Appelé quand le message quitte la boîte — archivé ou mis à la corbeille. Le
+ * garder retiendrait plusieurs mégaoctets d'images pour un message qu'on ne
+ * peut plus ouvrir.
+ */
+export function oublier(cache: CacheCorps, id: string): CacheCorps {
+  if (!cache.has(id)) return cache
+
+  const suivant = new Map(cache)
+  suivant.delete(id)
+  return suivant
+}

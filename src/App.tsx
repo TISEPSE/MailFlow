@@ -15,7 +15,7 @@ import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
-import { creerCache, ranger, type CacheCorps } from './lib/corps'
+import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
 import { useLogos, usePreferences, useToasts } from './lib/crochets'
 import { autresQueMoi } from './lib/reponse'
 import {
@@ -456,6 +456,22 @@ export default function App() {
       setAvancement(null)
       setEnCours(false)
     }
+  }
+
+  /**
+   * Retire un message de la boîte affichée, sans attendre le relevé suivant.
+   *
+   * Archivé ou mis à la corbeille, il a quitté la boîte : le laisser à l'écran
+   * le temps d'un relevé — une vingtaine de secondes — donne à croire que le
+   * geste n'a pas été pris en compte, et invite à le refaire. Sa place se
+   * referme donc tout de suite, et le relevé qui suit ne fait que confirmer.
+   *
+   * Son corps quitte le cache du même coup : plusieurs mégaoctets d'images
+   * retenus pour un message qu'on ne peut plus ouvrir.
+   */
+  const retirerDeLaBoite = (id: string) => {
+    setBoite((liste) => liste.filter((m) => m.id !== id))
+    setCorpsConnus((connus) => oublier(connus, id))
   }
 
   /** Bascule de compte, partagée par la barre latérale et les Paramètres. */
@@ -993,12 +1009,14 @@ export default function App() {
               onArchiver={(id) =>
                 void agir(async () => {
                   await messageRanger(id, undefined)
+                  retirerDeLaBoite(id)
                   return 'Newsletter archivée.'
                 })
               }
               onSupprimer={(id) =>
                 void agir(async () => {
                   await messageCorbeille(id)
+                  retirerDeLaBoite(id)
                   return 'Newsletter mise à la corbeille.'
                 })
               }
@@ -1044,6 +1062,7 @@ export default function App() {
                   ? (id, libelle) =>
                       void agir(async () => {
                         await messageRanger(id, libelle)
+                        retirerDeLaBoite(id)
                         return 'Message archivé.'
                       })
                   : undefined
@@ -1051,6 +1070,7 @@ export default function App() {
               onSupprimer={(id) =>
                 void agir(async () => {
                   await messageCorbeille(id)
+                  retirerDeLaBoite(id)
                   return 'Message mis à la corbeille.'
                 })
               }

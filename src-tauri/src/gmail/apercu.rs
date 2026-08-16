@@ -58,6 +58,13 @@ pub const COTE_MAX: u32 = 1_600;
 /// des dimensions énormes, et le décodeur alloue des gigaoctets.
 pub const PIXELS_MAX: u64 = 50_000_000;
 
+/// Plus grand côté d'une vignette, en pixels.
+///
+/// Assez pour reconnaître une photo dans une bande de trois, pas davantage :
+/// une vignette est faite pour être vue de loin, et elle voyage avant même
+/// qu'on ait demandé à voir le fichier.
+pub const COTE_VIGNETTE: u32 = 480;
+
 /// Longueur maximale d'un aperçu texte, en caractères.
 pub const CARACTERES_MAX: usize = 200_000;
 
@@ -66,15 +73,24 @@ pub const CARACTERES_MAX: usize = 200_000;
 #[serde(tag = "genre", rename_all = "camelCase")]
 pub enum Apercu {
     /// Image ré-encodée en PNG, en base64. Prête pour un `src` de données.
-    Image { donnees: String },
+    Image {
+        donnees: String,
+    },
 
     /// PDF d'origine, en base64. Destiné au seul cadre isolé.
-    Pdf { donnees: String },
+    Pdf {
+        donnees: String,
+    },
 
-    Texte { contenu: String, tronque: bool },
+    Texte {
+        contenu: String,
+        tronque: bool,
+    },
 
     /// Aucun aperçu possible. `raison` s'adresse à l'utilisateur, en clair.
-    Impossible { raison: String },
+    Impossible {
+        raison: String,
+    },
 }
 
 /// Prépare l'aperçu d'un fichier reçu.
@@ -101,7 +117,7 @@ pub fn preparer(octets: &[u8]) -> Apercu {
     }
 
     if est_une_image(octets) {
-        return match reencoder(octets) {
+        return match reencoder(octets, COTE_MAX) {
             Ok(donnees) => Apercu::Image { donnees },
             Err(raison) => {
                 log::warn!("image jointe illisible : {raison}");
@@ -141,8 +157,38 @@ fn est_une_image(octets: &[u8]) -> bool {
             | [b'G', b'I', b'F', b'8', ..]
             | [0xFF, 0xD8, 0xFF, ..]
             | [b'B', b'M', ..]
-            | [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..]
+            | [
+                b'R',
+                b'I',
+                b'F',
+                b'F',
+                _,
+                _,
+                _,
+                _,
+                b'W',
+                b'E',
+                b'B',
+                b'P',
+                ..
+            ]
     )
+}
+
+/// Vignette d'un fichier joint, ou `None` si ce n'en est pas une image.
+///
+/// Même traitement que l'aperçu — décodage puis ré-encodage — pour la même
+/// raison : ce qui atteint l'interface ne doit jamais être le fichier reçu. Un
+/// PDF ou un document n'en a pas : la bande de vignettes montre alors une
+/// pastille de nom de fichier, ce qui est plus honnête qu'une image générique.
+pub fn vignette(octets: &[u8]) -> Option<String> {
+    if octets.is_empty() || octets.len() > TAILLE_MAX || !est_une_image(octets) {
+        return None;
+    }
+
+    reencoder(octets, COTE_VIGNETTE)
+        .inspect_err(|e| log::warn!("vignette impossible : {e}"))
+        .ok()
 }
 
 /// Décode l'image reçue et en produit une neuve, en PNG.
@@ -150,7 +196,7 @@ fn est_une_image(octets: &[u8]) -> bool {
 /// L'aller-retour par les pixels est le cœur de la manœuvre : rien de la
 /// structure du fichier d'origine ne survit. Les limites posées avant le décodage
 /// sont ce qui empêche un en-tête menteur de faire allouer toute la mémoire.
-fn reencoder(octets: &[u8]) -> Result<String, String> {
+fn reencoder(octets: &[u8], cote_max: u32) -> Result<String, String> {
     use base64::Engine;
     use std::io::Cursor;
 
@@ -170,7 +216,9 @@ fn reencoder(octets: &[u8]) -> Result<String, String> {
         Ok(lecteur)
     }
 
-    let (largeur, hauteur) = lecteur(octets)?.into_dimensions().map_err(|e| e.to_string())?;
+    let (largeur, hauteur) = lecteur(octets)?
+        .into_dimensions()
+        .map_err(|e| e.to_string())?;
 
     if u64::from(largeur) * u64::from(hauteur) > PIXELS_MAX {
         return Err(format!("image démesurée : {largeur}×{hauteur}"));
@@ -180,8 +228,8 @@ fn reencoder(octets: &[u8]) -> Result<String, String> {
     // négligeable — c'est l'en-tête qu'on relit, pas l'image.
     let image = lecteur(octets)?.decode().map_err(|e| e.to_string())?;
 
-    let image = if largeur.max(hauteur) > COTE_MAX {
-        image.thumbnail(COTE_MAX, COTE_MAX)
+    let image = if largeur.max(hauteur) > cote_max {
+        image.thumbnail(cote_max, cote_max)
     } else {
         image
     };

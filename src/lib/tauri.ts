@@ -190,6 +190,18 @@ export function pieceJointeApercu(message: string, piece: string): Promise<Aperc
   return invoke<Apercu>('piece_jointe_apercu', { message, piece })
 }
 
+/** Vignette d'une piece jointe, ou `null` quand ce n'en est pas une image.
+ *
+ *  Fabriquee cote Rust a partir des seuls pixels du fichier, puis rangee sur le
+ *  disque avec le corps du message : une photo pese plusieurs megaoctets qu'on
+ *  ne retelechargera pas a chaque ouverture. */
+export function pieceJointeVignette(
+  message: string,
+  piece: string,
+): Promise<string | null> {
+  return invoke<string | null>('piece_jointe_vignette', { message, piece })
+}
+
 /** Libelles crees par l'utilisateur, par ordre alphabetique. */
 export function libellesLister(): Promise<LibelleGmail[]> {
   return invoke<LibelleGmail[]>('libelles_lister')

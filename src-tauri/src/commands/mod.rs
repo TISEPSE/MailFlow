@@ -704,6 +704,43 @@ pub async fn piece_jointe_apercu(
     Ok(apercu)
 }
 
+/// Vignette d'une pièce jointe, ou `None` quand ce n'en est pas une image.
+///
+/// Sert la bande de miniatures sous l'en-tête du message. Comme l'aperçu, elle
+/// est décodée puis ré-encodée ici : ce qui atteint l'interface n'est jamais le
+/// fichier reçu.
+///
+/// Rangée sur le disque, contrairement à l'aperçu. La différence n'est pas de
+/// principe mais de fait : la vignette est demandée à chaque ouverture du
+/// message, et une photo jointe pèse plusieurs mégaoctets qu'on ne
+/// retéléchargera pas pour montrer trois centimètres carrés. Elle disparaît
+/// avec le corps du message, quand celui-ci quitte la boîte.
+#[tauri::command]
+pub async fn piece_jointe_vignette(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    message: String,
+    piece: String,
+) -> Resultat<Option<String>> {
+    use crate::gmail::corps;
+
+    let dossier = corps::dossier_cache_dans(&app);
+
+    if let Some(deja) = corps::lire_vignette(&dossier, &message, &piece) {
+        return Ok(Some(deja));
+    }
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let octets = client.piece_jointe(&message, &piece).await?;
+
+    let Some(png) = apercu::vignette(&octets) else {
+        return Ok(None);
+    };
+
+    corps::ranger_vignette(&dossier, &message, &piece, &png);
+    Ok(Some(png))
+}
+
 /// Réduit un nom fourni par un tiers à un nom de fichier inoffensif.
 ///
 /// Seul le dernier segment est retenu, et les caractères qui ont un sens pour un

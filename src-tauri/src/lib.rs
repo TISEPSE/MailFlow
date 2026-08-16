@@ -78,6 +78,7 @@ pub fn run() {
             commands::corps_precharger,
             commands::piece_jointe_enregistrer,
             commands::piece_jointe_apercu,
+            commands::piece_jointe_vignette,
             commands::message_ranger,
             commands::libelles_lister,
             commands::libelle_creer,

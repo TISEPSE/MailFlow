@@ -6,7 +6,7 @@
  * date. Pas de corps de message — c'est du HTML écrit par un inconnu, et il ne
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   HAUTEUR_LIGNE,
   Icone,
@@ -23,6 +23,7 @@ import {
   poids,
 } from '../lib/presentation'
 import { ApercuPieceJointe } from './ApercuPieceJointe'
+import { pieceJointeVignette } from '../lib/tauri'
 import type {
   CompteConnu,
   CorpsMessage,
@@ -448,18 +449,30 @@ function Corps({
 /**
  * Les fichiers joints, sous l'en-tête du message.
  *
+ * # Des vignettes, pas une liste de noms
+ *
+ * Un nom de fichier ne dit rien : `5919.jpg` ne se distingue de `5917.jpg` par
+ * rien du tout. Les images se montrent donc, et l'on reconnaît d'un coup d'œil
+ * ce qu'on a reçu — c'est ce que fait Gmail, pour la même raison.
+ *
+ * Chaque vignette est fabriquée côté Rust à partir des seuls pixels du fichier,
+ * puis rangée sur le disque avec le corps du message : une photo pèse plusieurs
+ * mégaoctets qu'on ne retéléchargera pas à chaque ouverture. Voir
+ * `commands::piece_jointe_vignette`.
+ *
+ * Ce qui n'est pas une image — un PDF, un document — garde une pastille de nom
+ * de fichier : plus honnête qu'une illustration générique qui ferait croire à
+ * un aperçu.
+ *
+ * # Voir, garder, ouvrir
+ *
  * Un clic ouvre l'aperçu ; l'enregistrement est un second geste, dans la
- * fenêtre. C'est l'ordre naturel — on regarde d'abord ce qu'on a reçu, on
- * décide ensuite de le garder — et il évite d'encombrer le dossier de
- * téléchargement pour une facture qu'on voulait seulement lire.
+ * fenêtre. C'est l'ordre naturel — on regarde d'abord, on décide ensuite — et
+ * il évite d'encombrer le dossier de téléchargement pour une facture qu'on
+ * voulait seulement lire.
  *
- * Ce qui s'affiche n'est jamais le fichier reçu : voir `ApercuPieceJointe` et
- * `gmail::apercu`. Et rien n'est jamais **ouvert** : ouvrir un fichier venu
- * d'un e-mail reviendrait à laisser un expéditeur choisir quel programme
- * démarre sur la machine.
- *
- * Le contenu n'est demandé à Gmail qu'au clic : une lettre peut porter
- * plusieurs mégaoctets qu'on ne rapatrie pas pour rien.
+ * Rien n'est jamais **ouvert** : ouvrir un fichier venu d'un e-mail reviendrait
+ * à laisser un expéditeur choisir quel programme démarre sur la machine.
  */
 function PiecesJointes({
   message,
@@ -475,40 +488,35 @@ function PiecesJointes({
 
   return (
     <div
-      className="flex flex-none flex-wrap items-center gap-2 border-b px-9 py-3"
+      className="flex flex-none flex-col gap-2.5 border-b px-9 py-4"
       style={{ borderColor: 'var(--line)' }}
     >
-      <span className="text-[0.75rem] font-semibold" style={{ color: 'var(--sub)' }}>
-        {pieces.length === 1 ? 'Pièce jointe' : `${pieces.length} pièces jointes`}
-      </span>
-
-      {pieces.map((p) => {
-        const range = enregistrees[p.id]
-        return (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => setOuverte(p)}
-            title={range ? `Enregistrée dans ${range}` : `Afficher ${p.nom}`}
-            className="bouton bouton-neutre inline-flex max-w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.75rem] font-semibold"
-          >
-            <Icone
-              nom={range ? 'check_circle' : 'visibility'}
-              taille="1.1em"
-              rempli={Boolean(range)}
-              style={range ? { color: 'var(--accent-fg)' } : undefined}
-            />
-            <span className="min-w-0 truncate">{p.nom}</span>
-            <span style={{ color: 'var(--sub)' }}>{poids(p.taille)}</span>
-          </button>
-        )
-      })}
-
-      {Object.keys(enregistrees).length > 0 && (
-        <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
-          Enregistrée dans vos téléchargements.
+      <div className="flex items-center gap-2">
+        <Icone nom="attach_file" taille="1rem" style={{ color: 'var(--sub)' }} />
+        <span
+          className="text-[0.8125rem] font-semibold"
+          style={{ color: 'var(--sub)' }}
+        >
+          {pieces.length === 1 ? '1 pièce jointe' : `${pieces.length} pièces jointes`}
         </span>
-      )}
+        {Object.keys(enregistrees).length > 0 && (
+          <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+            • enregistrée dans vos téléchargements
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        {pieces.map((p) => (
+          <Jointe
+            key={p.id}
+            message={message}
+            piece={p}
+            enregistree={Boolean(enregistrees[p.id])}
+            onOuvrir={() => setOuverte(p)}
+          />
+        ))}
+      </div>
 
       {ouverte && (
         <ApercuPieceJointe
@@ -521,6 +529,105 @@ function PiecesJointes({
         />
       )}
     </div>
+  )
+}
+
+/** Largeur d'une vignette. Trois tiennent de front dans le panneau de lecture. */
+const LARGEUR_VIGNETTE = '11.5rem'
+
+/**
+ * Une pièce jointe, avec sa vignette quand c'en est une image.
+ *
+ * La vignette est demandée à l'affichage, pas au survol ni au clic : sans elle
+ * la carte reste un rectangle gris, et un rectangle gris ne dit rien de plus
+ * qu'un nom de fichier.
+ */
+function Jointe({
+  message,
+  piece,
+  enregistree,
+  onOuvrir,
+}: {
+  message: string
+  piece: PieceJointe
+  enregistree: boolean
+  onOuvrir: () => void
+}) {
+  /** `undefined` tant qu'on cherche, `null` quand il n'y a pas d'image. */
+  const [vignette, setVignette] = useState<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    let abandonne = false
+
+    // Le type annoncé vient de l'expéditeur : il ne sert qu'à décider si la
+    // demande vaut la peine. C'est le backend qui tranche, sur les octets.
+    if (!piece.typeMime.toLowerCase().startsWith('image/')) {
+      setVignette(null)
+      return
+    }
+
+    void pieceJointeVignette(message, piece.id)
+      .then((png) => {
+        if (!abandonne) setVignette(png)
+      })
+      .catch((e) => {
+        console.error('vignette indisponible', e)
+        if (!abandonne) setVignette(null)
+      })
+
+    return () => {
+      abandonne = true
+    }
+  }, [message, piece.id, piece.typeMime])
+
+  return (
+    <button
+      type="button"
+      onClick={onOuvrir}
+      title={`Afficher ${piece.nom}`}
+      style={{ width: LARGEUR_VIGNETTE, borderColor: 'var(--line)' }}
+      className="carte-survolable flex flex-col overflow-hidden rounded-xl border text-left"
+    >
+      <span
+        className="flex h-24 items-center justify-center overflow-hidden"
+        style={{ background: 'var(--sunk)' }}
+      >
+        {vignette ? (
+          <img
+            src={`data:image/png;base64,${vignette}`}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <Icone
+            nom={vignette === undefined ? 'progress_activity' : 'description'}
+            taille="1.5rem"
+            tourne={vignette === undefined}
+            style={{ color: 'var(--sub)' }}
+          />
+        )}
+      </span>
+
+      <span
+        className="flex items-center gap-1.5 px-2.5 py-2"
+        style={{ background: 'var(--card)' }}
+      >
+        <Icone
+          nom={enregistree ? 'check_circle' : 'visibility'}
+          taille="0.9375rem"
+          rempli={enregistree}
+          style={{ color: enregistree ? 'var(--accent-fg)' : 'var(--sub)' }}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[0.75rem] font-semibold">
+            {piece.nom}
+          </span>
+          <span className="block text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+            {poids(piece.taille)}
+          </span>
+        </span>
+      </span>
+    </button>
   )
 }
 

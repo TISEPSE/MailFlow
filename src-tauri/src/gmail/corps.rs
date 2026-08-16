@@ -406,11 +406,37 @@ pub fn dossier_cache_dans(app: &tauri::AppHandle) -> PathBuf {
 /// L'identifiant vient de Gmail, mais il ne sert jamais tel quel comme nom de
 /// fichier : la même précaution que pour les logos, pour la même raison.
 pub fn chemin_cache(dossier: &Path, id: &str) -> PathBuf {
-    let sur: String = id
-        .chars()
+    dossier.join(format!("{}.json", assaini(id)))
+}
+
+/// Nom de fichier assaini, commun aux corps et aux vignettes.
+fn assaini(brut: &str) -> String {
+    brut.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    dossier.join(format!("{sur}.json"))
+        .collect()
+}
+
+/// Chemin de la vignette d'une pièce jointe.
+///
+/// Le nom porte l'identifiant du message **puis** celui de la pièce, séparés
+/// par deux tirets bas : c'est ce préfixe qui permet au nettoyage de rattacher
+/// une vignette au message dont elle dépend.
+pub fn chemin_vignette(dossier: &Path, message: &str, piece: &str) -> PathBuf {
+    dossier.join(format!("{}__{}.png", assaini(message), assaini(piece)))
+}
+
+/// Lit une vignette déjà rangée, ou `None`.
+pub fn lire_vignette(dossier: &Path, message: &str, piece: &str) -> Option<String> {
+    std::fs::read_to_string(chemin_vignette(dossier, message, piece)).ok()
+}
+
+/// Range une vignette. Comme pour un corps, un échec d'écriture ne fait rien
+/// échouer : la vignette sera simplement refaite la prochaine fois.
+pub fn ranger_vignette(dossier: &Path, message: &str, piece: &str, png: &str) {
+    let _ = std::fs::create_dir_all(dossier);
+    if let Err(e) = crate::cache::ecrire_prive(&chemin_vignette(dossier, message, piece), png) {
+        log::info!("vignette non mise en cache : {e}");
+    }
 }
 
 /// Lit un corps déjà rangé, ou `None`.
@@ -434,7 +460,8 @@ pub fn ranger(dossier: &Path, id: &str, corps: &CorpsMessage) {
     }
 }
 
-/// Oublie les corps dont le message n'est plus dans aucune boîte.
+/// Oublie les corps — et les vignettes — dont le message n'est plus dans
+/// aucune boîte.
 ///
 /// Sans cela, le dossier ne fait que grossir : un corps y entre à chaque
 /// message reçu et n'en sort jamais, images comprises — jusqu'à deux mégaoctets
@@ -455,20 +482,35 @@ pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<S
     let gardes: std::collections::HashSet<PathBuf> =
         vivants.iter().map(|id| chemin_cache(dossier, id)).collect();
 
+    // Les vignettes se reconnaissent à leur préfixe : `<message>__<piece>.png`.
+    // Une photo jointe pèse le double d'un corps de message ; les oublier avec
+    // lui est ce qui empêche le dossier de gonfler sans fin.
+    let prefixes_vivants: std::collections::HashSet<String> =
+        vivants.iter().map(|id| assaini(id)).collect();
+
     let mut effaces = 0;
     for entree in entrees.flatten() {
         let chemin = entree.path();
-        if chemin.extension().is_some_and(|e| e == "json") && !gardes.contains(&chemin) {
-            // Un fichier qu'on ne sait pas effacer sera repris au prochain
-            // démarrage : rien ne justifie d'interrompre le nettoyage.
-            if std::fs::remove_file(&chemin).is_ok() {
-                effaces += 1;
-            }
+
+        let a_effacer = match chemin.extension().and_then(|e| e.to_str()) {
+            Some("json") => !gardes.contains(&chemin),
+            Some("png") => !chemin
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.split_once("__"))
+                .is_some_and(|(message, _)| prefixes_vivants.contains(message)),
+            _ => false,
+        };
+
+        // Un fichier qu'on ne sait pas effacer sera repris au prochain
+        // démarrage : rien ne justifie d'interrompre le nettoyage.
+        if a_effacer && std::fs::remove_file(&chemin).is_ok() {
+            effaces += 1;
         }
     }
 
     if effaces > 0 {
-        log::info!("{effaces} corps de message oubliés, faute de message");
+        log::info!("{effaces} fichier(s) oublié(s), faute de message");
     }
     effaces
 }
@@ -804,6 +846,43 @@ mod tests {
 
             assert!(lire(dossier.path(), "vivant").is_some());
             assert!(lire(dossier.path(), "disparu").is_none());
+        }
+
+        #[test]
+        fn une_vignette_disparait_avec_le_message_qui_la_portait() {
+            // Une photo jointe pèse davantage qu'un corps de message : la
+            // laisser derrière rendrait le nettoyage inutile.
+            let dossier = tempfile::tempdir().unwrap();
+            ranger(dossier.path(), "vivant", &un_corps());
+            ranger_vignette(dossier.path(), "vivant", "p1", "png-de-la-vivante");
+            ranger_vignette(dossier.path(), "disparu", "p1", "png-de-la-disparue");
+
+            let vivants = std::collections::HashSet::from(["vivant".to_string()]);
+            oublier_les_absents(dossier.path(), &vivants);
+
+            assert_eq!(
+                lire_vignette(dossier.path(), "vivant", "p1").as_deref(),
+                Some("png-de-la-vivante")
+            );
+            assert!(lire_vignette(dossier.path(), "disparu", "p1").is_none());
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn une_vignette_n_est_lisible_que_par_son_proprietaire() {
+            // Elle porte l'image d'une pièce jointe : la même donnée
+            // personnelle que le corps du message, la même protection.
+            use std::os::unix::fs::PermissionsExt;
+
+            let dossier = tempfile::tempdir().unwrap();
+            ranger_vignette(dossier.path(), "m1", "p1", "png");
+
+            let mode = std::fs::metadata(chemin_vignette(dossier.path(), "m1", "p1"))
+                .unwrap()
+                .permissions()
+                .mode();
+
+            assert_eq!(mode & 0o777, 0o600, "mode obtenu : {:o}", mode & 0o777);
         }
 
         #[test]
