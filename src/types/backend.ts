@@ -143,6 +143,26 @@ export interface JeuDeRegles {
   automations: Regle[]
 }
 
+/** Miroir de `commands::ReglesDuCompte`.
+ *
+ *  Les règles appartiennent à un compte : une même adresse peut mériter un sort
+ *  différent selon la boîte qui la reçoit. */
+export interface ReglesDuCompte {
+  compte: string
+  regles: JeuDeRegles
+}
+
+/** Miroir de `gmail::apercu::Apercu`.
+ *
+ *  Union discriminée par `genre`, comme l'énumération Rust. Ce que le backend
+ *  ne sait pas montrer arrive en `impossible`, avec une raison en clair — ce
+ *  n'est pas une erreur, c'est une réponse. */
+export type Apercu =
+  | { genre: 'image'; donnees: string }
+  | { genre: 'pdf'; donnees: string }
+  | { genre: 'texte'; contenu: string; tronque: boolean }
+  | { genre: 'impossible'; raison: string }
+
 /** Miroir de `gmail::execution::RapportExecution`. */
 export interface RapportExecution {
   archives: number

@@ -20,8 +20,9 @@ import {
   heureCourte,
   initiales,
   palette,
+  poids,
 } from '../lib/presentation'
-import { pieceJointeEnregistrer } from '../lib/tauri'
+import { ApercuPieceJointe } from './ApercuPieceJointe'
 import type {
   CompteConnu,
   CorpsMessage,
@@ -440,21 +441,18 @@ function Corps({
   )
 }
 
-/** Taille lisible : « 380 Ko », « 2,4 Mo ». */
-function poids(octets: number): string {
-  if (octets < 1024) return `${octets} o`
-  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`
-  return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`
-}
-
 /**
  * Les fichiers joints, sous le message.
  *
- * Enregistrés, jamais ouverts. Ouvrir un fichier venu d'un e-mail reviendrait à
- * laisser un expéditeur choisir quel programme démarre sur la machine — c'est
- * ce que la liste blanche de schémas interdit par ailleurs, et un fichier joint
- * n'est pas plus digne de confiance qu'un lien. L'utilisateur ouvre lui-même ce
- * qu'il a décidé de garder, depuis son dossier de téléchargement.
+ * Un clic ouvre l'aperçu ; l'enregistrement est un second geste, dans la
+ * fenêtre. C'est l'ordre naturel — on regarde d'abord ce qu'on a reçu, on
+ * décide ensuite de le garder — et il évite d'encombrer le dossier de
+ * téléchargement pour une facture qu'on voulait seulement lire.
+ *
+ * Ce qui s'affiche n'est jamais le fichier reçu : voir `ApercuPieceJointe` et
+ * `gmail::apercu`. Et rien n'est jamais **ouvert** : ouvrir un fichier venu
+ * d'un e-mail reviendrait à laisser un expéditeur choisir quel programme
+ * démarre sur la machine.
  *
  * Le contenu n'est demandé à Gmail qu'au clic : une lettre peut porter
  * plusieurs mégaoctets qu'on ne rapatrie pas pour rien.
@@ -466,23 +464,10 @@ function PiecesJointes({
   message: string
   pieces: readonly PieceJointe[]
 }) {
-  const [enCours, setEnCours] = useState<string | null>(null)
+  const [ouverte, setOuverte] = useState<PieceJointe | null>(null)
   const [enregistrees, setEnregistrees] = useState<Record<string, string>>({})
 
   if (pieces.length === 0) return null
-
-  const enregistrer = async (p: PieceJointe) => {
-    if (enCours) return
-    setEnCours(p.id)
-    try {
-      const chemin = await pieceJointeEnregistrer(message, p.id, p.nom)
-      setEnregistrees((connues) => ({ ...connues, [p.id]: chemin }))
-    } catch (e) {
-      console.error('pièce jointe non enregistrée', e)
-    } finally {
-      setEnCours(null)
-    }
-  }
 
   return (
     <div
@@ -499,16 +484,14 @@ function PiecesJointes({
           <button
             key={p.id}
             type="button"
-            onClick={() => void enregistrer(p)}
-            disabled={enCours !== null}
-            title={range ? `Enregistrée dans ${range}` : `Enregistrer ${p.nom}`}
+            onClick={() => setOuverte(p)}
+            title={range ? `Enregistrée dans ${range}` : `Afficher ${p.nom}`}
             className="bouton bouton-neutre inline-flex max-w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.75rem] font-semibold"
           >
             <Icone
-              nom={range ? 'check_circle' : 'archive'}
+              nom={range ? 'check_circle' : 'visibility'}
               taille="1.1em"
               rempli={Boolean(range)}
-              tourne={enCours === p.id}
               style={range ? { color: 'var(--accent-fg)' } : undefined}
             />
             <span className="min-w-0 truncate">{p.nom}</span>
@@ -521,6 +504,17 @@ function PiecesJointes({
         <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
           Enregistrée dans vos téléchargements.
         </span>
+      )}
+
+      {ouverte && (
+        <ApercuPieceJointe
+          message={message}
+          piece={ouverte}
+          onFermer={() => setOuverte(null)}
+          onEnregistree={(chemin) =>
+            setEnregistrees((connues) => ({ ...connues, [ouverte.id]: chemin }))
+          }
+        />
       )}
     </div>
   )

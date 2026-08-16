@@ -7,6 +7,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import type {
+  Apercu,
   ErreurBackend,
   EtatApplication,
   JeuDeRegles,
@@ -17,6 +18,7 @@ import type {
   ProfilCompte,
   RapportExecution,
   Regle,
+  ReglesDuCompte,
   VerificationMaj,
 } from '../types/backend'
 
@@ -74,36 +76,51 @@ export function gmailSynchroniser(): Promise<RapportExecution> {
   return invoke<RapportExecution>('gmail_synchroniser')
 }
 
-/** Jeu de regles tel qu'il est sur le disque. */
-export function reglesLister(): Promise<JeuDeRegles> {
-  return invoke<JeuDeRegles>('regles_lister')
+/**
+ * Regles d'un compte, telles qu'elles sont sur le disque.
+ *
+ * Chaque compte a les siennes : une meme adresse peut meriter un sort different
+ * selon la boite qui la recoit. L'adresse du compte accompagne donc chaque
+ * commande, et n'est jamais devinee cote Rust.
+ */
+export function reglesLister(compte: string): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regles_lister', { compte })
+}
+
+/** Regles de tous les comptes connus, pour la vue « Tous les comptes ». */
+export function reglesToutes(): Promise<ReglesDuCompte[]> {
+  return invoke<ReglesDuCompte[]>('regles_toutes')
 }
 
 /**
- * Enregistre une regle et rend le jeu complet.
+ * Enregistre une regle et rend le jeu complet du compte.
  *
  * Les commandes de regles rendent toujours l'ensemble plutot qu'un accuse de
  * reception : l'interface se reaffiche a partir de ce qui est reellement sur le
  * disque, au lieu de maintenir sa propre copie qui finirait par diverger.
  */
-export function regleAjouter(regle: Regle): Promise<JeuDeRegles> {
-  return invoke<JeuDeRegles>('regle_ajouter', { regle })
+export function regleAjouter(compte: string, regle: Regle): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_ajouter', { compte, regle })
 }
 
 /** Remplace une règle désignée par son identifiant.
  *
  *  Distinct de `regleAjouter`, qui reconnaît une règle à son expéditeur : c'est
  *  souvent l'expéditeur lui-même qu'on vient corriger. */
-export function regleModifier(id: string, regle: Regle): Promise<JeuDeRegles> {
-  return invoke<JeuDeRegles>('regle_modifier', { id, regle })
+export function regleModifier(
+  compte: string,
+  id: string,
+  regle: Regle,
+): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_modifier', { compte, id, regle })
 }
 
-export function regleSupprimer(id: string): Promise<JeuDeRegles> {
-  return invoke<JeuDeRegles>('regle_supprimer', { id })
+export function regleSupprimer(compte: string, id: string): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_supprimer', { compte, id })
 }
 
-export function regleBasculer(id: string): Promise<JeuDeRegles> {
-  return invoke<JeuDeRegles>('regle_basculer', { id })
+export function regleBasculer(compte: string, id: string): Promise<JeuDeRegles> {
+  return invoke<JeuDeRegles>('regle_basculer', { compte, id })
 }
 
 /** Releve la boite de reception chez Gmail, deja classee par vue. */
@@ -162,6 +179,15 @@ export function pieceJointeEnregistrer(
   nom: string,
 ): Promise<string> {
   return invoke<string>('piece_jointe_enregistrer', { message, piece, nom })
+}
+
+/** Prepare l'apercu d'une piece jointe, sans rien ecrire sur le disque.
+ *
+ *  Ce qui revient n'est jamais le fichier recu : une image est decodee puis
+ *  re-encodee cote Rust, un texte est valide, un PDF ne part que vers le cadre
+ *  isole qui sait le lire. Voir `gmail::apercu`. */
+export function pieceJointeApercu(message: string, piece: string): Promise<Apercu> {
+  return invoke<Apercu>('piece_jointe_apercu', { message, piece })
 }
 
 /** Libelles crees par l'utilisateur, par ordre alphabetique. */

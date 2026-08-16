@@ -80,8 +80,13 @@ export function Courrier({
     action?: { libelle: string; icone?: NomIcone; onClick: () => void }
   }
   proposition?: Proposition
-  regles: Regle[]
-  onCreerRegle: (regle: Regle) => Promise<void>
+  /** Règles de chaque boîte, indexées par adresse de compte.
+   *
+   *  Indexées et non mises bout à bout : sous « Tous les comptes », une règle
+   *  posée dans une boîte ne dit rien du message d'une autre, et proposer d'en
+   *  créer une là où elle existe déjà — ou l'inverse — serait faux. */
+  regles: Record<string, Regle[]>
+  onCreerRegle: (compte: string, regle: Regle) => Promise<void>
   logos: Record<string, string>
   /** Ouvrir un message le marque comme lu chez Gmail. */
   onOuvrir: (id: string) => void
@@ -186,7 +191,7 @@ export function Courrier({
     )
   }
   if (!choisi) return <Vide {...vide} />
-  const regleExistante = regles.find(
+  const regleExistante = (regles[choisi.compte] ?? []).find(
     (r) => r.expediteur.toLowerCase() === choisi.adresse,
   )
 
@@ -195,6 +200,7 @@ export function Courrier({
     setEnCours(true)
     try {
       await onCreerRegle(
+        choisi.compte,
         nouvelleRegle({
           adresse: choisi.adresse,
           nom: choisi.nom,

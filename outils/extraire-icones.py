@@ -39,6 +39,15 @@ MOTIFS = [
 # un, sinon la seconde branche manque.
 EXPRESSIONS = r"(?:nom|icone)=\{([^}]*)\}"
 
+# Une condition n'est pas un nom d'icône.
+#
+# `icone={aConfirmer === 'supprimer' ? 'delete' : 'archive'}` porte trois
+# chaînes, dont une qui désigne un état de l'interface. Sans ce retrait, elle
+# était cherchée dans Material Symbols et l'extraction s'arrêtait là — la table
+# de glyphes cessait alors d'être régénérable, en silence jusqu'à la prochaine
+# icône ajoutée.
+COMPARAISONS = r"(?:===|!==|==|!=)\s*'[a-z_0-9]+'"
+
 
 def icones_utilisees() -> list[str]:
     """Relit les noms directement dans les sources, sans liste à tenir."""
@@ -48,7 +57,8 @@ def icones_utilisees() -> list[str]:
         for motif in MOTIFS:
             trouvees |= set(re.findall(motif, texte))
         for expression in re.findall(EXPRESSIONS, texte):
-            trouvees |= set(re.findall(r"'([a-z_0-9]+)'", expression))
+            valeurs = re.sub(COMPARAISONS, "", expression)
+            trouvees |= set(re.findall(r"'([a-z_0-9]+)'", valeurs))
     return sorted(trouvees)
 
 

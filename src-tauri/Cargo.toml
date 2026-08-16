@@ -34,6 +34,10 @@ base64 = "0.23.1"
 # résultats dans l'ordre de départ. Déjà présente dans l'arbre via `reqwest` :
 # la déclarer ici ne compile rien de plus.
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# Décodage des images jointes. Uniquement les formats matriciels courants : le
+# but est de reconstruire l'image à partir de ses pixels avant de la montrer,
+# pas d'accepter le plus de formats possible. Voir `gmail::apercu`.
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

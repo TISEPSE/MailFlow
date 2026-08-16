@@ -142,3 +142,13 @@ export function couleurDuCompte(
   const rang = comptes.findIndex((c) => c.toLowerCase() === adresse.toLowerCase())
   return palette(rang >= 0 ? rang : comptes.length)
 }
+
+/** Taille de fichier lisible : « 380 Ko », « 2,4 Mo ».
+ *
+ *  En unités de mille vingt-quatre, comme le système de fichiers les compte, et
+ *  avec la virgule décimale française. */
+export function poids(octets: number): string {
+  if (octets < 1024) return `${octets} o`
+  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`
+  return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`
+}

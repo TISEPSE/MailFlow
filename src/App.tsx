@@ -54,16 +54,18 @@ import {
   regleModifier,
   regleBasculer,
   regleSupprimer,
-  reglesLister,
+  reglesToutes,
 } from './lib/tauri'
 import type {
   CategorieMessage,
   EtatApplication,
-  JeuDeRegles,
   MessageAffiche,
   CompteConnu,
   LibelleGmail,
+  JeuDeRegles,
   ProfilCompte,
+  Regle,
+  ReglesDuCompte,
 } from './types/backend'
 
 type Vue = CategorieMessage | 'regles' | 'parametres'
@@ -133,7 +135,15 @@ function interrogeable(sante: EtatApplication | null | undefined): boolean {
 
 export default function App() {
   const [etat, setEtat] = useState<EtatApplication | null>(null)
-  const [regles, setRegles] = useState<JeuDeRegles | null>(null)
+  /** Règles de chaque compte, indexées par adresse.
+   *
+   *  Une même adresse d'expéditeur peut mériter deux sorts selon la boîte qui
+   *  la reçoit : les règles ne sont donc pas communes. `null` tant que rien n'a
+   *  encore été lu — distinct d'un utilisateur qui n'a aucune règle. */
+  const [reglesParCompte, setReglesParCompte] = useState<Record<
+    string,
+    Regle[]
+  > | null>(null)
   const [boite, setBoite] = useState<MessageAffiche[]>([])
   const [vue, setVue] = useState<Vue>('humain')
   const { prefs, regler } = usePreferences()
@@ -215,13 +225,15 @@ export default function App() {
 
   const rafraichir = useCallback(async () => {
     try {
-      const [sante, jeu, connus] = await Promise.all([
+      const [sante, jeux, connus] = await Promise.all([
         appHealth(),
-        reglesLister(),
+        reglesToutes().catch(() => [] as ReglesDuCompte[]),
         comptesLister().catch(() => [] as CompteConnu[]),
       ])
       setEtat(sante)
-      setRegles(jeu)
+      setReglesParCompte(
+        Object.fromEntries(jeux.map((j) => [j.compte, j.regles.automations])),
+      )
       setComptes(connus)
       if (!sante.compteConnecte) {
         setProfil(null)
@@ -507,13 +519,47 @@ export default function App() {
     return vides
   }, [boite])
 
+  /** Boîtes dont la page des règles montre le contenu.
+   *
+   *  Celle qu'on regarde, ou toutes sous « Tous les comptes ». Avant le premier
+   *  relevé, `compteAffiche` n'est pas encore fixé : la première boîte connue
+   *  fait l'affaire, c'est celle du compte actif. */
+  const comptesDesRegles = useMemo(
+    () =>
+      compteAffiche === TOUS_LES_COMPTES
+        ? comptes.map((c) => c.adresse)
+        : compteAffiche
+          ? [compteAffiche]
+          : comptes.slice(0, 1).map((c) => c.adresse),
+    [compteAffiche, comptes],
+  )
+
+  /** Boîte visée par une règle qu'aucun message ne rattache à un compte. */
+  const compteParDefaut = comptesDesRegles[0] ?? ''
+
+  /** Les règles à l'écran, chacune avec la boîte à laquelle elle appartient. */
+  const reglesAffichees = useMemo(
+    () =>
+      comptesDesRegles.flatMap((compte) =>
+        (reglesParCompte?.[compte] ?? []).map((regle) => ({ compte, regle })),
+      ),
+    [comptesDesRegles, reglesParCompte],
+  )
+
+  /** Range le jeu que vient de rendre le backend, pour le seul compte touché. */
+  const noterLesRegles = (compte: string, jeu: JeuDeRegles) =>
+    setReglesParCompte((connues) => ({
+      ...connues,
+      [compte]: jeu.automations,
+    }))
+
   /** Combien d'éléments porte cette vue.
    *
    *  Des messages pour les vues de courrier, des règles pour la page des
    *  règles — c'est ce qu'on veut savoir d'un coup d'œil dans chaque cas. */
   const compte = (v: Vue): number =>
     v === 'regles'
-      ? (regles?.automations.length ?? 0)
+      ? reglesAffichees.length
       : v === 'parametres'
         ? 0
         : parCategorie[v as CategorieMessage].length
@@ -585,12 +631,13 @@ export default function App() {
       {ajoutFormation && (
         <ModaleFormation
           expediteurs={boite}
+          compteParDefaut={compteParDefaut}
           sombre={sombre}
           onFermer={() => setAjoutFormation(false)}
-          onValider={async (r) => {
+          onValider={async (compte, r) => {
             setAjoutFormation(false)
             await agir(async () => {
-              setRegles(await regleAjouter(r))
+              noterLesRegles(compte, await regleAjouter(compte, r))
               return `${r.nom_affichage || r.expediteur} rejoint les rappels de formation.`
             })
           }}
@@ -902,21 +949,32 @@ export default function App() {
             <PasConnecte etat={etat} enCours={enCours} onConnecter={() => setVue('parametres')} />
           ) : vue === 'regles' ? (
             <Regles
-              regles={regles?.automations ?? []}
+              regles={reglesAffichees}
+              comptes={comptesDesRegles}
               expediteurs={boite}
               libelles={libelles}
               sombre={sombre}
-              onBasculer={(id) => agir(async () => (setRegles(await regleBasculer(id)), null))}
-              onSupprimer={(id) => agir(async () => (setRegles(await regleSupprimer(id)), 'Règle supprimée.'))}
-              onCreerRegle={(r) =>
+              onBasculer={(compte, id) =>
                 agir(async () => {
-                  setRegles(await regleAjouter(r))
+                  noterLesRegles(compte, await regleBasculer(compte, id))
+                  return null
+                })
+              }
+              onSupprimer={(compte, id) =>
+                agir(async () => {
+                  noterLesRegles(compte, await regleSupprimer(compte, id))
+                  return 'Règle supprimée.'
+                })
+              }
+              onCreerRegle={(compte, r) =>
+                agir(async () => {
+                  noterLesRegles(compte, await regleAjouter(compte, r))
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
-              onModifierRegle={(id, r) =>
+              onModifierRegle={(compte, id, r) =>
                 agir(async () => {
-                  setRegles(await regleModifier(id, r))
+                  noterLesRegles(compte, await regleModifier(compte, id, r))
                   return `Règle modifiée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
@@ -952,7 +1010,7 @@ export default function App() {
               vise={messageVise}
               onVise={() => setMessageVise(null)}
               comptes={compteAffiche === TOUS_LES_COMPTES ? comptes : undefined}
-              regles={regles?.automations ?? []}
+              regles={reglesParCompte ?? {}}
               proposition={PROPOSITIONS[vue]}
               logos={logos}
               onOuvrir={(id) => void marquerLu(id)}
@@ -997,9 +1055,9 @@ export default function App() {
                 })
               }
               onCopier={(adresse) => annoncer(`${adresse} copiée.`)}
-              onCreerRegle={(r) =>
+              onCreerRegle={(compte, r) =>
                 agir(async () => {
-                  setRegles(await regleAjouter(r))
+                  noterLesRegles(compte, await regleAjouter(compte, r))
                   return `Règle créée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }

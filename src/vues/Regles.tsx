@@ -8,6 +8,14 @@
  * L'ajout se fait aussi ici. Ailleurs, une règle naît d'un message qu'on a sous
  * les yeux ; ici, l'utilisateur tape l'adresse — c'est le seul moyen de viser un
  * expéditeur dont aucun message n'est présentement dans la boîte.
+ *
+ * # Une règle appartient à un compte
+ *
+ * Une même adresse peut mériter deux sorts selon la boîte qui la reçoit : la
+ * lettre d'information qu'on archive côté personnel, on la lit côté
+ * professionnel. La page montre donc les règles du compte affiché, et celles de
+ * tous les comptes à la fois sous « Tous les comptes » — chacune étiquetée de la
+ * boîte qu'elle concerne, faute de quoi on ne saurait pas laquelle on modifie.
  */
 import { useState } from 'react'
 import {
@@ -30,6 +38,12 @@ import type {
   MessageAffiche,
   Regle,
 } from '../types/backend'
+
+/** Une règle et la boîte à laquelle elle appartient. */
+export interface RegleDuCompte {
+  compte: string
+  regle: Regle
+}
 
 const ONGLETS = [
   'Toutes',
@@ -113,6 +127,7 @@ function actionParDefaut(categorie: (typeof CATEGORIES)[number]): LibelleAction 
 
 export function Regles({
   regles,
+  comptes,
   onBasculer,
   onSupprimer,
   onCreerRegle,
@@ -121,11 +136,16 @@ export function Regles({
   libelles,
   sombre,
 }: {
-  regles: Regle[]
-  onBasculer: (id: string) => Promise<void>
-  onSupprimer: (id: string) => Promise<void>
-  onCreerRegle: (regle: Regle) => Promise<void>
-  onModifierRegle: (id: string, regle: Regle) => Promise<void>
+  regles: RegleDuCompte[]
+  /** Comptes où une règle peut naître. Le premier est proposé d'emblée.
+   *
+   *  Plus d'un signifie qu'on regarde « Tous les comptes » : chaque règle porte
+   *  alors le nom de sa boîte, et le formulaire demande laquelle viser. */
+  comptes: string[]
+  onBasculer: (compte: string, id: string) => Promise<void>
+  onSupprimer: (compte: string, id: string) => Promise<void>
+  onCreerRegle: (compte: string, regle: Regle) => Promise<void>
+  onModifierRegle: (compte: string, id: string, regle: Regle) => Promise<void>
   /** Expéditeurs de la boîte, proposés à la saisie. */
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
@@ -139,19 +159,26 @@ export function Regles({
    *  `null` : fermée. `'ajout'` : une règle neuve. Une règle : celle qu'on
    *  modifie. Un seul état plutôt que deux booléens, pour qu'ouvrir l'un ferme
    *  l'autre sans qu'on ait à y penser. */
-  const [fenetre, setFenetre] = useState<'ajout' | Regle | null>(null)
+  const [fenetre, setFenetre] = useState<'ajout' | RegleDuCompte | null>(null)
   const enEdition = fenetre !== null && fenetre !== 'ajout' ? fenetre : undefined
+
+  /** Plus d'une boîte à l'écran : il faut dire de laquelle on parle. */
+  const multiCompte = comptes.length > 1
 
   const fermer = () => setFenetre(null)
 
   const q = recherche.trim().toLowerCase()
   const visibles = regles
-    .filter((r) => onglet === 'Toutes' || r.categorie === CATEGORIE_ONGLET[onglet])
     .filter(
-      (r) =>
+      ({ regle }) =>
+        onglet === 'Toutes' || regle.categorie === CATEGORIE_ONGLET[onglet],
+    )
+    .filter(
+      ({ regle, compte }) =>
         !q ||
-        r.expediteur.toLowerCase().includes(q) ||
-        r.nom_affichage.toLowerCase().includes(q),
+        regle.expediteur.toLowerCase().includes(q) ||
+        regle.nom_affichage.toLowerCase().includes(q) ||
+        compte.toLowerCase().includes(q),
     )
 
   return (
@@ -230,12 +257,12 @@ export function Regles({
       ) : (
         <div className="flex-1 overflow-y-auto px-8 py-6">
           <div className="flex flex-col gap-2">
-            {visibles.map((r) => {
+            {visibles.map(({ compte, regle: r }) => {
               const [encre, fond] = ton(r.categorie, sombre)
               const confirme = aConfirmer === r.id
               return (
                 <div
-                  key={r.id}
+                  key={`${compte}/${r.id}`}
                   className="carte-survolable flex items-center gap-3.5 rounded-xl border px-4 py-3.5"
                   style={{
                     background: 'var(--card)',
@@ -245,7 +272,7 @@ export function Regles({
                 >
                   <Interrupteur
                     actif={r.active}
-                    onChange={() => void onBasculer(r.id)}
+                    onChange={() => void onBasculer(compte, r.id)}
                     libelle={`Activer la règle : ${phrase(r)}`}
                   />
 
@@ -256,6 +283,15 @@ export function Regles({
                         fond={fond}
                         couleur={encre}
                       />
+                      {multiCompte && (
+                        <span
+                          className="min-w-0 truncate font-mono text-[0.6562rem]"
+                          style={{ color: 'var(--accent-fg)' }}
+                          title={`Règle du compte ${compte}`}
+                        >
+                          {compte}
+                        </span>
+                      )}
                       <span
                         className="font-mono text-[0.6562rem]"
                         style={{ color: 'var(--sub)' }}
@@ -280,7 +316,7 @@ export function Regles({
                         variante="danger"
                         onClick={() => {
                           setAConfirmer(null)
-                          void onSupprimer(r.id)
+                          void onSupprimer(compte, r.id)
                         }}
                       >
                         Oui
@@ -295,7 +331,7 @@ export function Regles({
                           pour si peu est une punition. */}
                       <button
                         type="button"
-                        onClick={() => setFenetre(r)}
+                        onClick={() => setFenetre({ compte, regle: r })}
                         aria-label={`Modifier la règle : ${phrase(r)}`}
                         title="Modifier"
                         className="bouton bouton-icone flex-none rounded-lg p-1.5"
@@ -326,8 +362,8 @@ export function Regles({
           titre={enEdition ? 'Modifier la règle' : 'Ajouter une règle'}
           sous={
             enEdition
-              ? 'Le changement vaudra pour les messages à venir ; les messages déjà triés restent où ils sont.'
-              : 'Elle vaudra pour tous les messages à venir de cet expéditeur.'
+              ? `Le changement vaut pour ${enEdition.compte} seulement ; les messages déjà triés restent où ils sont.`
+              : 'Elle vaudra pour tous les messages à venir de cet expéditeur, dans la boîte choisie.'
           }
           onFermer={fermer}
         >
@@ -335,15 +371,17 @@ export function Regles({
             // La clé force un formulaire neuf d'une règle à l'autre : sans
             // elle, React garderait l'état de la précédente et rouvrirait la
             // suivante sur les choix de sa voisine.
-            key={enEdition?.id ?? 'ajout'}
-            depuis={enEdition}
+            key={enEdition?.regle.id ?? 'ajout'}
+            depuis={enEdition?.regle}
+            comptes={comptes}
+            compteDepart={enEdition?.compte}
             expediteurs={expediteurs}
             libelles={libelles}
             sombre={sombre}
             onAnnuler={fermer}
-            onValider={async (regle) => {
-              if (enEdition) await onModifierRegle(enEdition.id, regle)
-              else await onCreerRegle(regle)
+            onValider={async (compte, regle) => {
+              if (enEdition) await onModifierRegle(enEdition.compte, enEdition.regle.id, regle)
+              else await onCreerRegle(compte, regle)
               fermer()
             }}
           />
@@ -363,13 +401,19 @@ export function Regles({
 function FormulaireAjout({
   onValider,
   onAnnuler,
+  comptes,
+  compteDepart,
   expediteurs,
   libelles,
   sombre,
   depuis,
 }: {
-  onValider: (regle: Regle) => Promise<void>
+  onValider: (compte: string, regle: Regle) => Promise<void>
   onAnnuler: () => void
+  /** Boîtes où la règle peut naître. */
+  comptes: string[]
+  /** Boîte de la règle qu'on modifie ; à défaut, la première proposée. */
+  compteDepart?: string
   expediteurs: MessageAffiche[]
   libelles: LibelleGmail[]
   sombre: boolean
@@ -378,6 +422,7 @@ function FormulaireAjout({
 }) {
   const depart = depuis ? NOM_CATEGORIE[depuis.categorie] : ('Publicités' as const)
 
+  const [compte, setCompte] = useState(compteDepart ?? comptes[0] ?? '')
   const [adresse, setAdresse] = useState(depuis?.expediteur ?? '')
   const [categorie, setCategorie] = useState<(typeof CATEGORIES)[number]>(depart)
   // Une règle relue a déjà ses choix : les redeviner reviendrait à les défaire
@@ -415,10 +460,10 @@ function FormulaireAjout({
   }
 
   const enregistrer = async () => {
-    if (!valide || enCours) return
+    if (!valide || !compte || enCours) return
     setEnCours(true)
     try {
-      await onValider(regle)
+      await onValider(compte, regle)
     } finally {
       setEnCours(false)
     }
@@ -432,6 +477,22 @@ function FormulaireAjout({
       }}
       className="flex flex-col gap-4"
     >
+      {/* La boîte d'abord : tout ce qui suit ne vaudra que pour elle. Absente
+          du formulaire de modification — déplacer une règle d'un compte à
+          l'autre, c'est en supprimer une et en créer une autre, pas la
+          corriger. */}
+      {comptes.length > 1 && !depuis && (
+        <Champ titre="Dans la boîte">
+          <Selecteur
+            valeurs={comptes.map((c) => ({ valeur: c, texte: c }))}
+            valeur={compte}
+            onChange={setCompte}
+            libelle="Compte concerné par la règle"
+            className="w-full"
+          />
+        </Champ>
+      )}
+
       <ChampAdresse
         adresse={adresse}
         expediteurs={expediteurs}
@@ -512,7 +573,7 @@ function FormulaireAjout({
           <Bouton onClick={onAnnuler}>Annuler</Bouton>
           <button
             type="submit"
-            disabled={!valide || enCours}
+            disabled={!valide || !compte || enCours}
             className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[0.8125rem] leading-none font-semibold"
           >
             {enCours ? 'Enregistrement…' : 'Enregistrer la règle'}

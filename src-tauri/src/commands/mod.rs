@@ -20,6 +20,7 @@ use crate::cache;
 use crate::comptes::{self, Annuaire};
 use crate::config;
 use crate::error::{AppError, Resultat};
+use crate::gmail::apercu::{self, Apercu};
 use crate::gmail::boite::{MessageAffiche, charger_boite_suivi};
 use crate::gmail::client::{ClientGmail, SourceJeton};
 use crate::gmail::execution::RapportExecution;
@@ -119,9 +120,13 @@ pub struct EtatApplication {
     /// Expose volontairement : le mode avancé de la vue 5 propose d'ouvrir le
     /// fichier brut. C'est un chemin appartenant à l'utilisateur, dans sa propre
     /// session — pas un secret.
+    ///
+    /// Celui du compte actif : chaque compte a désormais ses règles à lui.
     pub chemin_regles: String,
 
     /// `None` quand le fichier existe mais n'a pas pu être lu.
+    ///
+    /// Compte les règles du compte actif, pas de tous les comptes.
     pub nombre_de_regles: Option<usize>,
 
     pub compte_connecte: bool,
@@ -140,7 +145,7 @@ pub struct EtatApplication {
 #[tauri::command]
 pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<EtatApplication> {
     let dossier = dossier_config(&app)?;
-    let store = RulesStore::new(&dossier);
+    let store = RulesStore::pour_compte(&dossier, &compte_actif(&app));
 
     let nombre_de_regles = match store.charger() {
         Ok(regles) => Some(regles.automations.len()),
@@ -250,7 +255,9 @@ pub async fn gmail_synchroniser(
     etat: State<'_, EtatAuth>,
 ) -> Resultat<RapportExecution> {
     let dossier = dossier_config(&app)?;
-    let regles = RulesStore::new(&dossier).charger()?;
+    // Les règles du compte qu'on synchronise, et d'aucun autre : celles d'une
+    // autre boîte n'ont rien à dire sur celle-ci.
+    let regles = RulesStore::pour_compte(&dossier, &compte_actif(&app)).charger()?;
 
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
 
@@ -272,25 +279,74 @@ pub async fn gmail_synchroniser(
 // Règles
 // ---------------------------------------------------------------------------
 
-/// Chaque commande de règle rend le jeu complet plutôt qu'un accusé de
-/// réception. L'interface se réaffiche à partir de ce qui est réellement sur le
-/// disque, au lieu de maintenir sa propre copie qui finirait par diverger.
-fn ecrire_regles(app: &AppHandle, regles: &RuleSet) -> Resultat<()> {
-    RulesStore::new(&dossier_config(app)?).enregistrer(regles)
+/// Les règles d'un compte, telles qu'elles partent vers l'interface.
+#[derive(Debug, Serialize)]
+pub struct ReglesDuCompte {
+    pub compte: String,
+    pub regles: RuleSet,
+}
+
+/// Magasin des règles d'un compte, après vérification que le compte existe.
+///
+/// Les règles appartiennent à un compte : une commande qui n'en désigne aucun
+/// n'a pas de sens, et un compte inconnu laisserait derrière lui un fichier que
+/// plus rien ne rattache à une boîte. L'adresse arrive du webview, donc d'un
+/// endroit qu'on ne suppose pas intègre — elle est confrontée à l'annuaire
+/// plutôt que crue sur parole.
+fn magasin_regles(app: &AppHandle, compte: &str) -> Resultat<RulesStore> {
+    let dossier = dossier_config(app)?;
+
+    if compte.trim().is_empty() || !comptes::charger(&dossier).est_connu(compte) {
+        log::warn!("règles demandées pour un compte inconnu");
+        return Err(AppError::NonAuthentifie);
+    }
+
+    Ok(RulesStore::pour_compte(&dossier, compte))
+}
+
+/// Chaque commande de règle rend le jeu complet du compte plutôt qu'un accusé
+/// de réception. L'interface se réaffiche à partir de ce qui est réellement sur
+/// le disque, au lieu de maintenir sa propre copie qui finirait par diverger.
+#[tauri::command]
+pub async fn regles_lister(app: AppHandle, compte: String) -> Resultat<RuleSet> {
+    magasin_regles(&app, &compte)?.charger()
+}
+
+/// Les règles de tous les comptes connus, pour la vue « Tous les comptes ».
+///
+/// Un compte dont le fichier est illisible n'interrompt pas la lecture des
+/// autres : il apparaît sans règle, et son propre écran dira pourquoi.
+#[tauri::command]
+pub async fn regles_toutes(app: AppHandle) -> Resultat<Vec<ReglesDuCompte>> {
+    let dossier = dossier_config(&app)?;
+
+    Ok(comptes::charger(&dossier)
+        .connus
+        .iter()
+        .map(|c| ReglesDuCompte {
+            compte: c.adresse.clone(),
+            regles: RulesStore::pour_compte(&dossier, &c.adresse)
+                .charger()
+                .unwrap_or_else(|e| {
+                    log::warn!("règles illisibles pour un compte : {e}");
+                    RuleSet::default()
+                }),
+        })
+        .collect())
 }
 
 #[tauri::command]
-pub async fn regles_lister(app: AppHandle) -> Resultat<RuleSet> {
-    RulesStore::new(&dossier_config(&app)?).charger()
-}
+pub async fn regle_ajouter(app: AppHandle, compte: String, regle: Rule) -> Resultat<RuleSet> {
+    let magasin = magasin_regles(&app, &compte)?;
+    let mut regles = magasin.charger()?;
 
-#[tauri::command]
-pub async fn regle_ajouter(app: AppHandle, regle: Rule) -> Resultat<RuleSet> {
-    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
     regles.ajouter(regle);
-    ecrire_regles(&app, &regles)?;
+    magasin.enregistrer(&regles)?;
 
-    log::info!("règle enregistrée, {} au total", regles.automations.len());
+    log::info!(
+        "règle enregistrée, {} au total pour ce compte",
+        regles.automations.len()
+    );
     Ok(regles)
 }
 
@@ -300,11 +356,17 @@ pub async fn regle_ajouter(app: AppHandle, regle: Rule) -> Resultat<RuleSet> {
 /// reconnaît une règle à son expéditeur, or c'est justement l'expéditeur qu'on
 /// vient souvent corriger.
 #[tauri::command]
-pub async fn regle_modifier(app: AppHandle, id: String, regle: Rule) -> Resultat<RuleSet> {
-    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+pub async fn regle_modifier(
+    app: AppHandle,
+    compte: String,
+    id: String,
+    regle: Rule,
+) -> Resultat<RuleSet> {
+    let magasin = magasin_regles(&app, &compte)?;
+    let mut regles = magasin.charger()?;
 
     if regles.modifier(&id, regle) {
-        ecrire_regles(&app, &regles)?;
+        magasin.enregistrer(&regles)?;
         log::info!("règle {id} modifiée");
     } else {
         log::warn!("règle {id} introuvable, rien de modifié");
@@ -314,20 +376,24 @@ pub async fn regle_modifier(app: AppHandle, id: String, regle: Rule) -> Resultat
 }
 
 #[tauri::command]
-pub async fn regle_supprimer(app: AppHandle, id: String) -> Resultat<RuleSet> {
-    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+pub async fn regle_supprimer(app: AppHandle, compte: String, id: String) -> Resultat<RuleSet> {
+    let magasin = magasin_regles(&app, &compte)?;
+    let mut regles = magasin.charger()?;
+
     if regles.supprimer(&id) {
-        ecrire_regles(&app, &regles)?;
+        magasin.enregistrer(&regles)?;
         log::info!("règle {id} supprimée");
     }
     Ok(regles)
 }
 
 #[tauri::command]
-pub async fn regle_basculer(app: AppHandle, id: String) -> Resultat<RuleSet> {
-    let mut regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+pub async fn regle_basculer(app: AppHandle, compte: String, id: String) -> Resultat<RuleSet> {
+    let magasin = magasin_regles(&app, &compte)?;
+    let mut regles = magasin.charger()?;
+
     if regles.basculer(&id) {
-        ecrire_regles(&app, &regles)?;
+        magasin.enregistrer(&regles)?;
     }
     Ok(regles)
 }
@@ -380,8 +446,8 @@ pub async fn boite_lister(
 ) -> Resultat<Vec<MessageAffiche>> {
     use tauri::Emitter;
 
-    let regles = RulesStore::new(&dossier_config(&app)?).charger()?;
     let compte = compte_actif(&app);
+    let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
 
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
     let boite = charger_boite_suivi(&client, &regles, &compte, |faits, total| {
@@ -406,11 +472,12 @@ pub async fn boite_lister(
 #[tauri::command]
 pub async fn boite_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     let racine = dossier_cache(&app)?;
-    let mut boite = cache::lire_boite(&racine, &compte_actif(&app)).unwrap_or_default();
+    let compte = compte_actif(&app);
+    let mut boite = cache::lire_boite(&racine, &compte).unwrap_or_default();
 
     // Les règles sont rejouées à la lecture : sans cela, une règle créée depuis
     // le dernier relevé resterait sans effet jusqu'au suivant.
-    let regles = RulesStore::new(&dossier_config(&app)?).charger()?;
+    let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
     cache::reclasser(&mut boite, &regles);
 
     log::info!("{} message(s) relus du cache", boite.len());
@@ -427,17 +494,26 @@ pub async fn boite_melangee(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     let dossier = dossier_config(&app)?;
     let racine = dossier_cache(&app)?;
 
-    let mut tout: Vec<MessageAffiche> = comptes::charger(&dossier)
-        .connus
-        .iter()
-        .filter_map(|c| cache::lire_boite(&racine, &c.adresse))
-        .flatten()
-        .collect();
+    // Chaque boîte est reclassée avec les règles de son propre compte avant
+    // d'être versée au tas commun. C'est tout l'intérêt du cloisonnement : la
+    // vue mélange les messages, pas les décisions qui les concernent.
+    let mut tout: Vec<MessageAffiche> = Vec::new();
 
-    // Comme pour une boîte seule : les règles valent pour tous les comptes, et
-    // doivent s'appliquer sans attendre un relevé de chacun.
-    let regles = RulesStore::new(&dossier).charger()?;
-    cache::reclasser(&mut tout, &regles);
+    for compte in comptes::charger(&dossier).connus {
+        let Some(mut boite) = cache::lire_boite(&racine, &compte.adresse) else {
+            continue;
+        };
+
+        let regles = RulesStore::pour_compte(&dossier, &compte.adresse)
+            .charger()
+            .unwrap_or_else(|e| {
+                log::warn!("règles illisibles, boîte laissée telle quelle : {e}");
+                RuleSet::default()
+            });
+
+        cache::reclasser(&mut boite, &regles);
+        tout.extend(boite);
+    }
 
     // Décroissant : le plus récent en tête, comme dans chaque boîte prise
     // séparément. Une date absente part en fin de liste plutôt que de prendre
@@ -591,6 +667,41 @@ pub async fn piece_jointe_enregistrer(
 
     log::info!("pièce jointe enregistrée, {} octets", octets.len());
     Ok(chemin.display().to_string())
+}
+
+/// Prépare l'aperçu d'une pièce jointe, sans rien écrire sur le disque.
+///
+/// Le fichier est demandé à Gmail puis **reconstruit** avant de partir vers
+/// l'interface : une image est décodée et ré-encodée, un texte est validé, et
+/// tout le reste est refusé. Voir [`crate::gmail::apercu`] pour ce que chaque
+/// famille de fichiers subit au passage, et pourquoi.
+///
+/// Rien n'est mis en cache : l'aperçu vit le temps qu'on le regarde. C'est ce
+/// qui distingue « consulter » de « garder », et l'enregistrement reste un geste
+/// délibéré.
+#[tauri::command]
+pub async fn piece_jointe_apercu(
+    etat: State<'_, EtatAuth>,
+    message: String,
+    piece: String,
+) -> Resultat<Apercu> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let octets = client.piece_jointe(&message, &piece).await?;
+
+    let apercu = apercu::preparer(&octets);
+
+    log::info!(
+        "aperçu préparé pour {} octets reçus : {}",
+        octets.len(),
+        match &apercu {
+            Apercu::Image { .. } => "image ré-encodée",
+            Apercu::Pdf { .. } => "pdf",
+            Apercu::Texte { .. } => "texte",
+            Apercu::Impossible { .. } => "aucun",
+        }
+    );
+
+    Ok(apercu)
 }
 
 /// Réduit un nom fourni par un tiers à un nom de fichier inoffensif.
@@ -1189,6 +1300,14 @@ pub async fn compte_oublier(
     etat.session.lock().await.effacer_secret(&cle)?;
     annuaire.oublier(&adresse);
     comptes::ecrire(&dossier, &annuaire)?;
+
+    // Les règles suivent le compte : les garder ferait ressurgir de vieilles
+    // automatisations le jour où la même adresse serait rebranchée, sans que
+    // personne ne se souvienne les avoir posées. Un échec ici ne remet pas en
+    // cause le retrait du compte, qui est déjà fait.
+    if let Err(e) = RulesStore::pour_compte(&dossier, &adresse).effacer() {
+        log::warn!("règles du compte retiré non effacées : {e}");
+    }
 
     if let (Some(jeton), Ok(client)) = (jeton, etat.client())
         && let Err(e) = client.revoquer(&jeton).await

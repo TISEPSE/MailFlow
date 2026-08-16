@@ -6,6 +6,11 @@
  * l'action l'est aussi : ranger, sans rien changer dans Gmail. Faire choisir
  * l'une et l'autre reviendrait à poser deux questions dont on a déjà la
  * réponse, avec le risque d'archiver les rappels qu'on voulait lire.
+ *
+ * La boîte concernée n'est pas demandée non plus : quand l'adresse est celle
+ * d'un message présent, c'est la boîte qui l'a reçu ; sinon, celle qu'on
+ * regarde. Poser la question ferait retomber sur l'utilisateur une déduction
+ * que l'application peut faire.
  */
 import { useState } from 'react'
 import { Bouton, Modale } from './base'
@@ -15,14 +20,17 @@ import type { MessageAffiche, Regle } from '../types/backend'
 
 export function ModaleFormation({
   expediteurs,
+  compteParDefaut,
   sombre,
   onFermer,
   onValider,
 }: {
   expediteurs: MessageAffiche[]
+  /** Boîte visée quand l'adresse saisie n'est celle d'aucun message présent. */
+  compteParDefaut: string
   sombre: boolean
   onFermer: () => void
-  onValider: (regle: Regle) => Promise<void>
+  onValider: (compte: string, regle: Regle) => Promise<void>
 }) {
   const [adresse, setAdresse] = useState('')
   const [enCours, setEnCours] = useState(false)
@@ -41,7 +49,7 @@ export function ModaleFormation({
     if (!valide || enCours) return
     setEnCours(true)
     try {
-      await onValider(regle)
+      await onValider(connu?.compte || compteParDefaut, regle)
     } finally {
       setEnCours(false)
     }
