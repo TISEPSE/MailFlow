@@ -598,11 +598,14 @@ export default function App() {
         <nav
           className="flex flex-none flex-col gap-0.5 border-r p-3 transition-[width] duration-150"
           style={{
-            // 72 et non 68 : ôtez les 12 pixels de rembourrage de chaque côté
-            // et les 10 de l'entrée, il ne restait que 24 pixels pour une
-            // icône qui en fait 28 — elle débordait, et la pastille active le
-            // montrait sans détour.
-            width: repliee ? 72 : 248,
+            // En `rem`, comme le reste de la mise en page : la barre suit la
+            // taille de police du système au lieu de rester figée à côté d'un
+            // texte qui grandit.
+            //
+            // Repliée, 4,5 rem et pas moins : ôtez le rembourrage de chaque
+            // côté et celui de l'entrée, il ne reste que la place de l'icône.
+            // En deçà, elle débordait, et la pastille active le montrait.
+            width: repliee ? '4.5rem' : '14.5rem',
             background: 'var(--side)',
             borderColor: 'var(--line)',
           }}
@@ -1091,12 +1094,14 @@ function MenuDeCompte({
     }
   }, [onFermer, declencheur])
 
-  // L'actif est retiré quand l'annuaire sait lequel c'est. S'il l'ignore, mieux
-  // vaut tout proposer que d'afficher une liste vide : basculer sur le compte
-  // déjà actif ne fait rien de fâcheux.
-  const autres = comptes.some((c) => c.actif)
-    ? comptes.filter((c) => !c.actif)
-    : comptes
+  // Tous les comptes sont proposés, y compris celui qu'on regarde — marqué,
+  // pas caché.
+  //
+  // Le retirer de la liste paraissait logique tant que le menu ne servait qu'à
+  // aller ailleurs. Depuis la vue mélangée, cela le rendait inatteignable :
+  // trois comptes reliés, deux dans la liste, et aucun moyen de revenir au
+  // troisième seul. Une liste qui compte moins d'entrées que de comptes se lit
+  // d'ailleurs comme un compte perdu.
 
   return (
     <div
@@ -1149,11 +1154,14 @@ function MenuDeCompte({
         </>
       )}
 
-      {autres.map((c) => (
+      {comptes.map((c) => (
         <button
           key={c.adresse}
           type="button"
           role="menuitem"
+          // « Celui qu'on regarde » et non « l'actif » : en vue mélangée on
+          // regarde tout, et aucune ligne ne doit alors se prétendre courante.
+          aria-current={(!melange && c.actif) || undefined}
           onClick={() => onBasculer(c.adresse)}
           className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
         >
@@ -1180,10 +1188,18 @@ function MenuDeCompte({
               </span>
             )}
           </span>
+          {!melange && c.actif && (
+            <Icone
+              nom="check_circle"
+              taille="1rem"
+              rempli
+              style={{ color: 'var(--accent-fg)' }}
+            />
+          )}
         </button>
       ))}
 
-      {autres.length > 0 && (
+      {comptes.length > 0 && (
         <div className="mx-1 my-1.5 border-t" style={{ borderColor: 'var(--line)' }} />
       )}
 

@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import {
   Bouton,
+  Confirmation,
   Icone,
   Modale,
   Selecteur,
@@ -107,6 +108,13 @@ export function Courrier({
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
+
+  /** Message dont la suppression attend confirmation.
+   *
+   *  Le message entier et non son identifiant : la fenêtre nomme l'expéditeur,
+   *  et « Supprimer ce message ? » sans sujet oblige à se souvenir de ce qu'on
+   *  visait. */
+  const [aSupprimer, setASupprimer] = useState<MessageAffiche | null>(null)
 
   // La recherche désigne un message : la vue l'ouvre, puis rend la main. Sans
   // ce second temps, la sélection resterait clouée dessus et l'on ne pourrait
@@ -251,12 +259,29 @@ export function Courrier({
               variante="danger"
               icone="delete"
               tailleIcone="1.25em"
-              onClick={() => onSupprimer(choisi.id)}
+              onClick={() => setASupprimer(choisi)}
               disabled={enCours}
               titre="Mettre à la corbeille — récupérable 30 jours"
             >
               Supprimer
             </Bouton>
+
+            {aSupprimer && (
+              <Confirmation
+                titre="Mettre ce message à la corbeille ?"
+                sous={`De ${aSupprimer.nom} — « ${aSupprimer.sujet || 'sans objet'} ». Gmail le garde trente jours, puis l'efface.`}
+                libelle="Supprimer"
+                variante="danger"
+                icone="delete"
+                enCours={enCours}
+                onConfirmer={() => {
+                  const id = aSupprimer.id
+                  setASupprimer(null)
+                  onSupprimer(id)
+                }}
+                onAnnuler={() => setASupprimer(null)}
+              />
+            )}
 
             {regleExistante && (
               <span

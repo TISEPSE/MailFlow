@@ -16,7 +16,15 @@
  * attendues — la synthèse du jour et le résumé d'une newsletter.
  */
 import { useMemo, useState } from 'react'
-import { Bouton, Icone, Modale, Pastille, SqueletteListe, Vide } from '../composants/base'
+import {
+  Bouton,
+  Confirmation,
+  Icone,
+  Modale,
+  Pastille,
+  SqueletteListe,
+  Vide,
+} from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
 import { messageCorps } from '../lib/tauri'
@@ -223,6 +231,13 @@ function Carte({
 }) {
   const [fond, encre] = palette(rang)
 
+  /** Geste en attente de confirmation, ou `null`.
+   *
+   *  Les deux boutons font disparaître la carte de la page. Rien n'est perdu —
+   *  la corbeille garde trente jours, l'archive ne détruit rien — mais un clic
+   *  de travers coûterait d'aller rechercher le message dans Gmail. */
+  const [aConfirmer, setAConfirmer] = useState<'archiver' | 'supprimer' | null>(null)
+
   return (
     <div
       className="carte-survolable flex flex-col overflow-hidden rounded-2xl border"
@@ -283,7 +298,7 @@ function Carte({
           variante="principal"
           icone="archive"
           tailleIcone="1.25em"
-          onClick={onArchiver}
+          onClick={() => setAConfirmer('archiver')}
           titre="Le message quitte la boîte de réception. Rien n'est supprimé."
         >
           Garder &amp; archiver
@@ -292,12 +307,37 @@ function Carte({
           variante="danger"
           icone="delete"
           tailleIcone="1.25em"
-          onClick={onSupprimer}
+          onClick={() => setAConfirmer('supprimer')}
           titre="Mettre à la corbeille — récupérable 30 jours"
         >
           Supprimer
         </Bouton>
       </div>
+
+      {aConfirmer && (
+        <Confirmation
+          titre={
+            aConfirmer === 'supprimer'
+              ? 'Mettre cette newsletter à la corbeille ?'
+              : 'Archiver cette newsletter ?'
+          }
+          sous={
+            aConfirmer === 'supprimer'
+              ? `De ${message.nom} — « ${message.sujet || 'sans objet'} ». Gmail la garde trente jours, puis l'efface.`
+              : `De ${message.nom} — « ${message.sujet || 'sans objet'} ». Elle quitte la boîte de réception ; rien n'est supprimé.`
+          }
+          libelle={aConfirmer === 'supprimer' ? 'Supprimer' : 'Archiver'}
+          variante={aConfirmer === 'supprimer' ? 'danger' : 'principal'}
+          icone={aConfirmer === 'supprimer' ? 'delete' : 'archive'}
+          onConfirmer={() => {
+            const geste = aConfirmer
+            setAConfirmer(null)
+            if (geste === 'supprimer') onSupprimer()
+            else onArchiver()
+          }}
+          onAnnuler={() => setAConfirmer(null)}
+        />
+      )}
     </div>
   )
 }

@@ -73,6 +73,26 @@ export function Icone({
       style={{
         fill: 'currentColor',
         marginInline: marge,
+        // Aligne l'icône sur les capitales du texte quand elle est posée dans
+        // le fil du texte plutôt que dans une rangée flex.
+        //
+        // C'est là qu'était le défaut d'alignement, et il est bien plus gros
+        // que celui qu'on cherchait ailleurs : une boîte en ligne repose sur
+        // la *ligne de base*, si bien qu'une icône d'une fois et demie la
+        // hauteur du texte dépasse largement au-dessus des capitales — mesuré
+        // à 3,9 px, quand les rangées flex se disputaient un quart de pixel.
+        //
+        //   vertical-align   écart icône / capitales
+        //   défaut           −3,88 px
+        //   −0,20 em         −1,38 px
+        //   −0,25 em         −0,62 px
+        //   −0,30 em         −0,12 px  ← retenu
+        //   −0,35 em         +0,62 px
+        //
+        // Sans effet sur les rangées flex : `vertical-align` ne s'applique pas
+        // à un enfant de conteneur flex. La même valeur sert donc partout, et
+        // il n'y a plus deux façons d'aligner une icône selon son entourage.
+        verticalAlign: '-0.3em',
         ...style,
       }}
     >
@@ -391,6 +411,51 @@ export function Bloc({
  * Trois manières d'en sortir — `Échap`, le fond, le bouton — parce qu'une
  * fenêtre dont on ne sait pas sortir est pire que pas de fenêtre du tout.
  */
+/**
+ * Demande confirmation avant un geste qu'on ne rattrape pas d'un clic.
+ *
+ * Supprimer et archiver font tous deux disparaître un message de la boîte. Ils
+ * sont récupérables — la corbeille garde trente jours, l'archive ne détruit
+ * rien — mais les retrouver demande d'aller dans Gmail et de savoir où
+ * chercher. Un clic de travers dans une liste ne doit pas coûter ça.
+ *
+ * La fenêtre nomme ce qui va disparaître : « Supprimer ce message ? » sans le
+ * sujet oblige à se souvenir de ce qu'on visait.
+ */
+export function Confirmation({
+  titre,
+  sous,
+  libelle,
+  variante = 'danger',
+  icone,
+  enCours = false,
+  onConfirmer,
+  onAnnuler,
+}: {
+  titre: string
+  sous: string
+  /** Ce que fait le bouton, à l'infinitif : « Supprimer », « Archiver ». */
+  libelle: string
+  variante?: 'principal' | 'danger'
+  icone?: NomIcone
+  enCours?: boolean
+  onConfirmer: () => void
+  onAnnuler: () => void
+}) {
+  return (
+    <Modale titre={titre} sous={sous} onFermer={onAnnuler}>
+      <div className="flex items-center justify-end gap-2">
+        {/* Annuler à gauche et sans accent : c'est le geste sans conséquence,
+            il n'a pas à attirer l'œil avant celui qu'on est venu faire. */}
+        <Bouton onClick={onAnnuler}>Annuler</Bouton>
+        <Bouton variante={variante} icone={icone} onClick={onConfirmer} disabled={enCours}>
+          {libelle}
+        </Bouton>
+      </div>
+    </Modale>
+  )
+}
+
 export function Modale({
   titre,
   sous,
@@ -661,19 +726,20 @@ export function Progression({
             }}
           />
         </div>
-        <div
-          className="flex items-baseline justify-between font-mono text-[0.7812rem]"
-          style={{ color: 'var(--sub)' }}
-        >
-          <span>
-            {etape === 'connexion'
-              ? 'en attente de Google'
-              : indetermine
-                ? 'relevé des messages'
-                : `${faits} sur ${total} message${total > 1 ? 's' : ''}`}
-          </span>
-          <span>{indetermine ? '' : `${part} %`}</span>
-        </div>
+        {/* Le décompte, et rien d'autre.
+            Tant que le total est inconnu, cette ligne ne portait qu'un
+            commentaire — « en attente de Google », « relevé des messages » —
+            qui répétait le titre au-dessus et l'explication en dessous sans
+            rien apprendre. Une barre qui bouge dit déjà qu'on attend. */}
+        {!indetermine && (
+          <div
+            className="flex items-baseline justify-between font-mono text-[0.7812rem]"
+            style={{ color: 'var(--sub)' }}
+          >
+            <span>{`${faits} sur ${total} message${total > 1 ? 's' : ''}`}</span>
+            <span>{`${part} %`}</span>
+          </div>
+        )}
       </div>
 
       <p className="max-w-md text-center text-[0.8438rem]" style={{ color: 'var(--sub)' }}>
