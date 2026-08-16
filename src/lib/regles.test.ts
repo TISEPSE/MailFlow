@@ -22,6 +22,16 @@ describe('phrase', () => {
     )
   })
 
+  it('dit où le message ira, et ce que Gmail en fera', () => {
+    // « sans rien y changer » ne nommait ni l'un ni l'autre : la phrase doit
+    // dire la page de destination *et* que la boîte Gmail reste intacte.
+    const p = phrase(regle({ action: 'classer_seulement', categorie: 'humain' }))
+
+    expect(p).toContain('Mails directs')
+    expect(p).toContain('boîte de réception Gmail')
+    expect(p).not.toContain('sans rien')
+  })
+
   it('dit ce que fait un résumé', () => {
     const p = phrase(
       regle({ action: 'generer_resume_et_archiver', nom_affichage: 'TLDR' }),

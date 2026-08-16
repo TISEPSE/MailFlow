@@ -409,8 +409,13 @@ function LecteurEnGrand({
           donc ici que le défilement doit vivre. Sur la même feuille blanche que
           le message lui-même, sans quoi une bande de fenêtre apparaîtrait
           au-dessous d'une lettre courte. */}
+      {/* `h-full` et non `flex-1` : la fenêtre donne à son contenu une hauteur
+          fixe mais n'est pas un conteneur flex, si bien que `flex-1` n'y valait
+          rien. Le cadre du message, désormais à la hauteur de son contenu,
+          débordait alors d'un parent qui masque ce qui dépasse — le message
+          était coupé et plus rien ne défilait. */}
       <div
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="h-full overflow-y-auto"
         style={charge?.html ? { background: '#FFFFFF' } : undefined}
       >
         <CorpsIsole corps={charge} extrait={message.extrait} />

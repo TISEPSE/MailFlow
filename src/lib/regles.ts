@@ -24,7 +24,11 @@ export function phrase(r: Regle): string {
   const cible = r.nom_affichage || r.expediteur
 
   if (r.action === 'classer_seulement') {
-    return `Afficher les messages de ${cible} dans « ${VUE_DE_CATEGORIE[r.categorie]} », sans rien y changer.`
+    // « sans rien y changer » ne disait rien : ni ce qui change, ni où. La
+    // phrase nomme donc les deux choses que l'utilisateur veut savoir — dans
+    // quelle page de MailFlow il les retrouvera, et ce que Gmail en fait, à
+    // savoir rien : le message reste en boîte de réception, ni archivé ni lu.
+    return `Afficher les messages de ${cible} dans « ${VUE_DE_CATEGORIE[r.categorie]} ». Ils restent dans la boîte de réception Gmail.`
   }
   if (r.action === 'supprimer_toujours') {
     return `Supprimer systématiquement les messages de ${cible}.`
