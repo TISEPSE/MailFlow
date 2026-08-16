@@ -291,13 +291,12 @@ function Carte({
       </div>
 
       <div className="mt-auto flex items-center gap-2 px-4 py-3.5">
-        <Bouton icone="open_in_full" tailleIcone="1.25em" onClick={onVoir}>
+        <Bouton icone="open_in_full" onClick={onVoir}>
           Voir le mail
         </Bouton>
         <Bouton
           variante="principal"
           icone="archive"
-          tailleIcone="1.25em"
           onClick={() => setAConfirmer('archiver')}
           titre="Le message quitte la boîte de réception. Rien n'est supprimé."
         >
@@ -306,7 +305,6 @@ function Carte({
         <Bouton
           variante="danger"
           icone="delete"
-          tailleIcone="1.25em"
           onClick={() => setAConfirmer('supprimer')}
           titre="Mettre à la corbeille — récupérable 30 jours"
         >

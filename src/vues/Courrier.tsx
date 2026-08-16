@@ -258,7 +258,6 @@ export function Courrier({
               compact
               variante="danger"
               icone="delete"
-              tailleIcone="1.25em"
               onClick={() => setASupprimer(choisi)}
               disabled={enCours}
               titre="Mettre à la corbeille — récupérable 30 jours"

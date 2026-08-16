@@ -661,7 +661,7 @@ function BoutonCarte({
         lineHeight: 1,
       }}
     >
-      {icone && <Icone nom={icone} taille="1.35em" className="icone-bouton" />}
+      {icone && <Icone nom={icone} taille="1em" className="icone-bouton" />}
       {children}
     </button>
   )
@@ -866,7 +866,6 @@ function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
       <Bouton
         variante="danger"
         icone="delete"
-        tailleIcone="1.25em"
         enAttente={enCours}
         disabled={enCours || octets === 0}
         onClick={() => void vider()}

@@ -787,7 +787,6 @@ export function Vide({
             icone={action.icone}
             // Ce bouton conclut une page entière : à 14 pixels, l'icône
             // paraissait posée à côté du texte plutôt qu'avec lui.
-            tailleIcone="1.42em"
             onClick={action.onClick}
           >
             {action.libelle}
@@ -808,7 +807,7 @@ export function Bouton({
   titre,
   enAttente = false,
   compact = false,
-  tailleIcone = '1.35em',
+  tailleIcone = '1em',
   className = '',
 }: {
   children: ReactNode
@@ -816,7 +815,13 @@ export function Bouton({
   variante?: 'principal' | 'secondaire' | 'discret' | 'danger'
   icone?: NomIcone
   /** En `em` : l'icône suit la taille du texte du bouton, et le suit encore
-   *  si l'utilisateur change la taille de police du système. */
+   *  si l'utilisateur change la taille de police du système.
+   *
+   *  Une valeur par défaut qui vaut la taille du texte, et non une fois et
+   *  demie : à 1,35 em l'icône faisait deux fois la hauteur des capitales et
+   *  débordait autant sous la ligne de base qu'au-dessus des majuscules. Elle
+   *  était pourtant centrée au dixième de pixel — c'est la taille qui se
+   *  voyait, pas le centrage. */
   tailleIcone?: string
   disabled?: boolean
   titre?: string

@@ -507,13 +507,16 @@ export default function App() {
     return vides
   }, [boite])
 
-  /** Combien de messages attendent dans cette vue.
+  /** Combien d'éléments porte cette vue.
    *
-   *  Zéro pour les règles : ce ne sont pas des messages en attente, et un
-   *  compte n'y veut rien dire. La pastille annonçait « 1 » à côté de l'éclair
-   *  comme s'il y avait quelque chose à lire. */
+   *  Des messages pour les vues de courrier, des règles pour la page des
+   *  règles — c'est ce qu'on veut savoir d'un coup d'œil dans chaque cas. */
   const compte = (v: Vue): number =>
-    v === 'regles' || v === 'parametres' ? 0 : parCategorie[v as CategorieMessage].length
+    v === 'regles'
+      ? (regles?.automations.length ?? 0)
+      : v === 'parametres'
+        ? 0
+        : parCategorie[v as CategorieMessage].length
 
   /** Vrai tant que la boîte se relève : les compteurs ne veulent alors rien dire.
    *
@@ -605,7 +608,7 @@ export default function App() {
             // Repliée, 4,5 rem et pas moins : ôtez le rembourrage de chaque
             // côté et celui de l'entrée, il ne reste que la place de l'icône.
             // En deçà, elle débordait, et la pastille active le montrait.
-            width: repliee ? '4.5rem' : '14.5rem',
+            width: repliee ? '4.25rem' : '14.5rem',
             background: 'var(--side)',
             borderColor: 'var(--line)',
           }}

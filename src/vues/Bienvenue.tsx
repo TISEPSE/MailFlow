@@ -314,7 +314,6 @@ function Illustration({
             <Bouton
               variante="principal"
               icone="person"
-              tailleIcone="1.42em"
               onClick={onConnecter}
             >
               Connecter mon compte Google
