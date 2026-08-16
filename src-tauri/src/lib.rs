@@ -203,7 +203,9 @@ mod tests_navigation {
     fn les_liens_ordinaires_atteignent_le_systeme() {
         assert!(sortie_autorisee(&url("https://exemple.fr/facture")));
         assert!(sortie_autorisee(&url("http://exemple.fr/")));
-        assert!(sortie_autorisee(&url("mailto:contact@exemple.fr?subject=Bonjour")));
+        assert!(sortie_autorisee(&url(
+            "mailto:contact@exemple.fr?subject=Bonjour"
+        )));
     }
 
     #[test]

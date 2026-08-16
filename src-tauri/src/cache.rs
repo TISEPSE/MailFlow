@@ -58,7 +58,7 @@ fn fichier_releve(racine: &Path, compte: &str) -> PathBuf {
 /// Les droits sont posés à la création et non après coup : entre un fichier
 /// créé en `0644` et un `chmod` qui suit, il existe un instant où le contenu
 /// est lisible par tous.
-fn ecrire_prive(chemin: &Path, contenu: &str) -> std::io::Result<()> {
+pub fn ecrire_prive(chemin: &Path, contenu: &str) -> std::io::Result<()> {
     use std::io::Write;
 
     let mut options = std::fs::OpenOptions::new();

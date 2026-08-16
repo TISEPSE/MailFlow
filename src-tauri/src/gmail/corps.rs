@@ -385,11 +385,57 @@ pub fn lire(dossier: &Path, id: &str) -> Option<CorpsMessage> {
 }
 
 /// Range un corps. Un échec d'écriture n'est pas une raison de ne rien rendre.
+///
+/// Lisible du seul propriétaire, comme les relevés. Ces fichiers portent le
+/// texte intégral des messages : ils étaient écrits en `0644`, donc lisibles par
+/// tout autre compte de la machine, là où la simple liste des expéditeurs, elle,
+/// était bien protégée. C'était l'inverse de ce qu'il fallait.
 pub fn ranger(dossier: &Path, id: &str, corps: &CorpsMessage) {
     let _ = std::fs::create_dir_all(dossier);
-    if let Ok(texte) = serde_json::to_string(corps) {
-        let _ = std::fs::write(chemin_cache(dossier, id), texte);
+    if let Ok(texte) = serde_json::to_string(corps)
+        && let Err(e) = crate::cache::ecrire_prive(&chemin_cache(dossier, id), &texte)
+    {
+        log::info!("corps non mis en cache : {e}");
     }
+}
+
+/// Oublie les corps dont le message n'est plus dans aucune boîte.
+///
+/// Sans cela, le dossier ne fait que grossir : un corps y entre à chaque
+/// message reçu et n'en sort jamais, images comprises — jusqu'à deux mégaoctets
+/// l'image. Mesuré à trente-cinq mégaoctets après quelques jours d'usage, sans
+/// aucune limite en vue.
+///
+/// Les boîtes sont plafonnées ([`crate::gmail::boite::PLAFOND_BOITE`]), donc le
+/// dossier converge vers une taille stable au lieu de croître indéfiniment.
+///
+/// Rend le nombre de fichiers effacés.
+pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<String>) -> usize {
+    let Ok(entrees) = std::fs::read_dir(dossier) else {
+        return 0;
+    };
+
+    // Les noms de fichiers sont des identifiants assainis : on compare donc sur
+    // le chemin attendu de chaque message vivant, et non sur l'identifiant brut.
+    let gardes: std::collections::HashSet<PathBuf> =
+        vivants.iter().map(|id| chemin_cache(dossier, id)).collect();
+
+    let mut effaces = 0;
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        if chemin.extension().is_some_and(|e| e == "json") && !gardes.contains(&chemin) {
+            // Un fichier qu'on ne sait pas effacer sera repris au prochain
+            // démarrage : rien ne justifie d'interrompre le nettoyage.
+            if std::fs::remove_file(&chemin).is_ok() {
+                effaces += 1;
+            }
+        }
+    }
+
+    if effaces > 0 {
+        log::info!("{effaces} corps de message oubliés, faute de message");
+    }
+    effaces
 }
 
 #[cfg(test)]
@@ -695,5 +741,76 @@ mod tests {
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(vec![b'a'; TAILLE_MAX + 1]);
 
         assert!(decoder(&enorme).is_none());
+    }
+
+    /// Le nettoyage efface des fichiers : ce qu'il garde compte autant que ce
+    /// qu'il enlève.
+    mod oubli {
+        use super::*;
+        use std::collections::HashSet;
+
+        fn un_corps() -> CorpsMessage {
+            CorpsMessage {
+                html: Some("<p>bonjour</p>".into()),
+                texte: None,
+            }
+        }
+
+        #[test]
+        fn le_corps_d_un_message_disparu_est_efface_celui_d_un_message_vivant_reste() {
+            let dossier = tempfile::tempdir().unwrap();
+            ranger(dossier.path(), "vivant", &un_corps());
+            ranger(dossier.path(), "disparu", &un_corps());
+
+            let vivants = HashSet::from(["vivant".to_string()]);
+            assert_eq!(oublier_les_absents(dossier.path(), &vivants), 1);
+
+            assert!(lire(dossier.path(), "vivant").is_some());
+            assert!(lire(dossier.path(), "disparu").is_none());
+        }
+
+        #[test]
+        fn le_cache_cesse_de_grossir_au_fil_des_releves() {
+            // Le défaut d'origine : chaque relevé ajoutait des corps, aucun n'en
+            // retirait. Ici, dix relevés successifs de deux messages chacun —
+            // le dossier doit rester à deux fichiers, pas monter à vingt.
+            let dossier = tempfile::tempdir().unwrap();
+
+            for tour in 0..10 {
+                let ids = [format!("m{}", tour * 2), format!("m{}", tour * 2 + 1)];
+                for id in &ids {
+                    ranger(dossier.path(), id, &un_corps());
+                }
+                oublier_les_absents(dossier.path(), &ids.iter().cloned().collect());
+            }
+
+            let restants = std::fs::read_dir(dossier.path()).unwrap().count();
+            assert_eq!(restants, 2, "le dossier doit se stabiliser, pas gonfler");
+        }
+
+        #[test]
+        fn un_dossier_absent_ne_fait_pas_echouer_le_nettoyage() {
+            let vide = Path::new("/tmp/mailflow-dossier-qui-n-existe-pas");
+            assert_eq!(oublier_les_absents(vide, &HashSet::new()), 0);
+        }
+
+        #[test]
+        #[cfg(unix)]
+        fn le_texte_des_messages_n_est_lisible_que_par_son_proprietaire() {
+            // Ces fichiers portent le contenu intégral du courrier. Ils étaient
+            // écrits en 0644, quand la simple liste des expéditeurs, elle, était
+            // bien en 0600 : exactement l'inverse de ce qu'il fallait.
+            use std::os::unix::fs::PermissionsExt;
+
+            let dossier = tempfile::tempdir().unwrap();
+            ranger(dossier.path(), "m1", &un_corps());
+
+            let droits = std::fs::metadata(chemin_cache(dossier.path(), "m1"))
+                .unwrap()
+                .permissions()
+                .mode();
+
+            assert_eq!(droits & 0o777, 0o600, "droits : {:o}", droits & 0o777);
+        }
     }
 }

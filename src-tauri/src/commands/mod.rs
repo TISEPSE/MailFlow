@@ -598,8 +598,42 @@ pub async fn corps_precharger(
         let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });
     }
 
+    // Le dossier des corps ne se vidait jamais de lui-même. C'est le moment de
+    // le faire : la boîte vient d'être relevée, on sait donc exactement quels
+    // messages existent encore.
+    oublier_les_corps_sans_message(&app, &dossier);
+
     log::info!("{faits} corps de message prêts");
     Ok(faits)
+}
+
+/// Efface les corps dont plus aucune boîte ne parle.
+///
+/// La liste des messages vivants est prise sur **tous** les comptes connus, et
+/// non sur le seul compte courant : autrement, chaque bascule de compte
+/// effacerait le cache de l'autre, et la bascule redeviendrait l'attente qu'on
+/// cherche justement à supprimer.
+///
+/// Purement opportuniste : si l'annuaire ou un relevé sont illisibles, on ne
+/// supprime rien. Garder un fichier de trop est sans conséquence ; en effacer un
+/// qui servait encore se paierait en attente.
+fn oublier_les_corps_sans_message(app: &AppHandle, dossier_corps: &std::path::Path) {
+    let (Ok(config), Ok(racine)) = (dossier_config(app), dossier_cache(app)) else {
+        return;
+    };
+
+    let mut vivants = std::collections::HashSet::new();
+    for compte in comptes::charger(&config).connus {
+        let Some(boite) = cache::lire_boite(&racine, &compte.adresse) else {
+            // Un compte dont le relevé n'est pas en cache a peut-être des corps
+            // rangés : on renonce au nettoyage plutôt que de les prendre pour
+            // des orphelins.
+            return;
+        };
+        vivants.extend(boite.into_iter().map(|m| m.id));
+    }
+
+    crate::gmail::corps::oublier_les_absents(dossier_corps, &vivants);
 }
 
 /// Rapatrie les images d'un message et les rend indexées par leur `src`.
