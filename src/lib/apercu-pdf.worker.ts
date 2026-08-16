@@ -28,15 +28,70 @@
  * aperçu approximatif vaut mieux qu'une porte ouverte.
  */
 /// <reference lib="webworker" />
-import * as pdfjs from 'pdfjs-dist'
-import urlDuTravailleur from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import * as codeDuTravailleur from 'pdfjs-dist/build/pdf.worker.min.mjs'
 
-// pdf.js sépare lui-même l'analyse du rendu. Selon ce que le moteur autorise
-// depuis un fil secondaire, il ouvre un fil imbriqué ou se rabat sur le code
-// déjà chargé ici — les deux restent à l'intérieur de ce cloisonnement.
-;(globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = codeDuTravailleur
+/**
+ * Ce que pdf.js réclame d'une fenêtre, et qui n'existe pas dans un fil.
+ *
+ * La bibliothèque est écrite pour tourner dans une page. Deux endroits de son
+ * code s'en souviennent sans le vérifier, et chacun casse d'une façon
+ * différente :
+ *
+ * - avant d'ouvrir **son propre** fil d'analyse, elle compare son origine à
+ *   `window.location`. L'exception qui suit est avalée, et la bibliothèque se
+ *   rabat en silence sur un « faux fil » qui charge son code d'analyse **ici
+ *   même** — lequel s'approprie alors le canal de messages de ce fichier. Plus
+ *   aucune réponse ne parvenait à la fenêtre : c'est ce qui faisait échouer
+ *   tout aperçu de PDF ;
+ * - au rendu, elle cadence son travail sur `requestAnimationFrame`.
+ *
+ * Ce substitut donne ces deux choses, et rien d'autre. Il n'ouvre aucun accès :
+ * il ne porte ni document, ni stockage, ni fenêtre réelle — seulement l'adresse
+ * de ce fichier et un minuteur.
+ */
+;(globalThis as { window?: unknown }).window = {
+  location: self.location,
+  requestAnimationFrame: (f: FrameRequestCallback) =>
+    setTimeout(() => f(performance.now()), 0),
+  cancelAnimationFrame: (id: number) => clearTimeout(id),
+}
+
+const pdfjs = await import('pdfjs-dist')
+const { default: urlDuTravailleur } = await import(
+  'pdfjs-dist/build/pdf.worker.min.mjs?url'
+)
+
+// L'analyse du document se fait dans un fil ouvert par pdf.js, à partir de ce
+// fichier-ci : un cran de plus à l'intérieur du cloisonnement, jamais en
+// dehors.
 pdfjs.GlobalWorkerOptions.workerSrc = urlDuTravailleur
+
+/**
+ * Fabrique de toiles qui ne réclame pas de document.
+ *
+ * pdf.js crée des toiles intermédiaires pour les transparences et les motifs.
+ * La sienne appelle `document.createElement`, qui n'existe pas ici. Celle-ci
+ * rend des toiles hors écran, du même métal que celle où la page est dessinée.
+ */
+class ToilesHorsEcran {
+  create(largeur: number, hauteur: number) {
+    const canvas = new OffscreenCanvas(Math.max(1, largeur), Math.max(1, hauteur))
+    return { canvas, context: canvas.getContext('2d') }
+  }
+
+  reset(fournie: { canvas: OffscreenCanvas }, largeur: number, hauteur: number) {
+    fournie.canvas.width = largeur
+    fournie.canvas.height = hauteur
+  }
+
+  destroy(fournie: { canvas: OffscreenCanvas | null; context: unknown }) {
+    if (fournie.canvas) {
+      fournie.canvas.width = 0
+      fournie.canvas.height = 0
+    }
+    fournie.canvas = null
+    fournie.context = null
+  }
+}
 
 /** Au-delà, on s'arrête : un aperçu n'est pas une lecture intégrale. */
 const PAGES_MAX = 40
@@ -49,6 +104,13 @@ export interface DemandeApercuPdf {
 }
 
 export type ReponseApercuPdf =
+  /** Premier message, et le seul que la fenêtre doive attendre avant d'écrire.
+   *
+   *  Ce fichier charge pdf.js avant de pouvoir répondre à quoi que ce soit, et
+   *  WebKit **jette** les messages adressés à un fil qui n'a pas fini de
+   *  s'initialiser — sans erreur, sans trace. Un aperçu de PDF restait donc en
+   *  attente pour toujours. La fenêtre attend désormais ce signal. */
+  | { pret: true }
   | { pages: ImageBitmap[]; total: number }
   /** `cause` distingue ce qui se corrige d'un fichier à l'autre de ce qui ne se
    *  corrigera pas : un moteur trop ancien ne saura jamais dessiner ici. */
@@ -56,6 +118,8 @@ export type ReponseApercuPdf =
 
 /** `self` vu comme ce qu'il est ici : un fil dédié, sans fenêtre autour. */
 const fil = self as unknown as DedicatedWorkerGlobalScope
+
+fil.postMessage({ pret: true } satisfies ReponseApercuPdf)
 
 fil.onmessage = async (evenement: MessageEvent<DemandeApercuPdf>) => {
   try {
@@ -84,6 +148,7 @@ async function rendre(
 
   const lecture = pdfjs.getDocument({
     data: new Uint8Array(octets),
+    CanvasFactory: ToilesHorsEcran,
     // Rien ne part sur le réseau et rien n'est compilé à la volée : tout ce
     // qu'il faut lire est déjà là, et ce qui manque manquera.
     useWasm: false,

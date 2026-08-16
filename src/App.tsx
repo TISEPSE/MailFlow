@@ -924,6 +924,10 @@ export default function App() {
               onAccent={(c) => regler({ accent: c })}
               syncAuLancement={prefs.syncAuLancement}
               onSyncAuLancement={() => regler({ syncAuLancement: !prefs.syncAuLancement })}
+              destinatairesDeplies={prefs.destinatairesDeplies}
+              onDestinatairesDeplies={() =>
+                regler({ destinatairesDeplies: !prefs.destinatairesDeplies })
+              }
               frequence={prefs.frequence}
               onFrequence={(f: Frequence) => regler({ frequence: f })}
               onRevoirLeGuide={() => regler({ guideVu: false })}

@@ -183,8 +183,23 @@ function ApercuPdf({ donnees }: { donnees: string }) {
       { type: 'module' },
     )
 
+    // Le décodage a lieu ici, dans la fenêtre : ce qui traverse est un tampon
+    // d'octets, transféré et non copié.
+    const brut = atob(donnees)
+    const octets = new Uint8Array(brut.length)
+    for (let i = 0; i < brut.length; i += 1) octets[i] = brut.charCodeAt(i)
+
     travailleur.onmessage = (evenement: MessageEvent<ReponseApercuPdf>) => {
       const reponse = evenement.data
+
+      // Le fil charge pdf.js avant de pouvoir répondre, et un message adressé à
+      // un fil qui n'a pas fini de s'initialiser est jeté sans un mot. On
+      // attend donc qu'il se déclare prêt — attendre un délai arbitraire
+      // reviendrait à parier sur la vitesse de la machine.
+      if ('pret' in reponse) {
+        travailleur.postMessage({ octets: octets.buffer }, [octets.buffer])
+        return
+      }
 
       if ('erreur' in reponse) {
         // Un document illisible et un système incapable ne se réparent pas de
@@ -216,14 +231,6 @@ function ApercuPdf({ donnees }: { donnees: string }) {
     travailleur.onerror = () => {
       setEtat("Ce PDF n'a pas pu être affiché. Enregistrez-le pour l'ouvrir.")
     }
-
-    // Le décodage a lieu ici, dans la fenêtre : ce qui traverse est un tampon
-    // d'octets, transféré et non copié.
-    const brut = atob(donnees)
-    const octets = new Uint8Array(brut.length)
-    for (let i = 0; i < brut.length; i += 1) octets[i] = brut.charCodeAt(i)
-
-    travailleur.postMessage({ octets: octets.buffer }, [octets.buffer])
 
     return () => {
       travailleur.terminate()

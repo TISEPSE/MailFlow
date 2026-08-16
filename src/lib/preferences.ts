@@ -20,6 +20,8 @@ export interface Preferences {
   guideVu: boolean
   /** Touche qui ouvre la recherche, combinée à Ctrl (Cmd sur macOS). */
   toucheRecherche: string
+  /** Ouvrir chaque message avec la liste des destinataires dépliée. */
+  destinatairesDeplies: boolean
 }
 
 export const FREQUENCES = ['1 min', '5 min', '15 min'] as const
@@ -44,6 +46,10 @@ export const DEFAUTS: Preferences = {
   // `K` comme dans la plupart des applications de bureau. Modifiable : sur un
   // clavier autre qu'AZERTY ou QWERTY, la touche voisine n'est pas la même.
   toucheRecherche: 'K',
+  // Dépliés : c'est l'information qu'on vient chercher en ouvrant l'en-tête, et
+  // savoir qui d'autre a reçu un message change la façon dont on y répond. Qui
+  // lit surtout des lettres d'information n'en a que faire, d'où le réglage.
+  destinatairesDeplies: true,
 }
 
 const CLE = 'mailflow.preferences'
@@ -78,6 +84,10 @@ export function lirePreferences(depot: Storage = localStorage): Preferences {
       typeof p.syncAuLancement === 'boolean'
         ? p.syncAuLancement
         : DEFAUTS.syncAuLancement,
+    destinatairesDeplies:
+      typeof p.destinatairesDeplies === 'boolean'
+        ? p.destinatairesDeplies
+        : DEFAUTS.destinatairesDeplies,
     frequence: FREQUENCES.includes(p.frequence as Frequence)
       ? (p.frequence as Frequence)
       : DEFAUTS.frequence,

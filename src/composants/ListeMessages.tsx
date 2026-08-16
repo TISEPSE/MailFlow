@@ -24,6 +24,7 @@ import {
 } from '../lib/presentation'
 import { ApercuPieceJointe } from './ApercuPieceJointe'
 import { pieceJointeVignette } from '../lib/tauri'
+import { lirePreferences } from '../lib/preferences'
 import type {
   CompteConnu,
   CorpsMessage,
@@ -280,11 +281,13 @@ function Destinataires({
   message: MessageAffiche
   onCopier?: (adresse: string) => void
 }) {
-  // Ouvert par défaut : c'est l'information qu'on est venu chercher. Le repli
-  // est là pour les messages sans intérêt de ce côté, et pour rendre de la
-  // hauteur au corps quand la fenêtre est basse. Le choix vaut pour la
-  // session : le refaire à chaque message serait pire que le panneau lui-même.
-  const [ouvert, setOuvert] = useState(true)
+  // L'état de départ vient des Paramètres ; le repli du moment vaut ensuite
+  // pour la session, car le refaire à chaque message serait pire que le panneau
+  // lui-même. La préférence est lue directement, et non reçue en cascade
+  // depuis l'application : la traverser sur trois étages pour un booléen coûte
+  // plus cher qu'une lecture, et une lecture différée ferait clignoter le
+  // panneau à l'ouverture.
+  const [ouvert, setOuvert] = useState(() => lirePreferences().destinatairesDeplies)
 
   const lignes: { role: string; contacts: { nom: string; adresse: string }[] }[] = [
     { role: 'De', contacts: [{ nom: message.nom, adresse: message.adresse }] },
@@ -744,15 +747,22 @@ const HAUTEUR_INITIALE = 320
  * ne s'atteint que par du code. Trois verrous indépendants l'interdisent ici :
  *
  * 1. `allow-scripts` est absent, donc le moteur refuse d'exécuter quoi que ce
- *    soit dans ce document ;
+ *    soit dans ce document — il le journalise de lui-même ;
  * 2. le document déclare sa propre politique `default-src 'none'`, dont
  *    `script-src` hérite — voir [`documentIsole`] ;
- * 3. la politique de l'application elle-même n'autorise que ses propres
- *    scripts, jamais ceux d'une chaîne de caractères.
+ * 3. la politique de l'application n'autorise que ses propres scripts.
  *
  * Le HTML est par ailleurs déjà désinfecté côté Rust. Le danger classique de
  * `allow-same-origin` — un script du cadre qui retire lui-même l'attribut
  * `sandbox` — suppose précisément ce que ces trois verrous rendent impossible.
+ *
+ * # Sur la mesure
+ *
+ * Le cadre est **replié à zéro avant chaque lecture**. Sans cela, le document
+ * déclare toujours au moins la hauteur du cadre qui le porte : la mesure ne
+ * peut alors que croître, jamais redescendre, et une lettre de trois lignes
+ * héritait de la hauteur laissée par la précédente. C'est ce qui produisait ces
+ * grandes étendues blanches avec les pièces jointes tout en bas.
  */
 function CadreIsole({ html }: { html: string }) {
   const cadre = useRef<HTMLIFrameElement>(null)
@@ -765,42 +775,62 @@ function CadreIsole({ html }: { html: string }) {
     if (!element) return
 
     let observateur: ResizeObserver | null = null
+    let enMesure = false
+    let vivant = true
 
-    const auChargement = () => {
-      const document = documentLisible(element)
+    const mesurer = (document: Document) => {
+      // Le garde-fou empêche la boucle : replier le cadre change la mise en
+      // page du document, ce que l'observateur signale aussitôt.
+      if (enMesure || !vivant) return
+      enMesure = true
 
-      // Aucun moteur connu ne refuse cette lecture, mais un cadre qu'on ne sait
-      // pas mesurer ne doit pas produire un message tronqué à trois cents
-      // pixels : il reprend alors toute la place disponible, comme avant. Seuls
-      // les fichiers joints passent sous la ligne de flottaison.
-      if (!document?.body) {
+      element.style.height = '0px'
+      const mesure = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight,
+      )
+      element.style.height = `${mesure}px`
+
+      enMesure = false
+      setHauteur(mesure)
+    }
+
+    /** Rend `false` tant que le document n'est pas encore là. */
+    const brancher = () => {
+      let document: Document | null
+      try {
+        document = element.contentDocument
+      } catch {
+        // Le moteur refuse la lecture : le cadre reprend toute la place
+        // disponible, comme autrefois, plutôt que de tronquer le message.
+        // Seuls les fichiers joints passent alors sous la ligne de flottaison.
         setHauteur(null)
-        return
+        return true
       }
 
-      const mesurer = () =>
-        setHauteur(
-          Math.max(
-            document.documentElement.scrollHeight,
-            document.body.scrollHeight,
-          ),
-        )
+      // Un document pas encore remplacé par `srcdoc` n'a pas de corps. Ce n'est
+      // pas un échec : c'est trop tôt, et l'événement de chargement rappellera.
+      if (!document?.body) return false
 
-      mesurer()
-
+      mesurer(document)
+      observateur?.disconnect()
+      observateur = new ResizeObserver(() => mesurer(document))
       // Les images arrivent après le chargement du document et changent la
       // hauteur : sans cette observation, une lettre illustrée resterait
       // tronquée à la taille de son seul texte.
-      observateur = new ResizeObserver(mesurer)
       observateur.observe(document.body)
+      return true
     }
 
-    element.addEventListener('load', auChargement)
-    // Le document peut être déjà chargé quand l'effet se déclenche.
-    if (documentLisible(element)?.readyState === 'complete') auChargement()
+    element.addEventListener('load', brancher)
+    // Le document peut être déjà en place quand l'effet se déclenche : le
+    // `srcdoc` d'une chaîne se charge sans passer par le réseau, et
+    // l'événement a pu partir avant que React n'écoute.
+    brancher()
 
     return () => {
-      element.removeEventListener('load', auChargement)
+      vivant = false
+      element.removeEventListener('load', brancher)
       observateur?.disconnect()
     }
   }, [html])
@@ -824,15 +854,6 @@ function CadreIsole({ html }: { html: string }) {
       }}
     />
   )
-}
-
-/** Le document du cadre, ou `null` s'il est hors de portée. */
-function documentLisible(cadre: HTMLIFrameElement): Document | null {
-  try {
-    return cadre.contentDocument
-  } catch {
-    return null
-  }
 }
 
 /** Dit pourquoi le message paraît tronqué, plutôt que de laisser croire à un bug. */

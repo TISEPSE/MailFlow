@@ -25,6 +25,14 @@ export default defineConfig({
   // Laisse visible la sortie de la CLI Tauri pendant le developpement.
   clearScreen: false,
 
+  // Les fils d'exécution sont livrés en modules, et non en fonction enveloppée.
+  // Deux raisons : `apercu-pdf.worker.ts` pose son substitut de fenêtre avant
+  // de charger pdf.js, ce qui demande un `await` de premier niveau ; et pdf.js
+  // ouvre lui-même un fil imbriqué qu'il charge comme un module.
+  worker: {
+    format: 'es',
+  },
+
   build: {
     // Aligne la cible sur les moteurs des webviews : WebKit sur macOS et Linux.
     target: 'safari15',

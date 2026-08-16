@@ -43,6 +43,8 @@ export function Parametres({
   onAccent,
   syncAuLancement,
   onSyncAuLancement,
+  destinatairesDeplies,
+  onDestinatairesDeplies,
   frequence,
   onFrequence,
   onConnecter,
@@ -67,6 +69,8 @@ export function Parametres({
   onAccent: (c: string) => void
   syncAuLancement: boolean
   onSyncAuLancement: () => void
+  destinatairesDeplies: boolean
+  onDestinatairesDeplies: () => void
   frequence: Frequence
   onFrequence: (f: Frequence) => void
   onConnecter: () => void
@@ -194,6 +198,19 @@ export function Parametres({
                 }}
               />
             </div>
+          </Reglage>
+
+          <Reglage
+            icone="groups"
+            titre="Déplier les destinataires"
+            detail="À l'ouverture d'un message, montrer l'expéditeur, les destinataires et les copies. Repliés, seul l'expéditeur reste visible."
+          >
+            <Interrupteur
+              actif={destinatairesDeplies}
+              onChange={onDestinatairesDeplies}
+              libelle="Déplier les destinataires à l'ouverture d'un message"
+              grand
+            />
           </Reglage>
 
           <MiseAJour onErreur={onErreur} />
@@ -662,7 +679,7 @@ function BoutonCarte({
       }}
     >
       {icone && <Icone nom={icone} taille="1em" className="icone-bouton" />}
-      {children}
+      <span className="texte-optique">{children}</span>
     </button>
   )
 }

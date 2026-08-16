@@ -149,11 +149,14 @@ export function Pastille({
         fontSize: `calc(${taille} * 0.38)`,
       }}
     >
-      {/* Pas de correction verticale ici, et c'est mesuré : l'encre des
-          initiales tombe à moins d'un demi-pixel du centre du disque, à 40
-          comme à 64 pixels. Une correction « optique » ajoutée à l'œil les
-          décalait d'un pixel vers le bas. */}
-      {texte}
+      {/* Une note précédente affirmait ici, mesures à l'appui, que les
+          initiales tombaient à moins d'un demi-pixel du centre. Elle était
+          fausse : la mesure avait été faite dans Chrome, qui ne choisit pas la
+          même fonte de repli que le moteur de l'application. Photographiées
+          dans WebKitGTK, et sur une capture de l'application elle-même, elles
+          sont trois pixels et demi au-dessus du centre d'un disque de soixante.
+          Voir `.texte-optique`. */}
+      <span className="texte-optique">{texte}</span>
     </div>
   )
 }
@@ -857,7 +860,7 @@ export function Bouton({
           tourne={enAttente}
         />
       )}
-      {children}
+      <span className="texte-optique">{children}</span>
     </button>
   )
 }

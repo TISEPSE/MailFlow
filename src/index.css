@@ -163,6 +163,43 @@ button:not(:disabled),
   box-shadow: 0 2px 10px rgb(0 0 0 / 9%);
 }
 
+/* Centrage optique du texte dans une boîte.
+
+   Une boîte de ligne s'étend de l'ascendante à la descendante ; les capitales,
+   elles, n'occupent que le haut de cet intervalle. Centrer la boîte, ce que
+   fait le navigateur, place donc la bande des capitales au-dessus du centre
+   réel, et l'œil le voit.
+
+   La valeur est mesurée, pas devinée. Trois erreurs de méthode ont précédé
+   celle-ci et méritent d'être consignées :
+
+   1. mesurer dans Chrome. Il ne choisit pas la même fonte de repli que
+      WebKitGTK et ne compose pas les boîtes de ligne pareil : il donnait
+      0,01 em là où le moteur de l'application donne 0,14 ;
+   2. mesurer sur un libellé accentué. L'accent du « é » de Déconnecter compte
+      comme le haut de l'encre, alors que l'œil centre sur les capitales ;
+   3. mesurer sans témoin. Une bande d'encre bornée à des pixels entiers porte
+      un biais d'un demi-pixel ; un carré que la mise en page centre
+      parfaitement donne le zéro de la méthode.
+
+   Mesures finales, photographies WebKitGTK 2.52, échelle 1, écart entre le
+   centre des capitales et celui d'un témoin parfaitement centré :
+
+     décalage     barre de recherche     pastille
+     0,00 em            −2,50 px         −1,50 px
+     0,10 em            −0,50 px         −0,50 px
+     0,12 em            (retenu)
+     0,14 em            −0,50 px         +0,50 px
+     0,16 em            +0,50 px         +0,50 px
+
+   0,12 em est le seul décalage qui laisse les deux à un demi-pixel du centre,
+   c'est-à-dire dans le pas de la trame. En `em` : la correction suit la taille
+   du texte, comme le défaut qu'elle corrige. */
+.texte-optique {
+  display: inline-block;
+  transform: translateY(0.12em);
+}
+
 /* Repère au clavier. Il vaut pour tous les thèmes, y compris sombre. */
 :focus-visible {
   outline: 2px solid var(--accent);
