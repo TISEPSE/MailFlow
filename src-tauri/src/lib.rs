@@ -112,6 +112,14 @@ fn liens_vers_le_navigateur<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R
                 return true;
             }
 
+            // Le lien vient d'un e-mail, donc de n'importe qui. Confier une
+            // adresse au système sans regarder son schéma revient à laisser un
+            // expéditeur choisir quel programme s'ouvre sur la machine.
+            if !sortie_autorisee(url) {
+                log::warn!("lien ignoré : schéma « {} » non autorisé", url.scheme());
+                return false;
+            }
+
             log::info!("lien ouvert dans le navigateur du système");
             let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
 
@@ -119,6 +127,26 @@ fn liens_vers_le_navigateur<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R
             false
         })
         .build()
+}
+
+/// Cette adresse peut-elle être confiée au système d'exploitation ?
+///
+/// Liste blanche, et non liste noire : le jour où une plateforme inventera un
+/// schéma dangereux de plus, une liste noire l'aura laissé passer.
+///
+/// Trois schémas suffisent à un client de courrier. `http` et `https` mènent au
+/// navigateur, où l'utilisateur voit l'adresse avant d'agir. `mailto` mène à son
+/// client de messagerie. Tout le reste — `file://` qui ouvre un dossier local,
+/// les schémas propres à telle ou telle application installée, `javascript:` —
+/// n'a aucune raison de figurer dans un e-mail légitime, et beaucoup d'en
+/// figurer dans un e-mail hostile : un seul clic suffirait alors à faire
+/// démarrer un programme choisi par l'expéditeur.
+///
+/// Le bac à sable du cadre d'affichage empêche déjà tout script de s'exécuter.
+/// Il n'empêche pas un lien de s'afficher, ni l'utilisateur de cliquer dessus :
+/// c'est ce dernier pas que cette fonction ferme.
+pub fn sortie_autorisee(url: &tauri::Url) -> bool {
+    matches!(url.scheme(), "http" | "https" | "mailto")
 }
 
 /// L'URL désigne-t-elle l'interface de MailFlow plutôt qu'un site tiers ?
@@ -142,7 +170,7 @@ fn est_l_application(url: &tauri::Url) -> bool {
 
 #[cfg(test)]
 mod tests_navigation {
-    use super::est_l_application;
+    use super::{est_l_application, sortie_autorisee};
     use tauri::Url;
 
     fn url(brut: &str) -> Url {
@@ -169,5 +197,40 @@ mod tests_navigation {
         // `mailto:` et consorts sont rendus au système, qui sait quoi en faire.
         assert!(!est_l_application(&url("mailto:a@b.fr")));
         assert!(!est_l_application(&url("file:///etc/passwd")));
+    }
+
+    #[test]
+    fn les_liens_ordinaires_atteignent_le_systeme() {
+        assert!(sortie_autorisee(&url("https://exemple.fr/facture")));
+        assert!(sortie_autorisee(&url("http://exemple.fr/")));
+        assert!(sortie_autorisee(&url("mailto:contact@exemple.fr?subject=Bonjour")));
+    }
+
+    #[test]
+    fn un_expediteur_ne_choisit_pas_le_programme_qui_s_ouvre() {
+        // Le scénario : un e-mail hostile pose un lien d'apparence anodine, et
+        // le clic confie l'adresse au gestionnaire du système. Sans liste
+        // blanche, chacune de ces adresses ouvrait quelque chose.
+        for hostile in [
+            // Un dossier local, ou un fichier que l'utilisateur n'a pas demandé.
+            "file:///etc/passwd",
+            // Un partage réseau : sous Windows, la seule ouverture d'un chemin
+            // SMB distant fuite une empreinte d'authentification.
+            "smb://attaquant.example/partage",
+            // Les schémas déposés par les applications installées : ils
+            // acceptent souvent des paramètres, et donc des instructions.
+            "vscode://file/home/baptiste/.ssh/id_rsa",
+            "ms-msdt:/id%20PCWDiagnostic",
+            // Inerte dans le cadre isolé, mais rien ne dit ce qu'en ferait le
+            // gestionnaire du système.
+            "javascript:alert(1)",
+            // Ni les schémas internes du webview : ils ne sortent jamais.
+            "data:text/html,<h1>x</h1>",
+        ] {
+            assert!(
+                !sortie_autorisee(&url(hostile)),
+                "« {hostile} » ne doit pas atteindre le système"
+            );
+        }
     }
 }
