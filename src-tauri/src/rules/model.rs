@@ -37,9 +37,18 @@ impl RuleSet {
         let Some(adresse) = normaliser_adresse(expediteur_brut) else {
             return Vec::new();
         };
+        let domaine = adresse.split_once('@').map(|(_, d)| d);
+
         self.automations
             .iter()
-            .filter(|r| r.active && r.adresse_normalisee().as_deref() == Some(adresse.as_str()))
+            .filter(|r| {
+                r.active
+                    && match r.cible() {
+                        Some(Cible::Adresse(a)) => a == adresse,
+                        Some(Cible::Domaine(d)) => domaine == Some(d.as_str()),
+                        None => false,
+                    }
+            })
             .collect()
     }
 
@@ -49,12 +58,12 @@ impl RuleSet {
     /// puisse le montrer clairement. La plus récente gagne : c'est le geste que
     /// l'utilisateur vient de faire.
     pub fn ajouter(&mut self, regle: Rule) {
-        let cible = regle.adresse_normalisee();
+        let cible = regle.cible_normalisee();
 
         match self
             .automations
             .iter()
-            .position(|r| cible.is_some() && r.adresse_normalisee() == cible)
+            .position(|r| cible.is_some() && r.cible_normalisee() == cible)
         {
             Some(i) => self.automations[i] = regle,
             None => self.automations.insert(0, regle),
@@ -120,10 +129,50 @@ pub struct Rule {
     pub heure_execution: Option<NaiveTime>,
 }
 
+/// Ce qu'une règle vise.
+///
+/// Une adresse exacte ne suffisait pas. LinkedIn écrit depuis
+/// `messages-noreply@`, `notifications-noreply@`, `jobs-noreply@`,
+/// `invitations@`… : une règle posée sur l'une d'elles laissait passer toutes
+/// les autres, et la page paraissait vide alors que la règle existait bel et
+/// bien. Le cas est la norme chez les grands expéditeurs, pas l'exception.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cible {
+    /// Une adresse et une seule.
+    Adresse(String),
+    /// Tout un domaine — écrit `@linkedin.com`.
+    Domaine(String),
+}
+
 impl Rule {
-    /// Adresse comparable de l'expéditeur cible.
-    pub fn adresse_normalisee(&self) -> Option<String> {
-        normaliser_adresse(&self.expediteur)
+    /// Ce que la règle vise, adresse ou domaine entier.
+    ///
+    /// Le `@` initial est la marque du domaine. C'est la notation que les gens
+    /// écrivent spontanément pour désigner « tout ce qui vient de là », et elle
+    /// ne peut pas être confondue avec une adresse, qui a toujours quelque
+    /// chose devant son `@`.
+    pub fn cible(&self) -> Option<Cible> {
+        let brut = self.expediteur.trim();
+
+        if let Some(domaine) = brut.strip_prefix('@') {
+            let domaine = domaine.trim().trim_matches('"').trim().to_lowercase();
+            return (!domaine.is_empty() && !domaine.contains('@') && domaine.contains('.'))
+                .then_some(Cible::Domaine(domaine));
+        }
+
+        normaliser_adresse(brut).map(Cible::Adresse)
+    }
+
+    /// Ce qu'il faut écrire après `from:` dans une requête Gmail.
+    ///
+    /// Gmail accepte un domaine nu à cet endroit — `from:linkedin.com` retrouve
+    /// tous ses expéditeurs — ce qui fait que règle par domaine et requête
+    /// distante s'accordent sans traitement particulier.
+    pub fn cible_normalisee(&self) -> Option<String> {
+        self.cible().map(|c| match c {
+            Cible::Adresse(a) => a,
+            Cible::Domaine(d) => d,
+        })
     }
 }
 
@@ -304,6 +353,92 @@ mod tests {
             libelle: None,
             frequence: None,
             heure_execution: None,
+        }
+    }
+
+    /// Le cas signalé : une règle LinkedIn qui ne prenait qu'une adresse sur
+    /// plusieurs, et une page de rappels qui restait vide.
+    mod par_domaine {
+        use super::*;
+
+        fn jeu(expediteur: &str) -> RuleSet {
+            let mut set = RuleSet::default();
+            let mut r = regle(expediteur, Action::ClasserSeulement);
+            r.categorie = Categorie::Formation;
+            set.automations.push(r);
+            set
+        }
+
+        #[test]
+        fn une_regle_de_domaine_prend_toutes_les_adresses_de_ce_domaine() {
+            let set = jeu("@linkedin.com");
+
+            // Les quatre expéditeurs réellement employés par LinkedIn.
+            for adresse in [
+                "messages-noreply@linkedin.com",
+                "notifications-noreply@linkedin.com",
+                "jobs-noreply@linkedin.com",
+                "invitations@linkedin.com",
+            ] {
+                assert_eq!(
+                    set.regles_pour(adresse).len(),
+                    1,
+                    "« {adresse} » doit être pris par la règle de domaine"
+                );
+            }
+        }
+
+        #[test]
+        fn une_regle_de_domaine_ne_deborde_pas_sur_les_voisins() {
+            let set = jeu("@linkedin.com");
+
+            for etranger in [
+                // Le piège classique : un domaine qui se termine pareil.
+                "contact@notlinkedin.com",
+                "a@linkedin.com.attaquant.fr",
+                "b@fauxlinkedin.com",
+                "c@exemple.fr",
+            ] {
+                assert!(
+                    set.regles_pour(etranger).is_empty(),
+                    "« {etranger} » ne doit pas être pris"
+                );
+            }
+        }
+
+        #[test]
+        fn une_regle_d_adresse_garde_son_comportement_exact() {
+            // Les règles déjà posées ne changent pas de sens.
+            let set = jeu("messages-noreply@linkedin.com");
+
+            assert_eq!(set.regles_pour("messages-noreply@linkedin.com").len(), 1);
+            assert!(
+                set.regles_pour("notifications-noreply@linkedin.com")
+                    .is_empty(),
+                "c'est bien ce comportement-là qui laissait la page vide"
+            );
+        }
+
+        #[test]
+        fn un_domaine_mal_forme_ne_vise_rien() {
+            // Sans quoi « @ » seul, ou « @linkedin », viserait au hasard.
+            for bancal in ["@", "@ ", "@linkedin", "@a@b.fr"] {
+                assert_eq!(
+                    regle(bancal, Action::ClasserSeulement).cible(),
+                    None,
+                    "« {bancal} » ne doit désigner aucune cible"
+                );
+            }
+        }
+
+        #[test]
+        fn la_requete_gmail_reprend_le_domaine_nu() {
+            // Gmail accepte `from:linkedin.com` : la synchronisation distante
+            // s'accorde sans traitement particulier.
+            assert_eq!(
+                regle("@LinkedIn.com", Action::ClasserSeulement).cible_normalisee(),
+                Some("linkedin.com".into())
+            );
         }
     }
 

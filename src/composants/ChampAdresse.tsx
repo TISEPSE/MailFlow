@@ -150,6 +150,19 @@ function Saisie({
           .map(({ m }) => m)
       : []
 
+  /** Domaine partagé par toutes les propositions, s'il y en a un seul.
+   *
+   *  Un seul domaine parmi les résultats veut dire que la recherche a désigné
+   *  un expéditeur, pas une liste hétéroclite : proposer « tout le domaine » a
+   *  alors un sens. Deux domaines différents, et la proposition serait un piège.
+   *  On ne la fait pas non plus quand l'utilisateur a déjà tapé un `@` suivi de
+   *  quelque chose : il vise une adresse précise. */
+  const domaines = new Set(
+    propositions.map((m) => m.adresse.split('@')[1]).filter(Boolean),
+  )
+  const domaineCommun =
+    domaines.size === 1 && !/@./.test(adresse) ? [...domaines][0] : null
+
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[0.7812rem] font-semibold">{titre}</span>
@@ -173,6 +186,35 @@ function Saisie({
           className="mt-1 flex max-h-60 flex-col gap-0.5 overflow-y-auto rounded-xl border p-1"
           style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
         >
+          {/* Un grand expéditeur écrit depuis plusieurs adresses : LinkedIn
+              emploie `messages-noreply@`, `notifications-noreply@`,
+              `jobs-noreply@`… Viser l'une d'elles laisse passer les autres, et
+              la page paraît vide alors que la règle existe. Cette entrée-là
+              vise le domaine entier, sans qu'il faille connaître la notation. */}
+          {domaineCommun && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange(`@${domaineCommun}`)
+                setOuvert(false)
+              }}
+              className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
+            >
+              <Icone nom="groups" taille="1.1em" style={{ color: 'var(--sub)' }} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[0.7812rem] font-semibold">
+                  Tous les messages de {domaineCommun}
+                </span>
+                <span
+                  className="block truncate font-mono text-[0.6875rem]"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  @{domaineCommun}
+                </span>
+              </span>
+            </button>
+          )}
+
           {propositions.map((m) => {
             const [encre, fond] = ton(m.categorie, sombre)
             return (

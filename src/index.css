@@ -658,29 +658,34 @@ button:not(:disabled),
 
 /* Accord d'une icône et du texte qu'elle accompagne, dans un bouton.
 
-   Le problème est optique, pas géométrique. Centrer les boîtes aligne le
-   *cadre* du texte, or son centre visuel — le milieu des capitales — se trouve
-   plus haut que le milieu de son cadre, qui réserve la place des jambages.
-   L'icône, elle, est centrée sur son encre. À boîtes centrées, l'œil lit donc
-   l'icône trop haute.
+   Aucun décalage, et c'est mesuré. Une version précédente descendait l'icône
+   de 0,04 em ; le rendu de deux boutons réels dans un navigateur sans
+   interface, mesuré au quart de pixel, dit que cette correction triplait
+   l'écart qu'elle prétendait réduire :
 
-   Le décalage est exprimé en `em` : il suit la taille du texte de lui-même, et
-   le réglage vaut pour toutes les tailles de bouton au lieu d'être refait à
-   chaque fois en pixels.
+     décalage    écart icône / bande capitale du texte
+     0 em        +0,25 px   (grand bouton) | +0,25 px (petit)
+     0,02 em     +0,62 px
+     0,04 em     +0,88 px                  | +0,75 px
 
-   La valeur ne se règle pas plus finement, et il est utile de savoir pourquoi :
-   l'encre d'un mot dépend de ses lettres. « Déconnecter » porte un accent qui
-   monte au-dessus des capitales, « Changer de compte » un jambage qui descend
-   sous la ligne. Mesurer l'écart entre le centre de l'icône et celui de l'encre
-   donne donc deux résultats différents pour deux boutons pourtant identiques.
-   La bonne référence est la bande des capitales, que 0,04 em approche au demi-
-   pixel près dans les deux cas — le reste est du sous-pixel. */
+   L'erreur d'origine était dans la mesure, pas dans le raisonnement : l'écart
+   était pris sur l'encre entière du mot, jambages et accents compris. Or
+   « Déconnecter » monte au-dessus des capitales et « Changer de compte »
+   descend sous la ligne de base : deux boutons identiques donnaient deux
+   résultats contradictoires, et la moyenne des deux appelait un décalage vers
+   le bas qui n'avait pas lieu d'être.
+
+   La bonne référence est la bande des capitales — du sommet des majuscules à
+   la ligne de base — qui est ce que l'œil lit comme la position du texte. Sur
+   cette référence, boîtes centrées et rien d'autre tombe à un quart de pixel.
+
+   La classe est conservée : elle nomme l'intention et sert d'ancrage à la
+   règle de rotation ci-dessous. */
 .icone-bouton {
-  transform: translateY(0.04em);
+  transform: none;
 }
 
-/* La rotation a besoin du même canal : elle l'emporte, et l'écart d'un
-   vingtième d'em ne se voit pas sur un dessin qui tourne. */
+/* La rotation a besoin du même canal, et doit l'emporter. */
 .icone-bouton.tourne {
   transform: none;
 }

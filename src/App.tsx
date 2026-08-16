@@ -113,6 +113,23 @@ const PROPOSITIONS: Partial<Record<Vue, Proposition>> = {
   },
 }
 
+/**
+ * Peut-on interroger Gmail ?
+ *
+ * Il y faut les deux : un compte relié **et** des identifiants clients. Ne
+ * regarder que le premier a produit la panne la plus visible de l'application —
+ * un jeton restait dans le trousseau alors que le binaire, lui, n'avait pas
+ * d'identifiant client. MailFlow se croyait donc connecté, relevait la boîte à
+ * chaque action et toutes les cinq minutes, et chaque tentative échouait sur
+ * « configuration invalide ». L'écran finissait couvert de notifications
+ * identiques.
+ *
+ * Sans identifiants, on n'essaie rien : la vue de connexion dit quoi faire.
+ */
+function interrogeable(sante: EtatApplication | null | undefined): boolean {
+  return Boolean(sante?.compteConnecte && sante.clientGoogleConfigure)
+}
+
 export default function App() {
   const [etat, setEtat] = useState<EtatApplication | null>(null)
   const [regles, setRegles] = useState<JeuDeRegles | null>(null)
@@ -375,7 +392,7 @@ export default function App() {
 
   useEffect(() => {
     void rafraichir().then(async (sante) => {
-      if (!sante?.compteConnecte) return
+      if (!interrogeable(sante)) return
       setProfil(await compteProfil().catch(() => null))
       // Une seule lecture par session : la liste des libellés bouge rarement,
       // et la relire à chaque relevé dépenserait du quota pour rien.
@@ -390,13 +407,13 @@ export default function App() {
   /** Relevé périodique. La fréquence est un réglage, pas une constante : le
    *  minuteur se reconstruit quand elle change. */
   useEffect(() => {
-    if (!etat?.compteConnecte) return
+    if (!interrogeable(etat)) return
     const minuteur = window.setInterval(
       () => void relever(),
       MINUTES[prefs.frequence] * 60_000,
     )
     return () => window.clearInterval(minuteur)
-  }, [etat?.compteConnecte, prefs.frequence, relever])
+  }, [etat, prefs.frequence, relever])
 
   /** Toute action qui touche au backend passe par ici : un seul endroit gère
    *  l'état « occupé », les erreurs et le rafraîchissement qui suit. */
@@ -417,7 +434,7 @@ export default function App() {
       // arrêtait l'animation alors que la boîte se chargeait encore, ce qui
       // laissait croire que le travail était fini.
       const sante = await rafraichir()
-      if (sante?.compteConnecte) {
+      if (interrogeable(sante)) {
         if (rechargerTout) await chargerLaBoite()
         else await relever()
       }
@@ -489,12 +506,13 @@ export default function App() {
     return vides
   }, [boite])
 
+  /** Combien de messages attendent dans cette vue.
+   *
+   *  Zéro pour les règles : ce ne sont pas des messages en attente, et un
+   *  compte n'y veut rien dire. La pastille annonçait « 1 » à côté de l'éclair
+   *  comme s'il y avait quelque chose à lire. */
   const compte = (v: Vue): number =>
-    v === 'regles'
-      ? (regles?.automations.length ?? 0)
-      : v === 'parametres'
-        ? 0
-        : parCategorie[v as CategorieMessage].length
+    v === 'regles' || v === 'parametres' ? 0 : parCategorie[v as CategorieMessage].length
 
   /** Vrai tant que la boîte se relève : les compteurs ne veulent alors rien dire.
    *
@@ -547,11 +565,15 @@ export default function App() {
           onTerminer={() => regler({ guideVu: true })}
           compteConnecte={etat?.compteConnecte ?? false}
           onConnecter={() =>
-            void agir(async () => {
-              setAvancement({ faits: 0, total: 0, etape: 'connexion' })
-              await googleConnecter()
-              return 'Compte Google relié.'
-            })
+            void agir(
+              async () => {
+                setAvancement({ faits: 0, total: 0, etape: 'connexion' })
+                await googleConnecter()
+                setPremierReleve(true)
+                return 'Compte Google relié.'
+              },
+              { rechargerTout: true },
+            )
           }
         />
       ) : (
@@ -841,12 +863,22 @@ export default function App() {
               onToucheRecherche={(t) => regler({ toucheRecherche: t })}
               onErreur={(m) => annoncer(m, true)}
               enCours={enCours}
+              // Même traitement qu'un ajout de compte : l'écran de chargement
+              // dès le clic, puis la boîte entière, corps compris. Sans le
+              // rechargement complet, les corps n'étaient jamais préchargés et
+              // le squelette réapparaissait à l'ouverture de chaque message.
               onConnecter={() =>
-                void agir(async () => {
-                  await googleConnecter()
-                  setProfil(await compteProfil().catch(() => null))
-                  return 'Compte Gmail connecté.'
-                })
+                void agir(
+                  async () => {
+                    setAvancement({ faits: 0, total: 0, etape: 'connexion' })
+                    await googleConnecter()
+                    setPremierReleve(true)
+                    setProfil(await compteProfil().catch(() => null))
+                    setLibelles(await libellesLister().catch(() => []))
+                    return 'Compte Gmail connecté.'
+                  },
+                  { rechargerTout: true },
+                )
               }
               onDeconnecter={() => void deconnecter()}
               comptes={comptes}

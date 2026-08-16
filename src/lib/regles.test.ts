@@ -129,3 +129,23 @@ describe('nouvelleRegle', () => {
     expect(supprime.heure_execution).toBeUndefined()
   })
 })
+
+describe('règles de domaine', () => {
+  it('accepte un domaine entier, écrit avec un arobase en tête', () => {
+    // Le seul moyen d'attraper LinkedIn, qui écrit depuis « messages-noreply@ »,
+    // « notifications-noreply@ », « jobs-noreply@ »…
+    expect(adresseValide('@linkedin.com')).toBe(true)
+    expect(adresseValide('@offres-tech.fr')).toBe(true)
+  })
+
+  it('refuse un domaine bancal', () => {
+    for (const bancal of ['@', '@linkedin', '@ linkedin.com', '@a@b.fr']) {
+      expect(adresseValide(bancal)).toBe(false)
+    }
+  })
+
+  it("n'a rien changé aux adresses complètes", () => {
+    expect(adresseValide('promo@offres-tech.fr')).toBe(true)
+    expect(adresseValide('pas-une-adresse')).toBe(false)
+  })
+})

@@ -60,6 +60,13 @@ export function identifiant(adresse: string): string {
  */
 export function adresseValide(adresse: string): boolean {
   const v = adresse.trim()
+
+  // `@linkedin.com` vise le domaine entier — la seule façon d'attraper un
+  // expéditeur qui écrit depuis dix adresses différentes. Sans ce cas, la
+  // saisie était refusée et la règle de domaine restait impossible à poser
+  // depuis l'interface, alors que le backend la comprend.
+  if (v.startsWith('@')) return /^@[^\s@]+\.[^\s@]+$/.test(v)
+
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
 }
 

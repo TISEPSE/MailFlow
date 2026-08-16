@@ -35,7 +35,16 @@ export function useToasts() {
   const annoncer = useCallback(
     (texte: string, erreur = false) => {
       const id = Date.now() + Math.random()
-      setToasts((liste) => [...liste, { id, texte, erreur }])
+
+      setToasts((liste) => {
+        // Le même texte déjà à l'écran ne s'empile pas : il remonte en tête,
+        // avec un décompte neuf. Huit cartes « configuration invalide » n'en
+        // disent pas plus qu'une et cachent l'interface — c'est arrivé, quand
+        // chaque relevé échouait pour la même raison.
+        const autres = liste.filter((t) => t.texte !== texte)
+        return [...autres, { id, texte, erreur }]
+      })
+
       // La barre de décompte prévient la sortie et déclenche le retrait ; ce
       // minuteur n'est qu'un filet, pour le cas où l'animation ne se joue pas
       // — fenêtre en arrière-plan, animations coupées par le système.

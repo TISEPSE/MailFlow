@@ -55,7 +55,7 @@ pub async fn synchroniser<T: Transport, J: SourceJeton>(
         .automations
         .iter()
         .filter(|r| r.active)
-        .filter_map(|r| r.adresse_normalisee())
+        .filter_map(|r| r.cible_normalisee())
         .collect();
 
     if adresses.is_empty() {
