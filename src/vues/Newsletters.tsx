@@ -405,7 +405,16 @@ function LecteurEnGrand({
       sous={`${message.nom} — ${message.adresse}`}
       onFermer={onFermer}
     >
-      <CorpsIsole corps={charge} extrait={message.extrait} />
+      {/* Le cadre du message prend désormais la hauteur de son contenu : c'est
+          donc ici que le défilement doit vivre. Sur la même feuille blanche que
+          le message lui-même, sans quoi une bande de fenêtre apparaîtrait
+          au-dessous d'une lettre courte. */}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto"
+        style={charge?.html ? { background: '#FFFFFF' } : undefined}
+      >
+        <CorpsIsole corps={charge} extrait={message.extrait} />
+      </div>
     </Modale>
   )
 }

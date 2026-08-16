@@ -6,7 +6,7 @@
  * date. Pas de corps de message — c'est du HTML écrit par un inconnu, et il ne
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   HAUTEUR_LIGNE,
   Icone,
@@ -434,14 +434,22 @@ function Corps({
     return <div className="min-h-0 flex-1" />
   }
 
+  // Un message écrit en HTML s'affiche sur une feuille blanche, comme il a été
+  // conçu. Les fichiers joints tiennent sur la même feuille, à sa suite : ils
+  // appartiennent à la lettre, pas au cadre de l'application.
+  const surPapier = Boolean(corps?.html)
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {/* Les fichiers joints d'abord, sous l'en-tête : sous le corps, ils se
-          retrouvaient plaqués au bas de la fenêtre, à plusieurs centimètres du
-          message quand celui-ci tenait en trois lignes. Ils appartiennent à la
-          lettre, ils se placent avec elle. */}
-      <PiecesJointes message={message.id} pieces={corps?.pieces ?? []} />
+    <div
+      className="min-h-0 flex-1 overflow-y-auto"
+      style={surPapier ? { background: '#FFFFFF' } : undefined}
+    >
       <CorpsIsole corps={corps} extrait={message.extrait} />
+      <PiecesJointes
+        message={message.id}
+        pieces={corps?.pieces ?? []}
+        surPapier={surPapier}
+      />
     </div>
   )
 }
@@ -477,30 +485,35 @@ function Corps({
 function PiecesJointes({
   message,
   pieces,
+  surPapier,
 }: {
   message: string
   pieces: readonly PieceJointe[]
+  /** Vrai quand le message s'affiche sur la feuille blanche. */
+  surPapier: boolean
 }) {
   const [ouverte, setOuverte] = useState<PieceJointe | null>(null)
   const [enregistrees, setEnregistrees] = useState<Record<string, string>>({})
 
   if (pieces.length === 0) return null
 
+  const teintes = surPapier ? PAPIER : ECRAN
+
   return (
     <div
-      className="flex flex-none flex-col gap-2.5 border-b px-9 py-4"
-      style={{ borderColor: 'var(--line)' }}
+      className="flex flex-col gap-2.5 border-t px-9 py-4"
+      style={{ background: teintes.fond, borderColor: teintes.trait }}
     >
       <div className="flex items-center gap-2">
-        <Icone nom="attach_file" taille="1rem" style={{ color: 'var(--sub)' }} />
+        <Icone nom="attach_file" taille="1rem" style={{ color: teintes.discret }} />
         <span
           className="text-[0.8125rem] font-semibold"
-          style={{ color: 'var(--sub)' }}
+          style={{ color: teintes.encre }}
         >
           {pieces.length === 1 ? '1 pièce jointe' : `${pieces.length} pièces jointes`}
         </span>
         {Object.keys(enregistrees).length > 0 && (
-          <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+          <span className="text-[0.75rem]" style={{ color: teintes.discret }}>
             • enregistrée dans vos téléchargements
           </span>
         )}
@@ -512,6 +525,7 @@ function PiecesJointes({
             key={p.id}
             message={message}
             piece={p}
+            teintes={teintes}
             enregistree={Boolean(enregistrees[p.id])}
             onOuvrir={() => setOuverte(p)}
           />
@@ -532,6 +546,40 @@ function PiecesJointes({
   )
 }
 
+/**
+ * Deux jeux de couleurs, pour deux fonds.
+ *
+ * Un message écrit en HTML s'affiche sur une feuille blanche, quel que soit le
+ * thème de l'application — ces lettres sont conçues pour du papier, et les
+ * recolorer rendrait illisible tout ce qui fixe sa propre couleur de texte. Ce
+ * qui les accompagne doit tenir sur la même feuille : une bande sombre au pied
+ * d'une page blanche se lit comme un morceau de l'application posé par-dessus
+ * le courrier, et non comme la suite du message.
+ *
+ * Les valeurs sont écrites en clair et non prises aux variables du thème,
+ * précisément parce qu'elles ne doivent pas suivre le thème.
+ */
+const PAPIER = {
+  fond: '#FFFFFF',
+  trait: '#E8EAED',
+  encre: '#202124',
+  discret: '#5F6368',
+  creux: '#F1F3F4',
+  bordure: '#DADCE0',
+} as const
+
+/** Un message sans HTML reste dans le décor de l'application. */
+const ECRAN = {
+  fond: 'var(--card)',
+  trait: 'var(--line)',
+  encre: 'var(--fg)',
+  discret: 'var(--sub)',
+  creux: 'var(--sunk)',
+  bordure: 'var(--line)',
+} as const
+
+type Teintes = typeof PAPIER | typeof ECRAN
+
 /** Largeur d'une vignette. Trois tiennent de front dans le panneau de lecture. */
 const LARGEUR_VIGNETTE = '11.5rem'
 
@@ -545,11 +593,13 @@ const LARGEUR_VIGNETTE = '11.5rem'
 function Jointe({
   message,
   piece,
+  teintes,
   enregistree,
   onOuvrir,
 }: {
   message: string
   piece: PieceJointe
+  teintes: Teintes
   enregistree: boolean
   onOuvrir: () => void
 }) {
@@ -585,12 +635,12 @@ function Jointe({
       type="button"
       onClick={onOuvrir}
       title={`Afficher ${piece.nom}`}
-      style={{ width: LARGEUR_VIGNETTE, borderColor: 'var(--line)' }}
-      className="carte-survolable flex flex-col overflow-hidden rounded-xl border text-left"
+      style={{ width: LARGEUR_VIGNETTE, borderColor: teintes.bordure }}
+      className="flex flex-col overflow-hidden rounded-xl border text-left transition-shadow hover:shadow-md"
     >
       <span
         className="flex h-24 items-center justify-center overflow-hidden"
-        style={{ background: 'var(--sunk)' }}
+        style={{ background: teintes.creux }}
       >
         {vignette ? (
           <img
@@ -603,26 +653,29 @@ function Jointe({
             nom={vignette === undefined ? 'progress_activity' : 'description'}
             taille="1.5rem"
             tourne={vignette === undefined}
-            style={{ color: 'var(--sub)' }}
+            style={{ color: teintes.discret }}
           />
         )}
       </span>
 
       <span
         className="flex items-center gap-1.5 px-2.5 py-2"
-        style={{ background: 'var(--card)' }}
+        style={{ background: teintes.fond }}
       >
         <Icone
           nom={enregistree ? 'check_circle' : 'visibility'}
           taille="0.9375rem"
           rempli={enregistree}
-          style={{ color: enregistree ? 'var(--accent-fg)' : 'var(--sub)' }}
+          style={{ color: enregistree ? 'var(--accent-fg)' : teintes.discret }}
         />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[0.75rem] font-semibold">
+          <span
+            className="block truncate text-[0.75rem] font-semibold"
+            style={{ color: teintes.encre }}
+          >
             {piece.nom}
           </span>
-          <span className="block text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+          <span className="block text-[0.6875rem]" style={{ color: teintes.discret }}>
             {poids(piece.taille)}
           </span>
         </span>
@@ -637,6 +690,11 @@ function Jointe({
  * Partagé par le panneau de lecture et la fenêtre en grand des newsletters :
  * le bac à sable est la pièce qui rend l'affichage acceptable, et il ne doit
  * exister qu'en un seul exemplaire.
+ *
+ * Le cadre prend la hauteur de son contenu et **ne défile pas lui-même** :
+ * c'est le conteneur appelant qui défile. Sans quoi ce qui suit le message —
+ * les fichiers joints — se retrouverait plaqué au bas de la fenêtre, à
+ * plusieurs centimètres d'une lettre de trois lignes.
  */
 export function CorpsIsole({
   corps,
@@ -647,34 +705,134 @@ export function CorpsIsole({
   extrait: string
 }) {
   if (corps?.html) {
-    return (
-      <iframe
-        title="Contenu du message"
-        // Bac à sable strict, sans `allow-scripts` : rien ne s'exécute. Le
-        // clic sur un lien navigue le cadre lui-même — le journal a montré
-        // qu'une fenêtre surgissante, elle, n'atteignait jamais le backend.
-        // Cette navigation-ci est annulée côté Rust, qui ouvre l'adresse dans
-        // le navigateur du système.
-        sandbox=""
-        srcDoc={documentIsole(corps.html)}
-        className="min-h-0 w-full flex-1"
-        style={{ border: 0, background: '#FFFFFF', height: '100%' }}
-      />
-    )
+    return <CadreIsole html={corps.html} />
   }
 
   const texte = corps?.texte ?? extrait
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-9 py-6">
+    <>
+      <div className="px-9 py-6">
         <pre className="selectionnable font-sans text-[0.8438rem] leading-relaxed whitespace-pre-wrap">
           {texte}
         </pre>
       </div>
       {!corps?.texte && <Avertissement />}
-    </div>
+    </>
   )
+}
+
+/** Hauteur de départ, le temps que le document se charge et se mesure. */
+const HAUTEUR_INITIALE = 320
+
+/**
+ * Le cadre qui porte le HTML de l'expéditeur, ajusté à la hauteur du document.
+ *
+ * # Sur le bac à sable
+ *
+ * `allow-scripts` reste absent : rien ne s'exécute là-dedans, et c'est une
+ * garantie du moteur, pas une promesse de notre part.
+ *
+ * `allow-same-origin` a en revanche été ajouté, et c'est un choix qui mérite
+ * son paragraphe. Il est nécessaire pour lire la hauteur du document : sans
+ * lui, le cadre a une origine opaque et `contentDocument` est inaccessible, si
+ * bien qu'aucun code ne peut savoir quelle place le message occupe. Or c'est
+ * cette mesure qui permet de poser les fichiers joints juste après la lettre,
+ * plutôt qu'au fond de la fenêtre.
+ *
+ * Ce que `allow-same-origin` ouvrirait — l'accès au contexte de l'application —
+ * ne s'atteint que par du code. Trois verrous indépendants l'interdisent ici :
+ *
+ * 1. `allow-scripts` est absent, donc le moteur refuse d'exécuter quoi que ce
+ *    soit dans ce document ;
+ * 2. le document déclare sa propre politique `default-src 'none'`, dont
+ *    `script-src` hérite — voir [`documentIsole`] ;
+ * 3. la politique de l'application elle-même n'autorise que ses propres
+ *    scripts, jamais ceux d'une chaîne de caractères.
+ *
+ * Le HTML est par ailleurs déjà désinfecté côté Rust. Le danger classique de
+ * `allow-same-origin` — un script du cadre qui retire lui-même l'attribut
+ * `sandbox` — suppose précisément ce que ces trois verrous rendent impossible.
+ */
+function CadreIsole({ html }: { html: string }) {
+  const cadre = useRef<HTMLIFrameElement>(null)
+
+  /** Hauteur du document, ou `null` s'il s'est révélé impossible à mesurer. */
+  const [hauteur, setHauteur] = useState<number | null>(HAUTEUR_INITIALE)
+
+  useEffect(() => {
+    const element = cadre.current
+    if (!element) return
+
+    let observateur: ResizeObserver | null = null
+
+    const auChargement = () => {
+      const document = documentLisible(element)
+
+      // Aucun moteur connu ne refuse cette lecture, mais un cadre qu'on ne sait
+      // pas mesurer ne doit pas produire un message tronqué à trois cents
+      // pixels : il reprend alors toute la place disponible, comme avant. Seuls
+      // les fichiers joints passent sous la ligne de flottaison.
+      if (!document?.body) {
+        setHauteur(null)
+        return
+      }
+
+      const mesurer = () =>
+        setHauteur(
+          Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+          ),
+        )
+
+      mesurer()
+
+      // Les images arrivent après le chargement du document et changent la
+      // hauteur : sans cette observation, une lettre illustrée resterait
+      // tronquée à la taille de son seul texte.
+      observateur = new ResizeObserver(mesurer)
+      observateur.observe(document.body)
+    }
+
+    element.addEventListener('load', auChargement)
+    // Le document peut être déjà chargé quand l'effet se déclenche.
+    if (documentLisible(element)?.readyState === 'complete') auChargement()
+
+    return () => {
+      element.removeEventListener('load', auChargement)
+      observateur?.disconnect()
+    }
+  }, [html])
+
+  return (
+    <iframe
+      ref={cadre}
+      title="Contenu du message"
+      // Le clic sur un lien navigue le cadre lui-même — le journal a montré
+      // qu'une fenêtre surgissante, elle, n'atteignait jamais le backend. Cette
+      // navigation-ci est annulée côté Rust, qui ouvre l'adresse dans le
+      // navigateur du système.
+      sandbox="allow-same-origin"
+      srcDoc={documentIsole(html)}
+      scrolling={hauteur === null ? 'auto' : 'no'}
+      className="w-full"
+      style={{
+        border: 0,
+        background: '#FFFFFF',
+        height: hauteur === null ? '100%' : `${hauteur}px`,
+      }}
+    />
+  )
+}
+
+/** Le document du cadre, ou `null` s'il est hors de portée. */
+function documentLisible(cadre: HTMLIFrameElement): Document | null {
+  try {
+    return cadre.contentDocument
+  } catch {
+    return null
+  }
 }
 
 /** Dit pourquoi le message paraît tronqué, plutôt que de laisser croire à un bug. */
