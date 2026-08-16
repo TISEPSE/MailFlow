@@ -125,35 +125,69 @@ pub async fn charger_boite<T: Transport, J: SourceJeton>(
     charger_boite_suivi(client, regles, compte, |_, _| {}).await
 }
 
+/// Nombre d'appels menés de front lors du relevé.
+///
+/// Gmail ne donne pas les en-têtes avec la liste : chaque message demande son
+/// propre appel. Soixante messages en file indienne, c'est soixante fois la
+/// latence du réseau — une vingtaine de secondes, l'attente la plus longue de
+/// l'ouverture.
+///
+/// Six de front, comme pour les logos ([`crate::gmail::logos`]) : assez pour
+/// que le temps total soit gouverné par le débit et non par la latence, assez
+/// peu pour rester loin du quota par utilisateur de Gmail. Un dépassement
+/// resterait d'ailleurs rattrapé par [`crate::gmail::reessai`], mais mieux vaut
+/// ne pas avoir à s'en servir.
+pub const PARALLELISME: usize = 6;
+
 /// Même relevé, en rendant compte de son avancement.
 ///
-/// Chaque message demande son propre appel : soixante messages, soixante
-/// allers-retours. C'est l'attente la plus longue de l'ouverture, et elle
-/// restait muette — l'interface ne pouvait annoncer qu'un vague « patientez ».
 /// `avance` est appelée une première fois avec le total, puis après chaque
 /// message.
+///
+/// Les appels partent par paquets, mais les résultats sont rendus dans l'ordre
+/// de départ : `buffered` s'en charge, là où `buffer_unordered` livrerait les
+/// messages dans l'ordre d'arrivée du réseau. La boîte serait alors mélangée
+/// différemment à chaque relevé, ce qui est exactement ce qu'on ne veut pas.
 pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,
     compte: &str,
     mut avance: impl FnMut(usize, usize),
 ) -> Resultat<Vec<MessageAffiche>> {
-    let refs = client.lister(BOITE_DE_RECEPTION, PLAFOND_BOITE).await?;
-    avance(0, refs.len());
+    use futures_util::StreamExt;
 
-    let mut boite = Vec::with_capacity(refs.len());
-    for (rang, reference) in refs.iter().enumerate() {
-        match client.metadonnees(&reference.id).await {
+    let refs = client.lister(BOITE_DE_RECEPTION, PLAFOND_BOITE).await?;
+    let total = refs.len();
+    avance(0, total);
+
+    // Le flux porte les identifiants eux-mêmes, et non des emprunts sur la
+    // liste : un emprunt obligerait le compilateur à relier la durée de vie de
+    // chaque appel à celle de la liste, ce qu'il refuse à travers un flux.
+    let identifiants = refs.into_iter().map(|r| r.id);
+
+    let mut lectures = futures_util::stream::iter(identifiants)
+        .map(|id| async move {
+            let lu = client.metadonnees(&id).await;
+            (id, lu)
+        })
+        .buffered(PARALLELISME);
+
+    let mut boite = Vec::with_capacity(total);
+    let mut faits = 0;
+
+    while let Some((id, lu)) = lectures.next().await {
+        match lu {
             Ok(m) => boite.push(MessageAffiche::depuis(&m, regles, compte)),
 
             // Le message a bougé entre la liste et la lecture : cas courant sur
             // une boîte vivante. Il manquera à l'affichage, ce n'est pas une
             // raison de ne rien montrer.
-            Err(e) => log::info!("message {} illisible, ignoré : {e}", reference.id),
+            Err(e) => log::info!("message {id} illisible, ignoré : {e}"),
         }
         // Compté même en cas d'échec : c'est un message traité de moins à
         // attendre, et la barre ne doit pas rester en arrière.
-        avance(rang + 1, refs.len());
+        faits += 1;
+        avance(faits, total);
     }
 
     Ok(boite)
@@ -370,5 +404,83 @@ mod tests {
 
         assert_eq!(boite.len(), 1);
         assert_eq!(boite[0].id, "m2");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn le_reseau_repond_a_l_envers_la_boite_reste_dans_l_ordre() {
+        // Les appels partent maintenant à plusieurs de front. C'est le risque
+        // propre à ce changement : rien ne garantit que le réseau réponde dans
+        // l'ordre où on l'a interrogé, et une boîte qui se réordonne à chaque
+        // relevé serait pire que lente.
+        //
+        // Ici les délais sont décroissants : le dernier message demandé répond
+        // le premier, le premier répond le dernier. Un code qui se contenterait
+        // de l'ordre d'arrivée rendrait la boîte exactement à l'envers.
+        let ids = ["m1", "m2", "m3", "m4", "m5", "m6"];
+
+        let mut reponses = vec![ok(&serde_json::json!({
+            "messages": ids.iter().map(|i| serde_json::json!({"id": i, "threadId": "t"}))
+                .collect::<Vec<_>>()
+        })
+        .to_string())];
+
+        for id in ids {
+            reponses.push(ok(&serde_json::json!({
+                "id": id, "threadId": "t", "labelIds": ["INBOX"],
+                "payload": {"headers": [{"name": "From", "value": "karim@atelier.fr"}]}
+            })
+            .to_string()));
+        }
+
+        // Le premier délai est celui de `lister`, qui n'attend pas.
+        let delais = vec![0, 600, 500, 400, 300, 200, 100];
+
+        let c = ClientDeTest::avec_delais(reponses, delais);
+        let boite = charger_boite(&c.client, &RuleSet::default(), "moi@gmail.com")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            boite.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ids,
+            "la boîte doit suivre l'ordre de Gmail, pas celui du réseau"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn les_messages_sont_demandes_de_front_et_non_a_la_queue_leu_leu() {
+        // Six messages qui prennent chacun une seconde. En file indienne, le
+        // relevé prendrait six secondes ; menés de front, une seule. Le temps
+        // est simulé — la mesure est exacte, pas approchée.
+        let ids = ["m1", "m2", "m3", "m4", "m5", "m6"];
+
+        let mut reponses = vec![ok(&serde_json::json!({
+            "messages": ids.iter().map(|i| serde_json::json!({"id": i, "threadId": "t"}))
+                .collect::<Vec<_>>()
+        })
+        .to_string())];
+
+        for id in ids {
+            reponses.push(ok(&serde_json::json!({
+                "id": id, "threadId": "t", "labelIds": ["INBOX"],
+                "payload": {"headers": [{"name": "From", "value": "karim@atelier.fr"}]}
+            })
+            .to_string()));
+        }
+
+        let delais = vec![0, 1000, 1000, 1000, 1000, 1000, 1000];
+
+        let c = ClientDeTest::avec_delais(reponses, delais);
+        let debut = tokio::time::Instant::now();
+        let boite = charger_boite(&c.client, &RuleSet::default(), "moi@gmail.com")
+            .await
+            .unwrap();
+        let ecoule = debut.elapsed();
+
+        assert_eq!(boite.len(), 6);
+        assert!(
+            ecoule < std::time::Duration::from_millis(1500),
+            "six messages d'une seconde ont pris {ecoule:?} : ils sont encore en file indienne"
+        );
     }
 }

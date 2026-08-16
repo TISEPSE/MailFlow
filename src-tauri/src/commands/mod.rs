@@ -473,7 +473,27 @@ pub async fn message_corps(
     }
 
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-    let message = client.message_complet(&id).await?;
+    lire_le_corps(&client, &dossier, &id).await
+}
+
+/// Va chercher un corps chez Gmail, l'assainit, rapatrie ses images, le range.
+///
+/// Séparé de la commande pour que le préchargement puisse réutiliser un seul
+/// client sur toute la boîte : `TransportHttp::nouveau` construit un client
+/// HTTP, donc une réserve de connexions. En construire un par message faisait
+/// repayer la poignée de main TLS soixante fois.
+async fn lire_le_corps<T, J>(
+    client: &ClientGmail<T, J>,
+    dossier: &std::path::Path,
+    id: &str,
+) -> Resultat<crate::gmail::corps::CorpsMessage>
+where
+    T: crate::gmail::client::Transport,
+    J: SourceJeton,
+{
+    use crate::gmail::corps;
+
+    let message = client.message_complet(id).await?;
 
     let mut trouve = message
         .payload
@@ -490,7 +510,7 @@ pub async fn message_corps(
             .map(corps::pieces_par_cid)
             .unwrap_or_default();
 
-        let table = rapatrier_les_images(&client, &id, html, &pieces).await;
+        let table = rapatrier_les_images(client, id, html, &pieces).await;
         trouve.html = Some(corps::substituer_images(html, &table));
     }
 
@@ -502,7 +522,7 @@ pub async fn message_corps(
             _ => "aucun",
         }
     );
-    corps::ranger(&dossier, &id, &trouve);
+    corps::ranger(dossier, id, &trouve);
     Ok(trouve)
 }
 
@@ -534,14 +554,46 @@ pub async fn corps_precharger(
     use crate::gmail::corps;
     use tauri::Emitter;
 
+    use futures_util::StreamExt;
+
     let dossier = corps::dossier_cache_dans(&app);
     let total = ids.len();
-    let mut faits = 0;
 
-    for id in ids {
-        if corps::lire(&dossier, &id).is_none() {
-            let _ = message_corps(app.clone(), etat.clone(), id).await;
-        }
+    // Un seul client pour toute la boîte, et non un par message : voir
+    // [`lire_le_corps`].
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+
+    // Même parallélisme que le relevé, pour la même raison : c'est la latence
+    // qui domine, pas le débit. Chaque corps entraîne en outre le rapatriement
+    // de ses images, qui a déjà son propre plafond dans `gmail::logos`.
+    //
+    // Les corps déjà rangés sont écartés ici, sur la seule présence du fichier :
+    // les lire pour savoir qu'ils existent reviendrait à décoder soixante
+    // documents pour rien.
+    let (a_lire, deja): (Vec<String>, Vec<String>) = ids
+        .into_iter()
+        .partition(|id| !corps::chemin_cache(&dossier, id).exists());
+
+    let mut lectures = futures_util::stream::iter(a_lire)
+        .map(|id| {
+            let dossier = &dossier;
+            let client = &client;
+            async move {
+                // Un corps illisible n'arrête pas les autres : il sera
+                // simplement rechargé à l'ouverture du message.
+                if let Err(e) = lire_le_corps(client, dossier, &id).await {
+                    log::info!("corps de {id} non préchargé : {e}");
+                }
+            }
+        })
+        .buffered(crate::gmail::boite::PARALLELISME);
+
+    // Les corps déjà rangés sont comptés sans appel : relancer l'application ne
+    // recommence rien, mais la barre doit tout de même partir d'où il faut.
+    let mut faits = deja.len();
+    let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });
+
+    while lectures.next().await.is_some() {
         faits += 1;
         let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });
     }
@@ -794,7 +846,15 @@ pub async fn maj_ouvrir(app: AppHandle) -> Resultat<()> {
         return Err(AppError::Reseau("aucune version publiée".into()));
     };
 
-    tauri_plugin_opener::open_url(&adresse, None::<&str>)
+    // L'adresse vient de la réponse de GitHub. Elle est donc extérieure, et
+    // passe par la même garde que les liens d'e-mail : la confiance accordée à
+    // une source ne dispense pas de vérifier ce qu'elle envoie.
+    let sortie = tauri::Url::parse(&adresse)
+        .ok()
+        .filter(crate::sortie_autorisee)
+        .ok_or_else(|| AppError::Reseau("adresse de publication inattendue".into()))?;
+
+    tauri_plugin_opener::open_url(sortie.as_str(), None::<&str>)
         .map_err(|e| AppError::Config(format!("navigateur injoignable : {e}")))?;
     Ok(())
 }

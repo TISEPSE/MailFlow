@@ -30,6 +30,10 @@ reqwest = { version = "0.13.4", features = ["json", "gzip", "brotli", "form"] }
 oauth2 = { version = "5.0.0", default-features = false }
 keyring = { version = "4.1.6", features = ["apple-native-keyring-store"] }
 base64 = "0.23.1"
+# Pour `buffered`, qui mène plusieurs appels Gmail de front en rendant les
+# résultats dans l'ordre de départ. Déjà présente dans l'arbre via `reqwest` :
+# la déclarer ici ne compile rien de plus.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

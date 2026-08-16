@@ -525,6 +525,13 @@ pub mod tests_support {
     pub struct FauxTransport {
         reponses: RefCell<Vec<ReponseBrute>>,
         recus: RefCell<Vec<RequeteVue>>,
+        /// Attente propre à chaque réponse, servie dans le même ordre.
+        ///
+        /// Sans elle, un transport qui répond dans l'instant sert toujours dans
+        /// l'ordre où on l'appelle : un test ne peut alors pas distinguer un
+        /// code qui préserve l'ordre d'un code qui le doit au hasard. Avec elle,
+        /// les réponses reviennent volontairement à contretemps.
+        delais: RefCell<Vec<u64>>,
     }
 
     impl Transport for FauxTransport {
@@ -540,10 +547,23 @@ pub mod tests_support {
                 corps,
                 jeton: jeton.to_string(),
             });
-            self.reponses
-                .borrow_mut()
-                .pop()
-                .ok_or_else(|| AppError::Reseau("plus de réponse en réserve".into()))
+
+            // La réponse est prélevée à l'appel, l'attente vient après : chaque
+            // requête reçoit ainsi la réponse qui lui était destinée, mais la
+            // reçoit à son propre rythme. Prélever après l'attente donnerait la
+            // réponse du voisin à qui répond le premier.
+            //
+            // Les emprunts sont relâchés avant l'attente : en garder un à
+            // travers un `await` ferait paniquer le `RefCell` dès que deux
+            // appels se chevauchent — précisément ce que ces délais provoquent.
+            let reponse = self.reponses.borrow_mut().pop();
+            let attente = self.delais.borrow_mut().pop();
+
+            if let Some(ms) = attente {
+                tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            }
+
+            reponse.ok_or_else(|| AppError::Reseau("plus de réponse en réserve".into()))
         }
     }
 
@@ -584,12 +604,19 @@ pub mod tests_support {
 
     impl ClientDeTest {
         pub fn avec(reponses: Vec<ReponseBrute>) -> Self {
+            Self::avec_delais(reponses, Vec::new())
+        }
+
+        /// Mêmes réponses, chacune rendue après son propre délai en
+        /// millisecondes. Sert à faire revenir le réseau dans le désordre.
+        pub fn avec_delais(reponses: Vec<ReponseBrute>, delais: Vec<u64>) -> Self {
             Self {
                 client: ClientGmail::nouveau(
                     FauxTransport {
                         // `pop` prend par la fin : on inverse pour servir dans l'ordre.
                         reponses: RefCell::new(reponses.into_iter().rev().collect()),
                         recus: RefCell::new(Vec::new()),
+                        delais: RefCell::new(delais.into_iter().rev().collect()),
                     },
                     FauxJetons {
                         renouvellements: RefCell::new(0),
