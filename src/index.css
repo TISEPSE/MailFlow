@@ -210,10 +210,23 @@ button:not(:disabled),
 
    `position: relative` déplace la boîte peinte elle-même, curseur compris :
    les deux bougent ensemble, et l'alignement du texte avec le reste de la
-   barre reste celui qui a été mesuré. */
+   barre reste celui qui a été mesuré.
+
+   La valeur, elle, est plus forte que celle du texte ordinaire, et ce n'est
+   pas une inconséquence. Un champ de saisie n'a pas la même géométrie qu'une
+   pastille : le moteur y centre la boîte de ligne dans une hauteur que nous
+   fixons de l'extérieur, et il le fait sur l'ascendante de la fonte, pas sur
+   la bande des capitales. Le défaut est donc du même signe qu'ailleurs, mais
+   d'une amplitude supérieure — et il se voit d'autant plus qu'un champ de mot
+   de passe n'affiche que des points, centrés sur le corps de l'em et non sur
+   les capitales.
+
+   0,12 em corrigeait la moitié du chemin ; 0,20 em amène le texte au centre
+   optique du cadre. Relevé à l'œil sur la fenêtre de saisie de la clé, faute
+   de pouvoir photographier une bande d'encre faite de points. */
 .texte-optique-champ {
   position: relative;
-  top: 0.12em;
+  top: 0.2em;
 }
 
 /* Le numéro qui arrive dans une carte de newsletter entre par la droite.

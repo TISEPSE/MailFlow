@@ -262,7 +262,13 @@ export function Segments<T extends string>({
               pleineLargeur ? 'flex-1' : ''
             }`}
           >
-            {v}
+            {/* La correction optique manquait ici, et nulle part ailleurs elle
+                ne se voit autant : trois segments côte à côte donnent trois
+                lignes de texte parallèles, et l'œil compare une bande de
+                capitales à un bord arrondi tout proche. Le libellé était haut
+                de 0,12 em dans sa pastille — mesuré une fois, jamais appliqué
+                ici. Voir `.texte-optique`. */}
+            <span className="texte-optique">{v}</span>
           </button>
         )
       })}
