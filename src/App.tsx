@@ -699,13 +699,35 @@ export default function App() {
   /** Combien d'éléments porte cette vue.
    *
    *  Des messages pour les vues de courrier, des règles pour la page des
-   *  règles — c'est ce qu'on veut savoir d'un coup d'œil dans chaque cas. */
-  const compte = (v: Vue): number =>
-    v === 'regles'
-      ? reglesAffichees.length
-      : v === 'parametres'
-        ? 0
-        : parCategorie[v as CategorieMessage].length
+   *  règles, des archives pour la table — c'est ce qu'on veut savoir d'un coup
+   *  d'œil dans chaque cas.
+   *
+   *  Écrit en `switch` et **sans conversion de type**, ce qui n'est pas un
+   *  détail de style. La version précédente finissait par
+   *  `parCategorie[v as CategorieMessage]`, et cette conversion était un
+   *  mensonge : elle affirmait au compilateur que toute vue restante est une
+   *  catégorie de message. Le jour où la page des archives est arrivée, la
+   *  promesse est devenue fausse, le compilateur n'a rien pu dire, et
+   *  `undefined.length` a vidé la fenêtre entière — sans message.
+   *
+   *  Ici, le `default` ne reçoit que ce que les `case` n'ont pas pris. Ajouter
+   *  une vue qui n'est pas une catégorie sans lui donner son `case` ne
+   *  compilera pas. */
+  const compte = (v: Vue): number => {
+    switch (v) {
+      case 'regles':
+        return reglesAffichees.length
+      case 'parametres':
+        return 0
+      // Zéro tant que la table n'a pas été ouverte : elle ne se charge qu'à sa
+      // première visite. La pastille se tait quand le compte est nul, ce qui
+      // évite d'affirmer une table vide avant de l'avoir regardée.
+      case 'archives':
+        return archives.length
+      default:
+        return parCategorie[v].length
+    }
+  }
 
   /** Vrai tant que la boîte se relève : les compteurs ne veulent alors rien dire.
    *
@@ -1277,7 +1299,11 @@ export default function App() {
                       ...VIDES.formation,
                       action: {
                         libelle: 'Ajouter un expéditeur',
-                        icone: 'playlist_add_check' as NomIcone,
+                        // Sans conversion : le nom est vérifié par le
+                        // compilateur, comme partout ailleurs. Une conversion
+                        // ici cacherait une icône inexistante, qui
+                        // s'afficherait vide sans lever la moindre erreur.
+                        icone: 'playlist_add_check',
                         onClick: () => setAjoutFormation(true),
                       },
                     }
