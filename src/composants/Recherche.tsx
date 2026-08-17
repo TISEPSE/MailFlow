@@ -109,7 +109,7 @@ export function Recherche({
           onChange={(e) => setQ(e.target.value)}
           placeholder="Rechercher un message, un expéditeur, une phrase…"
           aria-label="Rechercher dans tous les messages"
-          className="texte-optique selectionnable min-w-0 flex-1 bg-transparent text-[1.0625rem] outline-none"
+          className="texte-optique-champ selectionnable min-w-0 flex-1 bg-transparent text-[1.0625rem] outline-none"
           style={{ color: 'var(--fg)' }}
         />
         {q && (

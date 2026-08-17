@@ -439,6 +439,90 @@ pub fn ranger_vignette(dossier: &Path, message: &str, piece: &str, png: &str) {
     }
 }
 
+/// Texte d'un corps, tel qu'on le donne à résumer.
+///
+/// La partie `text/plain` quand l'expéditeur en a joint une — c'est la même
+/// lettre, sans le balisage. À défaut, le HTML dépouillé de ses balises :
+/// envoyer le balisage coûterait des jetons pour du bruit, et le quota gratuit
+/// se compte en jetons.
+pub fn texte_lisible(corps: &CorpsMessage) -> String {
+    if let Some(texte) = &corps.texte
+        && !texte.trim().is_empty()
+    {
+        return texte.clone();
+    }
+    corps.html.as_deref().map(sans_balises).unwrap_or_default()
+}
+
+/// Retire les balises et rend les entités les plus courantes.
+///
+/// Les entités comptent : un extrait qui dit « l&#39;examen » se résume mal,
+/// et le modèle reproduirait la graphie plutôt que de la corriger.
+fn sans_balises(html: &str) -> String {
+    let mut texte = String::with_capacity(html.len());
+    let mut dans_balise = false;
+
+    for c in html.chars() {
+        match c {
+            '<' => dans_balise = true,
+            // Une balise vaut une séparation : sans cet espace, « fin</p><p>début »
+            // donnerait « findébut ».
+            '>' => {
+                dans_balise = false;
+                texte.push(' ');
+            }
+            _ if !dans_balise => texte.push(c),
+            _ => {}
+        }
+    }
+
+    for (entite, remplacement) in [
+        ("&nbsp;", " "),
+        ("&#39;", "'"),
+        ("&apos;", "'"),
+        ("&quot;", "\""),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        // En dernier : sinon « &amp;#39; » deviendrait une apostrophe.
+        ("&amp;", "&"),
+    ] {
+        texte = texte.replace(entite, remplacement);
+    }
+
+    texte.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Chemin du résumé d'un message.
+///
+/// Une extension à part, et non un `.json` de plus : le balayage reconnaît les
+/// corps à leur extension `.json` et efface tout `.json` qu'il ne rattache pas
+/// à un message vivant. Un résumé nommé `<id>.resume.json` aurait donc été
+/// effacé à la seconde même où il venait d'être écrit.
+pub fn chemin_resume(dossier: &Path, id: &str) -> PathBuf {
+    dossier.join(format!("{}.resume", assaini(id)))
+}
+
+/// Lit un résumé déjà produit, ou `None`.
+///
+/// Un résumé illisible vaut un résumé absent : il sera simplement refait. On
+/// ne remonte pas d'erreur pour ça — la page a sa ligne composée localement.
+pub fn lire_resume(dossier: &Path, id: &str) -> Option<crate::llm::Resume> {
+    let texte = std::fs::read_to_string(chemin_resume(dossier, id)).ok()?;
+    serde_json::from_str(&texte).ok()
+}
+
+/// Range un résumé. Un échec d'écriture ne fait rien échouer : le résumé sera
+/// refait au prochain relevé, ce qui coûte un appel et rien d'autre.
+pub fn ranger_resume(dossier: &Path, id: &str, resume: &crate::llm::Resume) {
+    let _ = std::fs::create_dir_all(dossier);
+    let Ok(json) = serde_json::to_string(resume) else {
+        return;
+    };
+    if let Err(e) = crate::cache::ecrire_prive(&chemin_resume(dossier, id), &json) {
+        log::info!("résumé non mis en cache : {e}");
+    }
+}
+
 /// Lit un corps déjà rangé, ou `None`.
 pub fn lire(dossier: &Path, id: &str) -> Option<CorpsMessage> {
     let texte = std::fs::read_to_string(chemin_cache(dossier, id)).ok()?;
@@ -494,6 +578,12 @@ pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<S
 
         let a_effacer = match chemin.extension().and_then(|e| e.to_str()) {
             Some("json") => !gardes.contains(&chemin),
+            // Un résumé n'a pas de sens sans le message qu'il résume, et il a
+            // coûté un appel à un service tiers : il part avec lui.
+            Some("resume") => !chemin
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| prefixes_vivants.contains(n)),
             Some("png") => !chemin
                 .file_stem()
                 .and_then(|n| n.to_str())
@@ -846,6 +936,53 @@ mod tests {
 
             assert!(lire(dossier.path(), "vivant").is_some());
             assert!(lire(dossier.path(), "disparu").is_none());
+        }
+
+        fn un_resume() -> crate::llm::Resume {
+            crate::llm::Resume {
+                texte: "Le prix du blé grimpe.".into(),
+                hashtags: vec!["agriculture".into()],
+            }
+        }
+
+        #[test]
+        fn un_resume_survit_au_balayage_qui_efface_les_corps() {
+            // Le piège évité : nommer le résumé `<id>.resume.json` l'aurait
+            // rangé parmi les corps, et le balayage l'aurait effacé à la
+            // seconde même où il venait d'être écrit — un appel payé pour rien
+            // à chaque relevé.
+            let dossier = tempfile::tempdir().unwrap();
+            ranger(dossier.path(), "vivant", &un_corps());
+            ranger_resume(dossier.path(), "vivant", &un_resume());
+
+            oublier_les_absents(dossier.path(), &HashSet::from(["vivant".to_string()]));
+
+            assert_eq!(
+                lire_resume(dossier.path(), "vivant").map(|r| r.texte),
+                Some("Le prix du blé grimpe.".to_string())
+            );
+        }
+
+        #[test]
+        fn un_resume_disparait_avec_le_message_qu_il_resumait() {
+            let dossier = tempfile::tempdir().unwrap();
+            ranger_resume(dossier.path(), "vivant", &un_resume());
+            ranger_resume(dossier.path(), "disparu", &un_resume());
+
+            oublier_les_absents(dossier.path(), &HashSet::from(["vivant".to_string()]));
+
+            assert!(lire_resume(dossier.path(), "vivant").is_some());
+            assert!(lire_resume(dossier.path(), "disparu").is_none());
+        }
+
+        #[test]
+        fn un_resume_illisible_vaut_un_resume_absent() {
+            // Il sera simplement refait ; la page a sa ligne composée
+            // localement en attendant, et rien ne doit remonter en erreur.
+            let dossier = tempfile::tempdir().unwrap();
+            std::fs::write(chemin_resume(dossier.path(), "abime"), "{ pas du json").unwrap();
+
+            assert!(lire_resume(dossier.path(), "abime").is_none());
         }
 
         #[test]

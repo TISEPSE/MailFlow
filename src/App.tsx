@@ -13,6 +13,7 @@ import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
+import { Archives } from './vues/Archives'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
@@ -36,6 +37,10 @@ import {
   compteOublier,
   compteProfil,
   corpsPrecharger,
+  resumesConnus,
+  resumesProduire,
+  resumesArreter,
+  EVENEMENT_RESUMES,
   EVENEMENT_PRECHARGEMENT,
   EVENEMENT_RELEVE,
   type Avancement,
@@ -44,8 +49,16 @@ import {
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
+  archivesEnCache,
+  archivesLister,
   libelleCreer,
+  libellePoser,
+  libelleRetirer,
   libellesLister,
+  llmEtat,
+  tasDefaire,
+  tableauEcrire,
+  tableauLire,
   messageMarquerLu,
   messageRanger,
   repondreAuMessage,
@@ -66,9 +79,11 @@ import type {
   ProfilCompte,
   Regle,
   ReglesDuCompte,
+  Resume,
+  Tableau,
 } from './types/backend'
 
-type Vue = CategorieMessage | 'regles' | 'parametres'
+type Vue = CategorieMessage | 'regles' | 'archives' | 'parametres'
 
 /**
  * Valeur de `compteAffiche` désignant la vue mélangée.
@@ -85,6 +100,7 @@ const TOUS_LES_COMPTES = '\u0000tous'
  *  indéfini : lire `.clair` dessus effaçait toute l'application. */
 function teinteDeLaVue(v: Vue): Teintable {
   if (v === 'regles') return 'regle'
+  if (v === 'archives') return 'archive'
   if (v === 'parametres') return 'humain'
   return v
 }
@@ -95,6 +111,7 @@ const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'newsletter', libelle: 'Newsletters', glyphe: 'newspaper' },
   { vue: 'formation', libelle: 'Rappels de formations', glyphe: 'school' },
   { vue: 'regles', libelle: 'Règles automatiques', glyphe: 'bolt' },
+  { vue: 'archives', libelle: 'Archives', glyphe: 'archive' },
 ]
 
 
@@ -150,6 +167,17 @@ export default function App() {
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
   const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [libelles, setLibelles] = useState<LibelleGmail[]>([])
+
+  /** Les messages archivés, et où ils sont posés sur la table.
+   *
+   *  Relevés à part de la boîte : un message archivé n'est, par définition, pas
+   *  dans la boîte de réception, et Gmail demande sa propre requête. Ils ne se
+   *  chargent qu'à la première ouverture de la page — payer ce relevé au
+   *  démarrage pour une page qu'on n'ouvrira peut-être pas serait de l'attente
+   *  offerte à personne. */
+  const [archives, setArchives] = useState<MessageAffiche[]>([])
+  const [tableau, setTableau] = useState<Tableau>({ tas: {}, messages: {} })
+  const [archivesDemandees, setArchivesDemandees] = useState(false)
 
   /** Corps déjà chargés, gardés le temps de la session.
    *
@@ -208,6 +236,16 @@ export default function App() {
    *  Un état à part de la sélection interne de la vue : celle-ci se souvient de
    *  ce qu'on a ouvert, tandis que celui-ci est un ordre venu d'ailleurs. */
   const [messageVise, setMessageVise] = useState<string | null>(null)
+
+  /** Résumés de newsletters déjà produits, par identifiant de message. */
+  const [resumes, setResumes] = useState<Record<string, Resume>>({})
+
+  /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas.
+   *
+   *  Séparé de `avancement` à dessein : celui-ci pose un écran qui bloque, et
+   *  les résumés ne doivent rien bloquer. Ils s'annoncent par une bande sur la
+   *  seule page qui les concerne. */
+  const [avancementResumes, setAvancementResumes] = useState<Avancement | null>(null)
 
   /** Fenêtre de recherche, ouverte au raccourci. */
   const [rechercheOuverte, setRechercheOuverte] = useState(false)
@@ -287,6 +325,135 @@ export default function App() {
     }
   }, [annoncer, chercherLesLogos])
 
+  /**
+   * Charge la table des archives, une fois, à la première ouverture de la page.
+   *
+   * Le cache d'abord, le réseau ensuite : une table qui met dix secondes à
+   * apparaître n'est plus une table, c'est une attente. La disposition suit le
+   * même chemin — elle est locale, donc immédiate.
+   */
+  const chargerLesArchives = useCallback(
+    async (forcer = false) => {
+      setEnRecherche(true)
+      try {
+        setTableau(await tableauLire().catch(() => ({ tas: {}, messages: {} })))
+
+        const enCache = await archivesEnCache().catch(() => [])
+        if (enCache.length > 0) setArchives(enCache)
+
+        // Le relevé réseau n'est refait que si le cache est vide, ou si
+        // l'utilisateur le demande : les archives ne bougent pas d'elles-mêmes,
+        // et deux cents messages coûtent deux cents appels.
+        if (forcer || enCache.length === 0) {
+          setArchives(await archivesLister())
+        }
+      } catch (e) {
+        annoncer(messageDErreur(e), true)
+      } finally {
+        setEnRecherche(false)
+      }
+    },
+    [annoncer],
+  )
+
+  /** Écrit la disposition, et la garde à l'écran sans attendre le disque.
+   *
+   *  L'écriture est volontairement non attendue : faire patienter la tuile
+   *  jusqu'à la fin d'une écriture fichier ferait traîner chaque dépose. */
+  const poserSurLaTable = useCallback(
+    (suivant: Tableau) => {
+      setTableau(suivant)
+      void tableauEcrire(suivant).catch((e) =>
+        console.warn('disposition non enregistrée', messageDErreur(e)),
+      )
+    },
+    [],
+  )
+
+  /**
+   * Troisième phase : les résumés des newsletters relevées.
+   *
+   * Ne concerne que cette catégorie — c'est la garantie, tenue ici et vérifiée
+   * côté Rust, qu'aucun message humain ni aucun rappel de formation ne part
+   * vers un service tiers.
+   *
+   * Sans clé configurée la commande rend zéro sans rien tenter : ce n'est pas
+   * une panne, et rien ne doit s'afficher. Les résumés déjà sur le disque sont
+   * lus d'abord, pour que la page les montre avant même que la phase commence.
+   */
+  const resumerLesNewsletters = useCallback(async (messages: MessageAffiche[]) => {
+    const ids = messages.filter((m) => m.categorie === 'newsletter').map((m) => m.id)
+    if (!ids.length) return
+
+    setResumes(await resumesConnus(ids).catch(() => ({})))
+
+    try {
+      await resumesProduire(ids)
+      setResumes(await resumesConnus(ids).catch(() => ({})))
+    } catch (e) {
+      // Un moteur de résumés indisponible ne mérite pas de notification :
+      // chaque carte garde sa ligne composée localement.
+      console.warn('résumés non produits', messageDErreur(e))
+    } finally {
+      setAvancementResumes(null)
+    }
+  }, [])
+
+  /**
+   * L'analyse relancée à la main, depuis la page Newsletters.
+   *
+   * # Pourquoi elle existe en plus de la phase automatique
+   *
+   * La clé se pose presque toujours **après** le premier démarrage : on ouvre
+   * l'application, on découvre les résumés, on va chercher une clé, on la colle
+   * dans les Paramètres — et la troisième phase est passée depuis longtemps.
+   * Sans ce bouton, il fallait redémarrer pour en profiter, sans que rien ne le
+   * dise.
+   *
+   * # Elle parle, là où la phase automatique a le droit de se taire
+   *
+   * Un démarrage sans clé ne doit rien afficher : l'utilisateur n'a pas demandé
+   * d'IA. Mais un bouton sur lequel on vient de cliquer et qui ne produit rien
+   * de visible est pire que pas de bouton du tout — on le reclique, et on
+   * conclut que l'application est cassée. Les trois issues sont donc dites.
+   *
+   * Les corps sont préchargés d'abord : `resumes_produire` saute en silence
+   * tout message dont le corps manque, et c'est le cas de tout ce qui est
+   * arrivé depuis le dernier relevé complet.
+   */
+  const analyserLesNewsletters = useCallback(async () => {
+    const messages = boite.filter((m) => m.categorie === 'newsletter')
+    if (!messages.length) {
+      annoncer('Aucune newsletter à analyser.')
+      return
+    }
+
+    const etatLlm = await llmEtat().catch(() => null)
+    if (!etatLlm?.cleConfiguree) {
+      annoncer('Aucune clé configurée : posez-la dans les Paramètres.', true)
+      return
+    }
+
+    const ids = messages.map((m) => m.id)
+    const avant = Object.keys(await resumesConnus(ids).catch(() => ({}))).length
+
+    setAvancementResumes({ faits: avant, total: ids.length })
+    await corpsPrecharger(ids).catch(() => null)
+    await resumerLesNewsletters(messages)
+
+    const apres = Object.keys(await resumesConnus(ids).catch(() => ({}))).length
+    const produits = apres - avant
+
+    annoncer(
+      produits > 0
+        ? `${produits} résumé${produits > 1 ? 's' : ''} produit${produits > 1 ? 's' : ''}.`
+        : avant === ids.length
+          ? 'Toutes les newsletters sont déjà résumées.'
+          : "Aucun résumé n'a pu être produit — le journal en dit la raison.",
+      produits === 0 && avant < ids.length,
+    )
+  }, [boite, annoncer, resumerLesNewsletters])
+
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
   const afficherLaVueMelangee = useCallback(async () => {
     setCompteAffiche(TOUS_LES_COMPTES)
@@ -330,11 +497,17 @@ export default function App() {
 
       setAvancement({ faits: 0, total: messages.length, etape: 'corps' })
       await corpsPrecharger(messages.map((m) => m.id)).catch(() => null)
+
+      // Troisième phase, lancée sans être attendue : les résumés ont besoin
+      // des corps que la phase précédente vient de rapporter, mais rien ne
+      // justifie de retenir l'utilisateur devant un écran pendant qu'ils se
+      // font. La bande de la page Newsletters s'en charge.
+      void resumerLesNewsletters(messages)
     } finally {
       chargementComplet.current = false
       setAvancement(null)
     }
-  }, [relever, afficherLeCache])
+  }, [relever, afficherLeCache, resumerLesNewsletters])
 
   /**
    * Marque un message comme lu, d'abord à l'écran puis chez Gmail.
@@ -397,6 +570,7 @@ export default function App() {
       listen<Avancement>(EVENEMENT_PRECHARGEMENT, (e) =>
         setAvancement({ ...e.payload, etape: 'corps' }),
       ),
+      listen<Avancement>(EVENEMENT_RESUMES, (e) => setAvancementResumes(e.payload)),
     ]
     return () => {
       for (const arret of arrets) void arret.then((f) => f())
@@ -416,6 +590,16 @@ export default function App() {
       await chargerLaBoite()
     })
   }, [rafraichir, chargerLaBoite])
+
+  /** La table des archives se charge à sa première ouverture, et pas avant.
+   *
+   *  Payer deux cents appels au démarrage pour une page qu'on n'ouvrira
+   *  peut-être pas serait de l'attente offerte à personne. */
+  useEffect(() => {
+    if (vue !== 'archives' || archivesDemandees || !interrogeable(etat)) return
+    setArchivesDemandees(true)
+    void chargerLesArchives()
+  }, [vue, archivesDemandees, etat, chargerLesArchives])
 
   /** Relevé périodique. La fréquence est un réglage, pas une constante : le
    *  minuteur se reconstruit quand elle change. */
@@ -572,13 +756,35 @@ export default function App() {
   /** Combien d'éléments porte cette vue.
    *
    *  Des messages pour les vues de courrier, des règles pour la page des
-   *  règles — c'est ce qu'on veut savoir d'un coup d'œil dans chaque cas. */
-  const compte = (v: Vue): number =>
-    v === 'regles'
-      ? reglesAffichees.length
-      : v === 'parametres'
-        ? 0
-        : parCategorie[v as CategorieMessage].length
+   *  règles, des archives pour la table — c'est ce qu'on veut savoir d'un coup
+   *  d'œil dans chaque cas.
+   *
+   *  Écrit en `switch` et **sans conversion de type**, ce qui n'est pas un
+   *  détail de style. La version précédente finissait par
+   *  `parCategorie[v as CategorieMessage]`, et cette conversion était un
+   *  mensonge : elle affirmait au compilateur que toute vue restante est une
+   *  catégorie de message. Le jour où la page des archives est arrivée, la
+   *  promesse est devenue fausse, le compilateur n'a rien pu dire, et
+   *  `undefined.length` a vidé la fenêtre entière — sans message.
+   *
+   *  Ici, le `default` ne reçoit que ce que les `case` n'ont pas pris. Ajouter
+   *  une vue qui n'est pas une catégorie sans lui donner son `case` ne
+   *  compilera pas. */
+  const compte = (v: Vue): number => {
+    switch (v) {
+      case 'regles':
+        return reglesAffichees.length
+      case 'parametres':
+        return 0
+      // Zéro tant que la table n'a pas été ouverte : elle ne se charge qu'à sa
+      // première visite. La pastille se tait quand le compte est nul, ce qui
+      // évite d'affirmer une table vide avant de l'avoir regardée.
+      case 'archives':
+        return archives.length
+      default:
+        return parCategorie[v].length
+    }
+  }
 
   /** Vrai tant que la boîte se relève : les compteurs ne veulent alors rien dire.
    *
@@ -999,10 +1205,89 @@ export default function App() {
                 })
               }
             />
+          ) : vue === 'archives' ? (
+            <Archives
+              archives={archives}
+              libelles={libelles}
+              tableau={tableau}
+              onTableau={poserSurLaTable}
+              sombre={sombre}
+              enCours={enRecherche}
+              corpsConnus={corpsConnus}
+              onCorpsCharge={(id, corps) =>
+                setCorpsConnus((connus) => ranger(connus, id, corps))
+              }
+              gestes={{
+                onRelever: () => void chargerLesArchives(true),
+                onErreur: (m) => annoncer(m, true),
+                onLu: (id) => void marquerLu(id),
+                onSupprimer: async (id) => {
+                  await messageCorbeille(id)
+                  // Retirée de la table sans attendre un relevé : la tuile est
+                  // sous les yeux de l'utilisateur, et la voir survivre au
+                  // geste ferait croire que rien ne s'est passé.
+                  setArchives((liste) => liste.filter((m) => m.id !== id))
+                  annoncer('Message mis à la corbeille.')
+                },
+                onDefaireLeTas: async (libelle, messages) => {
+                  await tasDefaire(libelle, messages)
+
+                  // Les tuiles s'éparpillent d'elles-mêmes : privées de ce
+                  // libellé, elles retombent dans « seuls » par le seul jeu de
+                  // `repartir`. Rien de plus n'est à écrire pour cela.
+                  setArchives((liste) =>
+                    liste.map((m) =>
+                      messages.includes(m.id)
+                        ? { ...m, libelles: (m.libelles ?? []).filter((l) => l !== libelle) }
+                        : m,
+                    ),
+                  )
+                  setLibelles((connus) => connus.filter((l) => l.id !== libelle))
+                  annoncer('Tas défait.')
+                },
+                onCreerLibelle: async (nom) => {
+                  const aJour = await libelleCreer(nom)
+                  setLibelles(aJour)
+                  return aJour
+                },
+                onDeposer: async (message, libelle) => {
+                  await libellePoser(message, libelle)
+                  // L'archive est mise à jour sur place : relever à nouveau
+                  // pour un seul libellé coûterait deux cents appels, et la
+                  // tuile resterait immobile pendant tout ce temps.
+                  setArchives((liste) =>
+                    liste.map((m) =>
+                      m.id === message && !(m.libelles ?? []).includes(libelle)
+                        ? { ...m, libelles: [...(m.libelles ?? []), libelle] }
+                        : m,
+                    ),
+                  )
+                },
+                onSortir: async (message, libelle) => {
+                  await libelleRetirer(message, libelle)
+                  setArchives((liste) =>
+                    liste.map((m) =>
+                      m.id === message
+                        ? {
+                            ...m,
+                            libelles: (m.libelles ?? []).filter((l) => l !== libelle),
+                          }
+                        : m,
+                    ),
+                  )
+                },
+              }}
+            />
           ) : vue === 'newsletter' ? (
             <Newsletters
               messages={parCategorie.newsletter}
               chargement={premierReleve}
+              resumes={resumes}
+              avancementResumes={avancementResumes}
+              onArreterResumes={() => void resumesArreter()}
+              onAnalyser={() => void analyserLesNewsletters()}
+              vise={messageVise}
+              onVise={() => setMessageVise(null)}
               logos={logos}
               vide={VIDES.newsletter}
               onOuvrir={(id) => void marquerLu(id)}
@@ -1095,7 +1380,11 @@ export default function App() {
                       ...VIDES.formation,
                       action: {
                         libelle: 'Ajouter un expéditeur',
-                        icone: 'playlist_add_check' as NomIcone,
+                        // Sans conversion : le nom est vérifié par le
+                        // compilateur, comme partout ailleurs. Une conversion
+                        // ici cacherait une icône inexistante, qui
+                        // s'afficherait vide sans lever la moindre erreur.
+                        icone: 'playlist_add_check',
                         onClick: () => setAjoutFormation(true),
                       },
                     }

@@ -6,6 +6,7 @@
 //!   métadonnées de messages, produit le plan d'actions à appliquer à Gmail.
 
 pub mod engine;
+pub mod migration;
 pub mod model;
 pub mod store;
 

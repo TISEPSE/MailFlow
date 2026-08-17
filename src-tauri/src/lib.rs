@@ -22,6 +22,8 @@ pub mod llm;
 pub mod maj;
 pub mod rules;
 pub mod secrets;
+pub mod sortie;
+pub mod tableau;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,33 +31,59 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(liens_vers_le_navigateur())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                // Deux destinations. La sortie standard passe par la chaîne
-                // npm → cargo → tauri, qui la bufferise : quand le parcours
-                // OAuth échoue, la ligne qui l'explique peut ne jamais sortir du
-                // tuyau. Le fichier, lui, est écrit par le processus lui-même.
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .target(tauri_plugin_log::Target::new(
-                            tauri_plugin_log::TargetKind::Stdout,
-                        ))
-                        .target(tauri_plugin_log::Target::new(
-                            tauri_plugin_log::TargetKind::LogDir {
-                                file_name: Some("mailflow".into()),
-                            },
-                        ))
-                        .build(),
-                )?;
+            // Le journal est écrit **dans toutes les constructions**, pas
+            // seulement en développement.
+            //
+            // Il ne l'était qu'en `debug`, et cette économie coûtait cher : les
+            // versions que l'utilisateur essaie sont des versions de
+            // publication, et ce sont précisément celles-là qui n'expliquaient
+            // rien. Trois défauts signalés — un lien qui n'ouvre rien, un
+            // résumé qui n'aboutit pas, une pièce jointe que Gmail refuse — ont
+            // dû être cherchés à l'aveugle faute d'une seule ligne de trace.
+            //
+            // Ce que le journal contient est déjà borné par la discipline du
+            // reste du code : jamais un jeton, jamais une clé, jamais une
+            // adresse complète de lien — le schéma et l'hôte suffisent à
+            // comprendre, et le reste porte des identifiants de suivi.
+            let mut journal = tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                // Le fichier est écrit par le processus lui-même, donc il
+                // survit à une fermeture brutale.
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("mailflow".into()),
+                    },
+                ))
+                // Borné, et une seule archive gardée : un journal qui grossit
+                // sans fin sur la machine de l'utilisateur est un défaut, pas
+                // une fonctionnalité.
+                .max_file_size(2 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne);
 
-                if let Ok(dossier) = app.path().app_log_dir() {
-                    log::info!("journal écrit dans {}", dossier.display());
-                }
+            if cfg!(debug_assertions) {
+                // La sortie standard passe par la chaîne npm → cargo → tauri,
+                // qui la bufferise : quand le parcours OAuth échoue, la ligne
+                // qui l'explique peut ne jamais sortir du tuyau. Elle ne sert
+                // qu'au développement, où l'on regarde le terminal.
+                journal = journal.target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ));
+            }
+
+            app.handle().plugin(journal.build())?;
+
+            if let Ok(dossier) = app.path().app_log_dir() {
+                log::info!(
+                    "MailFlow {} démarre, journal écrit dans {}",
+                    app.package_info().version,
+                    dossier.display()
+                );
             }
 
             // Construit après l'initialisation des logs, pour que l'absence
             // d'identifiant client soit visible dans la console.
             app.manage(commands::EtatAuth::nouveau());
+            app.manage(commands::resumes::EtatResumes::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -82,6 +110,13 @@ pub fn run() {
             commands::message_ranger,
             commands::libelles_lister,
             commands::libelle_creer,
+            commands::libelle_poser,
+            commands::libelle_retirer,
+            commands::tas_defaire,
+            commands::archives_lister,
+            commands::archives_en_cache,
+            commands::tableau_lire,
+            commands::tableau_ecrire,
             commands::repondre_au_message,
             commands::message_corbeille,
             commands::message_marquer_lu,
@@ -92,6 +127,13 @@ pub fn run() {
             commands::compte_ajouter,
             commands::compte_oublier,
             commands::logos_expediteurs,
+            commands::lien_ouvrir,
+            commands::resumes::llm_etat,
+            commands::resumes::llm_cle_enregistrer,
+            commands::resumes::llm_cle_effacer,
+            commands::resumes::resumes_connus,
+            commands::resumes::resumes_produire,
+            commands::resumes::resumes_arreter,
             commands::maj_verifier,
             commands::maj_ouvrir,
         ])
@@ -126,7 +168,9 @@ fn liens_vers_le_navigateur<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R
             }
 
             log::info!("lien ouvert dans le navigateur du système");
-            let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+            if let Err(e) = sortie::ouvrir(url.as_str()) {
+                log::warn!("lien non ouvert : {e}");
+            }
 
             // `false` annule la navigation : l'application reste où elle est.
             false
@@ -211,6 +255,21 @@ mod tests_navigation {
         assert!(sortie_autorisee(&url(
             "mailto:contact@exemple.fr?subject=Bonjour"
         )));
+    }
+
+    #[test]
+    fn une_adresse_relative_d_e_mail_ne_s_ouvre_pas() {
+        // Les liens cliqués dans un message passent par `lien_ouvrir`, qui les
+        // analyse avant de les confier au système. Une adresse relative n'a pas
+        // de sens hors de son site d'origine : elle ne doit pas être devinée à
+        // partir de l'adresse de l'application, sous peine d'ouvrir autre chose
+        // que ce que l'expéditeur désignait.
+        for relative in ["/desabonnement", "../suivi", "page.html", "//exemple.fr/x"] {
+            assert!(
+                Url::parse(relative).is_err() || !sortie_autorisee(&url(relative)),
+                "« {relative} » ne doit pas atteindre le navigateur"
+            );
+        }
     }
 
     #[test]

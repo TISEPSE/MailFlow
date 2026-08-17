@@ -262,7 +262,13 @@ export function Segments<T extends string>({
               pleineLargeur ? 'flex-1' : ''
             }`}
           >
-            {v}
+            {/* La correction optique manquait ici, et nulle part ailleurs elle
+                ne se voit autant : trois segments côte à côte donnent trois
+                lignes de texte parallèles, et l'œil compare une bande de
+                capitales à un bord arrondi tout proche. Le libellé était haut
+                de 0,12 em dans sa pastille — mesuré une fois, jamais appliqué
+                ici. Voir `.texte-optique`. */}
+            <span className="texte-optique">{v}</span>
           </button>
         )
       })}
@@ -503,7 +509,13 @@ export function Modale({
         // formulaire et relâché dehors ne doit pas fermer la fenêtre.
         if (e.target === e.currentTarget) onFermer()
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-8"
+      // Moins de marge autour d'une grande fenêtre : à `p-8`, l'en-tête et les
+      // deux bords mangeaient assez de hauteur pour que la fenêtre dépasse de
+      // l'écran sur un portable, et c'est alors la page derrière qui se mettait
+      // à défiler.
+      className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto ${
+        large ? 'p-5' : 'p-8'
+      }`}
       style={{
         background: 'rgb(0 0 0 / 40%)',
         // Le flou détache la fenêtre de la page sans l'effacer : on voit encore
@@ -517,8 +529,13 @@ export function Modale({
         role="dialog"
         aria-modal="true"
         aria-label={titre}
+        // La variante large prend presque tout l'écran : c'est une fenêtre où
+        // l'on *lit* un message entier, et chaque centimètre rendu au texte est
+        // une ligne de moins à faire défiler. Les marges du fond restent —
+        // collée aux bords, la fenêtre ne se distinguerait plus de la page, et
+        // l'on ne saurait plus par où en sortir.
         className={`apparait my-auto w-full rounded-2xl border ${
-          large ? 'max-w-5xl' : 'max-w-lg'
+          large ? 'max-w-[min(1500px,94vw)]' : 'max-w-lg'
         }`}
         style={{
           background: 'var(--card)',
@@ -556,7 +573,7 @@ export function Modale({
             barres imbriquées, l'une pour la fenêtre et l'autre pour le
             message, se disputaient la molette. */}
         <div
-          className={`${large ? 'h-[72vh]' : 'max-h-[70vh]'} ${
+          className={`${large ? 'h-[82vh]' : 'max-h-[70vh]'} ${
             sansRembourrage
               ? 'overflow-hidden rounded-b-2xl'
               : 'overflow-y-auto px-6 py-5'
@@ -640,11 +657,12 @@ export function SqueletteLecture() {
 }
 
 /** Les attentes que l'écran de chargement annonce. */
-export type EtapeChargement = 'releve' | 'corps' | 'connexion'
+export type EtapeChargement = 'releve' | 'corps' | 'resumes' | 'connexion'
 
 const INTITULES: Record<EtapeChargement, string> = {
   releve: 'Relevé de vos messages…',
   corps: 'Préparation de votre boîte…',
+  resumes: 'Résumé de vos newsletters…',
   connexion: 'Autorisation en cours dans votre navigateur',
 }
 
@@ -654,6 +672,8 @@ const EXPLICATIONS: Record<EtapeChargement, string> = {
     'Les messages sont chargés une fois pour toutes. Ils resteront instantanés à la prochaine ouverture.',
   corps:
     'Les messages sont chargés une fois pour toutes. Ils resteront instantanés à la prochaine ouverture.',
+  resumes:
+    "Vous pouvez continuer à lire votre courrier pendant ce temps : cette étape ne bloque rien.",
   connexion:
     "Terminez la connexion dans l'onglet qui vient de s'ouvrir. MailFlow attend cinq minutes, puis abandonne — vous pourrez relancer.",
 }

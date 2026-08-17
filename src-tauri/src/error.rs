@@ -41,6 +41,35 @@ pub enum AppError {
 
     #[error("configuration invalide : {0}")]
     Config(String),
+
+    /// Le modèle de langage n'a pas produit de résumé exploitable : clé
+    /// refusée, quota atteint, refus des filtres, ou réponse hors format.
+    ///
+    /// Une catégorie à part parce que la conduite à tenir l'est aussi : un
+    /// résumé manquant n'est pas une panne, c'est une ligne composée
+    /// localement à la place. Rien ne doit s'afficher en rouge.
+    #[error("résumé indisponible : {0}")]
+    Resume(String),
+
+    /// La clé de résumé a été refusée, au moment où l'utilisateur la pose.
+    ///
+    /// # Pourquoi celle-ci parle, quand les autres se taisent
+    ///
+    /// C'est la seule erreur du backend dont le message traverse l'IPC
+    /// **tel quel**. La règle générale — un message vague ne fuite rien — vaut
+    /// parce que le détail technique porte des fragments de ce que
+    /// l'utilisateur a envoyé. Ici, il n'y a rien à protéger : la requête de
+    /// vérification ne contient qu'un « Bonjour. » écrit par nous, aucun
+    /// courrier, aucune clé — celle-ci part dans un en-tête et Google ne la
+    /// répète jamais.
+    ///
+    /// Et la contrepartie du silence était lourde : « le résumé n'a pas
+    /// abouti » ne dit ni que la clé est mal recopiée, ni que l'API n'est pas
+    /// activée sur le projet Google, ni que le quota est épuisé. Trois causes,
+    /// trois gestes différents, une seule phrase pour les couvrir — donc
+    /// personne ne sait quoi faire.
+    #[error("clé de résumé refusée : {0}")]
+    CleLlm(String),
 }
 
 impl AppError {
@@ -64,6 +93,8 @@ impl AppError {
             Self::ApiGmail { .. } => "ERREUR_GMAIL",
             Self::Reseau(_) => "ERREUR_RESEAU",
             Self::Config(_) => "CONFIG_INVALIDE",
+            Self::Resume(_) => "RESUME_INDISPONIBLE",
+            Self::CleLlm(_) => "CLE_LLM_REFUSEE",
         }
     }
 
@@ -93,6 +124,11 @@ impl AppError {
             }
             Self::Reseau(_) => "Connexion impossible. Vérifiez votre accès internet.".into(),
             Self::Config(_) => "La configuration de MailFlow est invalide.".into(),
+            Self::Resume(_) => {
+                "Le résumé automatique n'a pas abouti. Le message reste lisible tel quel.".into()
+            }
+            // Le seul cas où le détail est le message : voir la variante.
+            Self::CleLlm(detail) => detail.clone(),
         }
     }
 }

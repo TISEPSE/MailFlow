@@ -50,6 +50,7 @@ impl Transport for TransportHttp {
         let mut requete = match methode {
             Methode::Get => self.http.get(url),
             Methode::Post => self.http.post(url),
+            Methode::Delete => self.http.delete(url),
         }
         .bearer_auth(jeton);
 

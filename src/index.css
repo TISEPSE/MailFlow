@@ -200,6 +200,67 @@ button:not(:disabled),
   transform: translateY(0.12em);
 }
 
+/* Même correction, pour un champ de saisie.
+
+   `transform` ne convient pas ici : le moteur peint le curseur de saisie
+   depuis la boîte de ligne, avant transformation. Le texte descendait donc de
+   0,12 em et le curseur restait où il était — c'est le décalage qu'on voyait
+   dans la barre de recherche, curseur trop haut d'un cheveu sur la première
+   lettre.
+
+   `position: relative` déplace la boîte peinte elle-même, curseur compris :
+   les deux bougent ensemble, et l'alignement du texte avec le reste de la
+   barre reste celui qui a été mesuré.
+
+   La valeur, elle, est plus forte que celle du texte ordinaire, et ce n'est
+   pas une inconséquence. Un champ de saisie n'a pas la même géométrie qu'une
+   pastille : le moteur y centre la boîte de ligne dans une hauteur que nous
+   fixons de l'extérieur, et il le fait sur l'ascendante de la fonte, pas sur
+   la bande des capitales. Le défaut est donc du même signe qu'ailleurs, mais
+   d'une amplitude supérieure — et il se voit d'autant plus qu'un champ de mot
+   de passe n'affiche que des points, centrés sur le corps de l'em et non sur
+   les capitales.
+
+   0,12 em corrigeait la moitié du chemin ; 0,20 em amène le texte au centre
+   optique du cadre. Relevé à l'œil sur la fenêtre de saisie de la clé, faute
+   de pouvoir photographier une bande d'encre faite de points. */
+.texte-optique-champ {
+  position: relative;
+  top: 0.2em;
+}
+
+/* Le numéro qui arrive dans une carte de newsletter entre par la droite.
+
+   La feuille en place est d'abord poussée vers la gauche par une animation
+   posée sur son nœud ; quand elle a fini, React monte la suivante, qui joue
+   cette entrée-ci. Les deux moitiés se succèdent au lieu de se superposer :
+   sur une carte étroite, deux textes qui se croisent font illisible. */
+@keyframes glisse-entre {
+  from {
+    opacity: 0;
+    transform: translateX(2rem);
+  }
+}
+
+.glisse-entre {
+  animation: glisse-entre 190ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* Pilule à fond accentué — le dépliant d'une pile de newsletters.
+
+   Le fond vit ici et non en style en ligne : posé en ligne, il l'emportait sur
+   la règle de survol de `.survolable`, si bien que la pilule ne réagissait pas
+   au passage de la souris. Rien ne disait alors qu'elle se cliquait. */
+.pilule-accent {
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+  transition: background-color 120ms ease;
+}
+
+.pilule-accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 76%, var(--accent) 24%);
+}
+
 /* Repère au clavier. Il vaut pour tous les thèmes, y compris sombre. */
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -727,9 +788,24 @@ textarea:focus-visible {
      porte un accent qui monte au-dessus des capitales ; la référence est la
      bande des capitales, du sommet des majuscules à la ligne de base ;
    - un fond clair vu à travers un coin arrondi se compte comme de l'encre si
-     l'on n'y prend garde, et décale la mesure de plusieurs pixels. */
+     l'on n'y prend garde, et décale la mesure de plusieurs pixels.
+
+   Troisième mesure, et celle qui manquait : les deux corrections avaient été
+   établies séparément, l'une contre la boîte du bouton et l'autre contre la
+   bande des capitales, sans qu'on les remette jamais côte à côte. Le texte
+   descend de 0,12 em (« .texte-optique », mesuré contre la boîte) et l'icône
+   remontait de 0,04 em (mesurée, elle, contre le texte *avant* qu'il ne
+   descende). Écart accumulé : 0,16 em, soit deux pixels dans un bouton de
+   12 px — visible, et visible surtout parce qu'il n'a aucune raison d'être.
+
+   L'icône reprend donc le déplacement du texte : 0,12 − 0,04 = 0,08 em. Les
+   deux corrections restent celles qui ont été mesurées, elles sont seulement
+   enfin exprimées dans le même repère. C'est l'icône qui bouge et non le
+   texte : remonter le texte l'aurait réaligné sur l'icône, mais en sortant du
+   même coup le groupe entier du centre optique du bouton, que 0,12 em avait
+   coûté trois campagnes de mesure à trouver. */
 .icone-bouton {
-  transform: translateY(-0.04em);
+  transform: translateY(0.08em);
 }
 
 /* La rotation a besoin du même canal, et doit l'emporter. */
@@ -737,3 +813,33 @@ textarea:focus-visible {
   transform: none;
 }
 
+
+/* Une ligne dans un tas déplié.
+
+   Le survol ne colore que la ligne visée, et pas la carte entière : dans une
+   pile de quarante messages, un fond qui s'allume trop large fait perdre celui
+   qu'on vise. */
+.ligne-de-tas:hover {
+  background: color-mix(in srgb, var(--sub) 10%, transparent);
+}
+
+
+/* Les gestes d'une tuile de la table des archives.
+
+   Cachés tant que la tuile n'est pas survolée. Une croix de suppression visible
+   en permanence sur toutes les tuiles ferait de la table un champ de mines : on
+   y déplace des objets à la souris, et le pointeur passe sur des dizaines de
+   tuiles avant d'arriver où il va.
+
+   L'opacité plutôt que `display` : le bouton garde sa place, donc la tuile ne
+   se réagence pas au survol — un texte qui se décale sous le pointeur donne
+   l'impression que la tuile bouge toute seule. */
+.geste-de-tuile {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.tuile-de-table:hover .geste-de-tuile,
+.geste-de-tuile:focus-visible {
+  opacity: 1;
+}

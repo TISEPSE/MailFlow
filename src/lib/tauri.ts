@@ -19,6 +19,9 @@ import type {
   RapportExecution,
   Regle,
   ReglesDuCompte,
+  Resume,
+  EtatLlm,
+  Tableau,
   VerificationMaj,
 } from '../types/backend'
 
@@ -212,6 +215,59 @@ export function libelleCreer(nom: string): Promise<LibelleGmail[]> {
   return invoke<LibelleGmail[]>('libelle_creer', { nom })
 }
 
+/**
+ * Pose un libellé sur un message déjà archivé, sans l'archiver à nouveau.
+ *
+ * C'est le geste de la table : déposer une tuile sur un tas. Distinct de
+ * `messageRanger`, qui retire le message de la boîte de réception du même
+ * mouvement — ici il en est déjà sorti.
+ */
+export function libellePoser(id: string, libelle: string): Promise<void> {
+  return invoke<void>('libelle_poser', { id, libelle })
+}
+
+/**
+ * Retire un libellé d'un message.
+ *
+ * Sortir une tuile d'une pile la laisse sur la table : elle ne revient pas
+ * dans la boîte de réception, ce que personne n'a demandé.
+ */
+export function libelleRetirer(id: string, libelle: string): Promise<void> {
+  return invoke<void>('libelle_retirer', { id, libelle })
+}
+
+/**
+ * Défait un tas : ses messages en sortent, et le libellé disparaît de Gmail.
+ *
+ * Le seul appel de MailFlow qui détruise quelque chose chez Google. Aucun
+ * message n'est supprimé — Gmail retire l'étiquette, rien de plus — mais le
+ * libellé ne se restaure pas, et les messages qui le portaient ailleurs le
+ * perdent aussi. D'où la confirmation qui le nomme, côté interface.
+ */
+export function tasDefaire(libelle: string, ids: string[]): Promise<void> {
+  return invoke<void>('tas_defaire', { libelle, ids })
+}
+
+/** Relève les messages archivés chez Gmail. Passe par le réseau. */
+export function archivesLister(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('archives_lister')
+}
+
+/** Dernier relevé d'archives connu, lu sur le disque, sans réseau. */
+export function archivesEnCache(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('archives_en_cache')
+}
+
+/** Disposition de la table des archives du compte actif. */
+export function tableauLire(): Promise<Tableau> {
+  return invoke<Tableau>('tableau_lire')
+}
+
+/** Enregistre la disposition de la table. Ne porte que des positions. */
+export function tableauEcrire(tableau: Tableau): Promise<void> {
+  return invoke<void>('tableau_ecrire', { tableau })
+}
+
 /** Range un message sous un libelle, ou l'archive quand `libelle` est absent. */
 export function messageRanger(id: string, libelle?: string): Promise<void> {
   return invoke<void>('message_ranger', { id, libelle: libelle ?? null })
@@ -240,6 +296,9 @@ export interface Avancement {
 
 /** Nom de l'evenement emis pendant le prechargement. */
 export const EVENEMENT_PRECHARGEMENT = 'corps-precharges'
+
+/** Nom de l'evenement emis pendant la production des resumes. */
+export const EVENEMENT_RESUMES = 'resumes-produits'
 
 /** Nom de l'evenement emis pendant le releve de la boite. */
 export const EVENEMENT_RELEVE = 'messages-releves'
@@ -289,6 +348,18 @@ export function majOuvrir(): Promise<void> {
   return invoke<void>('maj_ouvrir')
 }
 
+/**
+ * Ouvre dans le navigateur du système un lien cliqué dans un message.
+ *
+ * L'adresse vient d'un e-mail : elle n'est pas ouverte telle quelle, mais
+ * confrontée côté Rust à une liste blanche de schémas. Un `file://` ou un
+ * schéma déposé par une application installée est refusé — sans quoi un
+ * expéditeur choisirait quel programme démarre sur la machine.
+ */
+export function lienOuvrir(url: string): Promise<void> {
+  return invoke<void>('lien_ouvrir', { url })
+}
+
 /** Adresse du compte relié, ou `null` si aucun ne l'est. */
 export function compteAdresse(): Promise<string | null> {
   return invoke<string | null>('compte_adresse')
@@ -335,4 +406,49 @@ export function logosExpediteurs(
   adresses: string[],
 ): Promise<Record<string, string>> {
   return invoke<Record<string, string>>('logos_expediteurs', { adresses })
+}
+
+// ---------------------------------------------------------------------------
+// Resumes de newsletters
+// ---------------------------------------------------------------------------
+
+/** Ce que l'interface sait du moteur de resumes. La cle n'en sort jamais. */
+export function llmEtat(): Promise<EtatLlm> {
+  return invoke<EtatLlm>('llm_etat')
+}
+
+/**
+ * Verifie une cle puis l'enregistre dans le trousseau.
+ *
+ * L'ordre compte : une cle fausse n'est jamais rangee, si bien que la promesse
+ * « une cle est configuree » vaut promesse qu'elle fonctionnait. La
+ * verification fait un vrai appel — une cle bien formee mais revoquee
+ * passerait n'importe quel controle de syntaxe.
+ */
+export function llmCleEnregistrer(cle: string): Promise<void> {
+  return invoke<void>('llm_cle_enregistrer', { cle })
+}
+
+export function llmCleEffacer(): Promise<void> {
+  return invoke<void>('llm_cle_effacer')
+}
+
+/** Resumes deja produits, lus sur le disque et sans aucun appel reseau. */
+export function resumesConnus(ids: string[]): Promise<Record<string, Resume>> {
+  return invoke<Record<string, Resume>>('resumes_connus', { ids })
+}
+
+/**
+ * Troisieme phase : produit les resumes manquants.
+ *
+ * Ne fait rien et rend zero sans cle configuree — ce n'est pas une panne,
+ * c'est le cas de tout utilisateur qui n'a pas voulu de l'IA.
+ */
+export function resumesProduire(ids: string[]): Promise<number> {
+  return invoke<number>('resumes_produire', { ids })
+}
+
+/** Demande l'arret : lu entre deux messages, jamais en plein appel. */
+export function resumesArreter(): Promise<void> {
+  return invoke<void>('resumes_arreter')
 }

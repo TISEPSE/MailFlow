@@ -20,6 +20,30 @@ import type { MessageAffiche } from '../types/backend'
 const DUREE_TOAST = 3400
 
 /**
+ * Nom de l'événement qui porte une annonce venue d'un composant profond.
+ *
+ * `annoncer` descend normalement en propriété, et c'est très bien tant que le
+ * chemin est court. Le cadre d'affichage d'un message, lui, est à cinq niveaux
+ * de la racine : lui faire parvenir la fonction obligerait à traverser quatre
+ * composants qui n'en ont aucun usage. Un échec y restait donc muet — un lien
+ * qui ne s'ouvrait pas ne disait rien à personne, et c'est exactement le défaut
+ * qu'on cherchait.
+ */
+const EVENEMENT_ANNONCE = 'mailflow:annonce'
+
+/**
+ * Signale une erreur depuis un composant trop profond pour recevoir
+ * `annoncer` en propriété.
+ *
+ * Réservé à cet usage : partout où la fonction est déjà à portée, c'est elle
+ * qu'il faut appeler. Deux chemins pour la même chose seraient un chemin de
+ * trop.
+ */
+export function signalerUneErreur(texte: string) {
+  window.dispatchEvent(new CustomEvent(EVENEMENT_ANNONCE, { detail: texte }))
+}
+
+/**
  * Messages passagers, empilés en haut à droite.
  *
  * Une liste et non un seul : deux actions rapprochées doivent se voir toutes les
@@ -52,6 +76,18 @@ export function useToasts() {
     },
     [retirer],
   )
+
+  // Les annonces venues des composants profonds arrivent par là — voir
+  // `signalerUneErreur`.
+  useEffect(() => {
+    const ecouter = (evenement: Event) => {
+      const texte = (evenement as CustomEvent<string>).detail
+      if (typeof texte === 'string' && texte.trim()) annoncer(texte, true)
+    }
+
+    window.addEventListener(EVENEMENT_ANNONCE, ecouter)
+    return () => window.removeEventListener(EVENEMENT_ANNONCE, ecouter)
+  }, [annoncer])
 
   return { toasts, annoncer, retirer }
 }
