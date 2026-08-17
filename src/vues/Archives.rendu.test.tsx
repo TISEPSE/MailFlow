@@ -36,7 +36,9 @@ const gestes: GestesDeLaTable = {
   onDeposer: async () => undefined,
   onSortir: async () => undefined,
   onCreerLibelle: async () => [],
-  onOuvrir: () => undefined,
+  onDefaireLeTas: async () => undefined,
+  onSupprimer: async () => undefined,
+  onLu: () => undefined,
   onRelever: () => undefined,
   onErreur: () => undefined,
 }
@@ -56,6 +58,8 @@ function rendre(
       onTableau={() => undefined}
       sombre={false}
       enCours={false}
+      corpsConnus={new Map()}
+      onCorpsCharge={() => undefined}
       gestes={gestes}
     />,
   )
@@ -96,6 +100,16 @@ describe('la table se rend sans lever', () => {
     }
 
     expect(() => rendre([message('m1')], [], ancienne)).not.toThrow()
+  })
+
+  it('offre de supprimer chaque tuile', () => {
+    // Le geste est caché tant que la tuile n'est pas survolée : sans ce test,
+    // une règle CSS mal nommée le rendrait invisible pour toujours sans que
+    // rien ne le signale.
+    const html = rendre([message('m1')])
+
+    expect(html).toContain('Supprimer « Sujet m1 »')
+    expect(html).toContain('geste-de-tuile')
   })
 
   it("avec un relevé écrit avant que les libellés n'existent", () => {

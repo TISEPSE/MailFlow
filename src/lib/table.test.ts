@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
-  RAYON_D_ACCROCHE,
   SURFACE,
+  TAS,
   TUILE,
   aligner,
   borner,
+  centre,
   cibleSousLaTuile,
   completer,
-  distance,
+  contient,
   placeLibre,
   repartir,
+  seChevauchent,
 } from './table'
 import type { Pose } from './table'
 import type { MessageAffiche, Tableau } from '../types/backend'
@@ -58,32 +60,84 @@ describe('les bords de la table', () => {
   })
 })
 
+describe('la géométrie du recouvrement', () => {
+  it("prend le centre de l'objet, et non son coin", () => {
+    expect(centre({ x: 0, y: 0 }, TUILE)).toEqual({
+      x: TUILE.largeur / 2,
+      y: TUILE.hauteur / 2,
+    })
+  })
+
+  it('ne voit pas un point posé juste à côté', () => {
+    expect(contient({ x: 0, y: 0 }, TUILE, { x: TUILE.largeur + 1, y: 10 })).toBe(false)
+  })
+
+  it('deux objets qui se touchent bord à bord ne se chevauchent pas', () => {
+    // Le cas limite qui décide si l'on peut ranger serré : à un pixel près,
+    // c'est la différence entre une table dense et une table qui repousse.
+    expect(seChevauchent({ x: 0, y: 0 }, TUILE, { x: TUILE.largeur, y: 0 }, TUILE)).toBe(
+      false,
+    )
+    expect(
+      seChevauchent({ x: 0, y: 0 }, TUILE, { x: TUILE.largeur - 1, y: 0 }, TUILE),
+    ).toBe(true)
+  })
+})
+
 describe('former un tas en lâchant une tuile sur une autre', () => {
   const poses: Pose[] = [
-    { id: 'a', position: { x: 100, y: 100 } },
-    { id: 'b', position: { x: 400, y: 100 } },
+    { id: 'a', position: { x: 100, y: 100 }, taille: TUILE },
+    { id: 'b', position: { x: 400, y: 100 }, taille: TUILE },
   ]
 
-  it('reconnaît la tuile visée quand la dépose est proche', () => {
+  it('reconnaît la tuile visée quand on la couvre', () => {
+    // Lâchée presque au même endroit : le centre de la tuile tombe en plein
+    // milieu de « a ».
     expect(cibleSousLaTuile({ x: 110, y: 108 }, poses, 'c')?.id).toBe('a')
   })
 
-  it('ne fait pas de tas avec une tuile simplement voisine', () => {
-    // Sans ce seuil, poser proprement deux tuiles côte à côte deviendrait
-    // impossible : elles se colleraient l'une à l'autre à chaque fois.
-    expect(cibleSousLaTuile({ x: 100 + RAYON_D_ACCROCHE + 1, y: 100 }, poses, 'c')).toBeNull()
+  it('laisse poser deux tuiles côte à côte sans les coller', () => {
+    // C'est le cœur du reproche : la règle précédente fusionnait tout ce qui
+    // passait à moins de 96 pixels, si bien qu'on ne pouvait pas poser deux
+    // tuiles voisines. À dix pixels du bord droit de « a », ce sont deux objets
+    // distincts, et ils doivent le rester.
+    const seule = [poses[0]!]
+
+    expect(cibleSousLaTuile({ x: 100 + TUILE.largeur + 10, y: 100 }, seule, 'c')).toBeNull()
   })
 
-  it('choisit la plus proche, et non la première rencontrée', () => {
-    // Lâcher entre deux objets doit donner un résultat qu'un œil peut vérifier.
-    const entreLesDeux = { x: 340, y: 100 }
+  it('laisse poser une tuile juste sous une autre, ce qui était impossible', () => {
+    // Une tuile fait 96 pixels de haut, exactement l'ancien rayon : deux tuiles
+    // superposées verticalement fusionnaient donc toujours.
+    const seule = [poses[0]!]
 
-    expect(cibleSousLaTuile(entreLesDeux, poses, 'c')?.id).toBe('b')
+    expect(cibleSousLaTuile({ x: 100, y: 100 + TUILE.hauteur + 4 }, seule, 'c')).toBeNull()
+  })
+
+  it('choisit celle dont on couvre le mieux le centre', () => {
+    // Deux tuiles qui se recouvrent déjà : le centre lâché tombe dans les deux,
+    // et il faut que le résultat soit celui que l'œil désigne — la plus proche.
+    const empilees: Pose[] = [
+      { id: 'gauche', position: { x: 100, y: 100 }, taille: TUILE },
+      { id: 'droite', position: { x: 180, y: 100 }, taille: TUILE },
+    ]
+
+    // Centre en (284, 148) : dans les deux, mais au milieu exact de « droite ».
+    expect(cibleSousLaTuile({ x: 180, y: 100 }, empilees, 'c')?.id).toBe('droite')
   })
 
   it("ignore la tuile qu'on est en train de déplacer", () => {
     // Sans cela, une tuile déposée sur place formerait un tas avec elle-même.
     expect(cibleSousLaTuile({ x: 100, y: 100 }, poses, 'a')).toBeNull()
+  })
+
+  it("tient compte de la hauteur réelle d'un tas, plus courte qu'une tuile", () => {
+    // Un tas ne montre qu'un titre : viser sous son bord inférieur, c'est viser
+    // la table, pas le tas.
+    const tas: Pose[] = [{ id: 't', position: { x: 100, y: 100 }, taille: TAS }]
+
+    expect(cibleSousLaTuile({ x: 100, y: 60 }, tas, 'c')?.id).toBe('t')
+    expect(cibleSousLaTuile({ x: 100, y: 130 }, tas, 'c')).toBeNull()
   })
 })
 
@@ -95,7 +149,7 @@ describe("placer ce qui n'a pas encore de place", () => {
     for (let rang = 0; rang < 30; rang++) {
       const place = placeLibre(posees, rang)
       for (const deja of posees) {
-        expect(distance(deja, place)).toBeGreaterThanOrEqual(RAYON_D_ACCROCHE)
+        expect(seChevauchent(deja, TUILE, place, TUILE)).toBe(false)
       }
       posees.push(place)
     }
@@ -163,7 +217,7 @@ describe('tout ranger', () => {
 
     for (let i = 0; i < toutes.length; i++) {
       for (let j = i + 1; j < toutes.length; j++) {
-        expect(distance(toutes[i]!, toutes[j]!)).toBeGreaterThanOrEqual(RAYON_D_ACCROCHE)
+        expect(seChevauchent(toutes[i]!, TUILE, toutes[j]!, TUILE)).toBe(false)
       }
     }
   })

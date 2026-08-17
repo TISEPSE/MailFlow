@@ -509,7 +509,13 @@ export function Modale({
         // formulaire et relâché dehors ne doit pas fermer la fenêtre.
         if (e.target === e.currentTarget) onFermer()
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-8"
+      // Moins de marge autour d'une grande fenêtre : à `p-8`, l'en-tête et les
+      // deux bords mangeaient assez de hauteur pour que la fenêtre dépasse de
+      // l'écran sur un portable, et c'est alors la page derrière qui se mettait
+      // à défiler.
+      className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto ${
+        large ? 'p-5' : 'p-8'
+      }`}
       style={{
         background: 'rgb(0 0 0 / 40%)',
         // Le flou détache la fenêtre de la page sans l'effacer : on voit encore
@@ -523,8 +529,13 @@ export function Modale({
         role="dialog"
         aria-modal="true"
         aria-label={titre}
+        // La variante large prend presque tout l'écran : c'est une fenêtre où
+        // l'on *lit* un message entier, et chaque centimètre rendu au texte est
+        // une ligne de moins à faire défiler. Les marges du fond restent —
+        // collée aux bords, la fenêtre ne se distinguerait plus de la page, et
+        // l'on ne saurait plus par où en sortir.
         className={`apparait my-auto w-full rounded-2xl border ${
-          large ? 'max-w-5xl' : 'max-w-lg'
+          large ? 'max-w-[min(1500px,94vw)]' : 'max-w-lg'
         }`}
         style={{
           background: 'var(--card)',
@@ -562,7 +573,7 @@ export function Modale({
             barres imbriquées, l'une pour la fenêtre et l'autre pour le
             message, se disputaient la molette. */}
         <div
-          className={`${large ? 'h-[72vh]' : 'max-h-[70vh]'} ${
+          className={`${large ? 'h-[82vh]' : 'max-h-[70vh]'} ${
             sansRembourrage
               ? 'overflow-hidden rounded-b-2xl'
               : 'overflow-y-auto px-6 py-5'

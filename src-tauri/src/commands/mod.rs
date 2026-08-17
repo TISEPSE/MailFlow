@@ -819,6 +819,45 @@ pub async fn libelle_retirer(
     Ok(())
 }
 
+/// Défait un tas : ses messages en sortent, et le libellé disparaît de Gmail.
+///
+/// # L'ordre des deux opérations n'est pas indifférent
+///
+/// Le retrait en lot **d'abord**, la suppression du libellé **ensuite**. Si la
+/// seconde échoue, les messages sont déjà sortis : la table est cohérente avec
+/// ce que l'utilisateur voit, et il ne reste qu'un libellé vide qu'il peut
+/// supprimer depuis Gmail. L'ordre inverse laisserait des messages étiquetés
+/// d'un libellé qui n'existe plus — un état que Gmail nettoie tout seul, mais
+/// que rien ici ne saurait rattraper si l'appel suivant échouait à son tour.
+///
+/// # Le seul geste sans retour de MailFlow
+///
+/// Aucun message n'est détruit, et c'est ce que la confirmation doit dire :
+/// Gmail se contente de retirer l'étiquette. Mais le libellé, lui, ne se
+/// restaure pas, et les messages qui le portaient **ailleurs** — dans la boîte
+/// de réception, par exemple — le perdent aussi. C'est pourquoi l'interface le
+/// nomme avant de l'exécuter.
+///
+/// Les archives appartiennent toujours au compte actif ([`archives_lister`] ne
+/// relève que celui-là), d'où les jetons de session plutôt qu'une résolution
+/// message par message : il n'y a ici qu'une boîte à qui parler.
+#[tauri::command]
+pub async fn tas_defaire(
+    etat: State<'_, EtatAuth>,
+    libelle: String,
+    ids: Vec<String>,
+) -> Resultat<()> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+
+    client.retirer_libelle_lot(&ids, &libelle).await?;
+    client.supprimer_libelle(&libelle).await?;
+
+    // Le nom du libellé n'est pas journalisé : il est écrit par l'utilisateur et
+    // peut nommer un correspondant, un dossier médical, un litige.
+    log::info!("tas défait, {} message(s) libéré(s)", ids.len());
+    Ok(())
+}
+
 /// Efface tout le cache, tous comptes confondus.
 #[tauri::command]
 pub async fn cache_vider(app: AppHandle) -> Resultat<()> {

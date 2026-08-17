@@ -27,14 +27,46 @@ export const SURFACE = { largeur: 2400, hauteur: 1600 } as const
 /** Marge intérieure, pour qu'une tuile ne colle jamais au bord. */
 const MARGE = 24
 
+/** Encombrement d'un objet posé. */
+export interface Taille {
+  largeur: number
+  hauteur: number
+}
+
+/** Le point qui décide : le centre de ce qu'on tient. */
+export function centre(p: Position, taille: Taille): Position {
+  return { x: p.x + taille.largeur / 2, y: p.y + taille.hauteur / 2 }
+}
+
+/** Vrai quand un point tombe à l'intérieur d'un objet posé. */
+export function contient(coin: Position, taille: Taille, point: Position): boolean {
+  return (
+    point.x >= coin.x &&
+    point.x <= coin.x + taille.largeur &&
+    point.y >= coin.y &&
+    point.y <= coin.y + taille.hauteur
+  )
+}
+
 /**
- * Distance en deçà de laquelle une tuile lâchée sur une autre forme un tas.
+ * Vrai quand deux objets posés se recouvrent, même d'un pixel.
  *
- * Mesurée entre les coins supérieurs gauche, et volontairement inférieure à la
- * largeur d'une tuile : au-delà, deux tuiles simplement voisines se colleraient
- * l'une à l'autre, et poser proprement deviendrait impossible.
+ * Sert au placement automatique, où deux objets superposés seraient lus comme
+ * un tas que personne n'a fait.
  */
-export const RAYON_D_ACCROCHE = 96
+export function seChevauchent(
+  a: Position,
+  tailleA: Taille,
+  b: Position,
+  tailleB: Taille,
+): boolean {
+  return (
+    a.x < b.x + tailleB.largeur &&
+    b.x < a.x + tailleA.largeur &&
+    a.y < b.y + tailleB.hauteur &&
+    b.y < a.y + tailleA.hauteur
+  )
+}
 
 /** Garde une position dans les limites de la table. */
 export function borner(p: Position, largeur: number, hauteur: number): Position {
@@ -53,27 +85,46 @@ export function distance(a: Position, b: Position): number {
 export interface Pose {
   id: string
   position: Position
+  /** Un tas est plus court qu'une tuile : il ne montre qu'un titre. */
+  taille: Taille
 }
 
 /**
  * Ce qui se trouve sous une tuile qu'on vient de lâcher, s'il y a quelque chose.
  *
- * Rend le plus proche, et non le premier trouvé : lâcher entre deux objets doit
- * donner un résultat prévisible, et « le plus proche » est la seule règle qu'un
- * œil puisse vérifier.
+ * # La règle, et pourquoi ce n'est plus une distance
+ *
+ * Un tas se forme quand le **centre** de la tuile lâchée tombe **à l'intérieur**
+ * d'un autre objet. Autrement dit : il faut couvrir sa cible.
+ *
+ * La règle précédente comparait les coins supérieurs gauche à un rayon de
+ * 96 pixels. Comme une tuile fait justement 96 pixels de haut, **deux tuiles ne
+ * pouvaient pas se poser l'une sous l'autre** : elles fusionnaient. La table
+ * paraissait alors magnétique, comme si les places étaient décidées d'avance —
+ * ce qui était le cas, sans que rien ne le dise.
+ *
+ * Un recouvrement se voit ; un rayon invisible ne se voit pas. C'est la seule
+ * raison de ce changement : une règle qu'un œil peut vérifier avant de lâcher.
+ *
+ * Rend le plus proche quand plusieurs conviennent — lâcher au croisement de deux
+ * objets doit rester prévisible.
  */
 export function cibleSousLaTuile(
   lachee: Position,
   candidats: Pose[],
   soiMeme: string,
+  taille: Taille = TUILE,
 ): Pose | null {
+  const point = centre(lachee, taille)
+
   let meilleure: Pose | null = null
-  let meilleureDistance = RAYON_D_ACCROCHE
+  let meilleureDistance = Infinity
 
   for (const candidat of candidats) {
     if (candidat.id === soiMeme) continue
+    if (!contient(candidat.position, candidat.taille, point)) continue
 
-    const d = distance(lachee, candidat.position)
+    const d = distance(point, centre(candidat.position, candidat.taille))
     if (d < meilleureDistance) {
       meilleure = candidat
       meilleureDistance = d
@@ -103,7 +154,10 @@ export function placeLibre(occupees: Position[], rang: number): Position {
     }
 
     const bornee = borner(candidate, TUILE.largeur, TUILE.hauteur)
-    const libre = occupees.every((p) => distance(p, bornee) >= RAYON_D_ACCROCHE)
+    // Un chevauchement, et non plus un rayon : le rayon écartait les objets
+    // bien au-delà de ce qu'il fallait pour qu'ils ne se cachent pas, et
+    // étalait la disposition initiale sur toute la table.
+    const libre = occupees.every((p) => !seChevauchent(p, TUILE, bornee, TUILE))
     if (libre) return bornee
   }
 

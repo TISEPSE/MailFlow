@@ -236,6 +236,18 @@ export function libelleRetirer(id: string, libelle: string): Promise<void> {
   return invoke<void>('libelle_retirer', { id, libelle })
 }
 
+/**
+ * Défait un tas : ses messages en sortent, et le libellé disparaît de Gmail.
+ *
+ * Le seul appel de MailFlow qui détruise quelque chose chez Google. Aucun
+ * message n'est supprimé — Gmail retire l'étiquette, rien de plus — mais le
+ * libellé ne se restaure pas, et les messages qui le portaient ailleurs le
+ * perdent aussi. D'où la confirmation qui le nomme, côté interface.
+ */
+export function tasDefaire(libelle: string, ids: string[]): Promise<void> {
+  return invoke<void>('tas_defaire', { libelle, ids })
+}
+
 /** Relève les messages archivés chez Gmail. Passe par le réseau. */
 export function archivesLister(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('archives_lister')

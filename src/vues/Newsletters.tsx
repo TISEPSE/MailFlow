@@ -27,7 +27,6 @@ import {
   Bouton,
   Confirmation,
   Icone,
-  Modale,
   Pastille,
   SqueletteListe,
   Vide,
@@ -41,9 +40,9 @@ import {
   resserrerSujet,
   type GroupeNewsletters,
 } from '../lib/newsletters'
-import { messageCorps, type Avancement } from '../lib/tauri'
+import type { Avancement } from '../lib/tauri'
 import type { CorpsMessage, MessageAffiche, Resume } from '../types/backend'
-import { CorpsIsole, PiecesJointes } from '../composants/ListeMessages'
+import { LecteurEnGrand } from '../composants/LecteurEnGrand'
 
 export function Newsletters({
   messages,
@@ -60,6 +59,7 @@ export function Newsletters({
   resumes,
   avancementResumes,
   onArreterResumes,
+  onAnalyser,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -79,6 +79,8 @@ export function Newsletters({
   /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas. */
   avancementResumes?: Avancement | null
   onArreterResumes?: () => void
+  /** Relance l'analyse à la main, sans attendre un redémarrage. */
+  onAnalyser?: () => void
 }) {
   const [ouvert, setOuvert] = useState<MessageAffiche | null>(null)
 
@@ -104,7 +106,12 @@ export function Newsletters({
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-6">
-        <Synthese groupes={groupes} logos={logos} />
+        <Synthese
+          groupes={groupes}
+          logos={logos}
+          onAnalyser={onAnalyser}
+          analyseEnCours={Boolean(avancementResumes)}
+        />
 
         {avancementResumes && (
           <BandeResumes
@@ -157,9 +164,14 @@ export function Newsletters({
 function Synthese({
   groupes,
   logos,
+  onAnalyser,
+  analyseEnCours,
 }: {
   groupes: GroupeNewsletters[]
   logos: Record<string, string>
+  /** Relance l'analyse à la main. Absent quand la page ne sait pas la faire. */
+  onAnalyser?: () => void
+  analyseEnCours: boolean
 }) {
   const sources = groupes.slice(0, 6)
   const numeros = groupes.reduce((n, g) => n + g.messages.length, 0)
@@ -207,6 +219,25 @@ function Synthese({
             )
           })}
         </span>
+
+        {/* L'analyse se lance au démarrage, mais rien ne permettait de la
+            relancer — or la clé se pose souvent *après* le premier lancement,
+            et la phase automatique était alors passée depuis longtemps. Ce
+            bouton est le seul moyen d'y revenir sans redémarrer. */}
+        {onAnalyser && (
+          <span className="flex-none pl-2">
+            <Bouton
+              compact
+              icone="auto_awesome"
+              onClick={onAnalyser}
+              enAttente={analyseEnCours}
+              disabled={analyseEnCours}
+              titre="Faire résumer les newsletters qui ne le sont pas encore"
+            >
+              Analyser
+            </Bouton>
+          </span>
+        )}
       </div>
     </div>
   )
@@ -609,74 +640,3 @@ function CarteGroupe({
   )
 }
 
-/**
- * Le message d'origine, en grand.
- *
- * Le fond de l'application s'estompe et se floute derrière : la newsletter
- * occupe l'écran le temps qu'on la lise, et la grille reste à sa place quand on
- * referme. Le corps passe par la même `iframe` en bac à sable qu'ailleurs —
- * rien ne s'exécute, quoi que contienne le message.
- */
-function LecteurEnGrand({
-  message,
-  corps,
-  onCorpsCharge,
-  onFermer,
-}: {
-  message: MessageAffiche
-  corps: CorpsMessage | null
-  onCorpsCharge: (id: string, corps: CorpsMessage) => void
-  onFermer: () => void
-}) {
-  const [charge, setCharge] = useState(corps)
-
-  useMemo(() => {
-    if (corps) return
-    let courant = true
-    messageCorps(message.id)
-      .then((c) => {
-        if (!courant) return
-        setCharge(c)
-        onCorpsCharge(message.id, c)
-      })
-      .catch(() => undefined)
-    return () => {
-      courant = false
-    }
-  }, [message.id, corps, onCorpsCharge])
-
-  return (
-    <Modale
-      large
-      sansRembourrage
-      titre={message.sujet || '(sans objet)'}
-      sous={`${message.nom} — ${message.adresse}`}
-      onFermer={onFermer}
-    >
-      {/* Le cadre du message prend désormais la hauteur de son contenu : c'est
-          donc ici que le défilement doit vivre. Sur la même feuille blanche que
-          le message lui-même, sans quoi une bande de fenêtre apparaîtrait
-          au-dessous d'une lettre courte. */}
-      {/* `h-full` et non `flex-1` : la fenêtre donne à son contenu une hauteur
-          fixe mais n'est pas un conteneur flex, si bien que `flex-1` n'y valait
-          rien. Le cadre du message, désormais à la hauteur de son contenu,
-          débordait alors d'un parent qui masque ce qui dépasse — le message
-          était coupé et plus rien ne défilait. */}
-      <div
-        className="h-full overflow-y-auto"
-        style={charge?.html ? { background: '#FFFFFF' } : undefined}
-      >
-        <CorpsIsole corps={charge} extrait={message.extrait} />
-        {/* Les fichiers joints appartiennent à la lettre, et manquaient ici :
-            la fenêtre montrait le texte du message mais taisait le planning
-            attaché, si bien que « Voir le mail » n'en montrait pas la
-            moitié. Ils tiennent sur la même feuille blanche qu'ailleurs. */}
-        <PiecesJointes
-          message={message.id}
-          pieces={charge?.pieces ?? []}
-          surPapier={Boolean(charge?.html)}
-        />
-      </div>
-    </Modale>
-  )
-}

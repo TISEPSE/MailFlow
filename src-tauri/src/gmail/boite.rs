@@ -144,21 +144,33 @@ impl MessageAffiche {
 /// Requête Gmail de la boîte de réception.
 const BOITE_DE_RECEPTION: &str = "in:inbox";
 
-/// Requête Gmail des messages archivés.
+/// Requête Gmail de la table des archives.
 ///
-/// Gmail n'a pas de dossier « Archives » : archiver, c'est retirer le libellé
-/// `INBOX` et ne rien mettre à la place. Un message archivé se définit donc par
-/// où il n'est **pas**, et les quatre exclusions sont nécessaires :
+/// # Ce qu'est une archive, ici
 ///
-/// - `-in:inbox`, sans quoi ce serait la boîte de réception ;
-/// - `-in:trash`, car un message à la corbeille n'est pas rangé, il est jeté ;
-/// - `-in:spam`, que l'utilisateur n'a pas choisi de mettre là ;
-/// - `-in:draft`, car un brouillon n'a pas encore été envoyé et n'appartient à
-///   personne d'autre qu'à celui qui l'écrit.
+/// **Un message qui porte un libellé.** C'est la définition de l'utilisateur,
+/// et c'est `has:userlabels` qui la dit à Gmail : cet opérateur ne retient que
+/// les messages portant au moins un libellé **créé à la main**. Les marques du
+/// système — `INBOX`, `UNREAD`, `CATEGORY_PROMOTIONS`, `IMPORTANT` — ne
+/// comptent pas, ce qui est exactement ce qu'il faut : elles sont des états, pas
+/// des rangements.
 ///
-/// Le courrier envoyé, lui, reste : il est bien archivé au sens de Gmail, et
-/// c'est du courrier qu'on cherche parfois à retrouver.
-pub const ARCHIVES: &str = "-in:inbox -in:trash -in:spam -in:draft";
+/// C'est la clause qui porte tout le sens de cette page. Sans elle, la requête
+/// demandait « tout ce qui n'est nulle part ailleurs » : deux cents tuiles, le
+/// courrier envoyé compris, dont l'immense majorité n'avait jamais été posée sur
+/// la table par personne.
+///
+/// # Ce que les exclusions ajoutent
+///
+/// - `-in:inbox` : un message encore dans la boîte se lit dans les autres pages,
+///   il n'est pas rangé ;
+/// - `-in:sent` et `-in:chats` : du courrier qu'on n'a pas classé soi-même, même
+///   quand un libellé s'y est posé au passage d'un fil ;
+/// - `-in:trash` : ce qui est jeté n'est pas rangé ;
+/// - `-in:spam` : l'utilisateur ne l'a pas choisi ;
+/// - `-in:draft` : un brouillon n'appartient qu'à celui qui l'écrit.
+pub const ARCHIVES: &str =
+    "has:userlabels -in:inbox -in:sent -in:chats -in:trash -in:spam -in:draft";
 
 /// Relève la boîte de réception et classe ce qu'elle contient.
 pub async fn charger_boite<T: Transport, J: SourceJeton>(
@@ -291,11 +303,29 @@ mod tests_archives {
     use super::*;
 
     #[test]
+    fn la_table_ne_porte_que_des_messages_libelles() {
+        // La clause qui porte tout le sens de la page : une archive est un
+        // message que l'utilisateur a rangé sous un libellé. La perdre
+        // ramènerait sur la table des milliers de messages jamais classés.
+        assert!(
+            ARCHIVES.contains("has:userlabels"),
+            "sans « has:userlabels », la table cesse d'être une table"
+        );
+    }
+
+    #[test]
     fn la_requete_des_archives_exclut_ce_qui_n_est_pas_range() {
-        // Gmail n'a pas de dossier « Archives » : un message archivé se définit
-        // par où il n'est pas. Chaque exclusion manquante ferait apparaître sur
-        // la table quelque chose que l'utilisateur n'y a jamais posé.
-        for exclusion in ["-in:inbox", "-in:trash", "-in:spam", "-in:draft"] {
+        // Chaque exclusion manquante ferait apparaître sur la table quelque
+        // chose que l'utilisateur n'y a jamais posé — son propre courrier
+        // envoyé au premier chef, qu'un libellé de fil suffit à marquer.
+        for exclusion in [
+            "-in:inbox",
+            "-in:sent",
+            "-in:chats",
+            "-in:trash",
+            "-in:spam",
+            "-in:draft",
+        ] {
             assert!(ARCHIVES.contains(exclusion), "il manque « {exclusion} »");
         }
     }

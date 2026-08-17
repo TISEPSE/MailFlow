@@ -822,3 +822,24 @@ textarea:focus-visible {
 .ligne-de-tas:hover {
   background: color-mix(in srgb, var(--sub) 10%, transparent);
 }
+
+
+/* Les gestes d'une tuile de la table des archives.
+
+   Cachés tant que la tuile n'est pas survolée. Une croix de suppression visible
+   en permanence sur toutes les tuiles ferait de la table un champ de mines : on
+   y déplace des objets à la souris, et le pointeur passe sur des dizaines de
+   tuiles avant d'arriver où il va.
+
+   L'opacité plutôt que `display` : le bouton garde sa place, donc la tuile ne
+   se réagence pas au survol — un texte qui se décale sous le pointeur donne
+   l'impression que la tuile bouge toute seule. */
+.geste-de-tuile {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.tuile-de-table:hover .geste-de-tuile,
+.geste-de-tuile:focus-visible {
+  opacity: 1;
+}

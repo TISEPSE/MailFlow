@@ -39,11 +39,27 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as PointerEventReact } from 'react'
-import { Bouton, Icone, Modale, Vide } from '../composants/base'
-import { SURFACE, TAS, TUILE, aligner, borner, cibleSousLaTuile, completer, repartir } from '../lib/table'
+import { Bouton, Confirmation, Icone, Modale, Vide } from '../composants/base'
+import { LecteurEnGrand } from '../composants/LecteurEnGrand'
+import {
+  SURFACE,
+  TAS,
+  TUILE,
+  aligner,
+  borner,
+  cibleSousLaTuile,
+  completer,
+  repartir,
+} from '../lib/table'
 import type { Pose } from '../lib/table'
 import { heureCourte, initiales, palette, ton } from '../lib/presentation'
-import type { LibelleGmail, MessageAffiche, Position, Tableau } from '../types/backend'
+import type {
+  CorpsMessage,
+  LibelleGmail,
+  MessageAffiche,
+  Position,
+  Tableau,
+} from '../types/backend'
 
 /** Ce que la table sait faire, et qui vient de la page qui l'accueille. */
 export interface GestesDeLaTable {
@@ -53,8 +69,16 @@ export interface GestesDeLaTable {
   onSortir: (message: string, libelle: string) => Promise<void>
   /** Crée un libellé et rend la liste à jour. */
   onCreerLibelle: (nom: string) => Promise<LibelleGmail[]>
-  /** Ouvre un message en lecture. */
-  onOuvrir: (message: MessageAffiche) => void
+  /**
+   * Défait un tas : ses messages en sortent, le libellé disparaît de Gmail.
+   *
+   * Le seul geste sans retour de cette page — d'où la confirmation qui le nomme.
+   */
+  onDefaireLeTas: (libelle: string, messages: string[]) => Promise<void>
+  /** Met un message à la corbeille Gmail. */
+  onSupprimer: (message: string) => Promise<void>
+  /** Marque un message comme lu, à son ouverture. */
+  onLu: (message: string) => void
   /** Relève à nouveau les archives chez Gmail. */
   onRelever: () => void
   onErreur: (message: string) => void
@@ -67,6 +91,8 @@ export function Archives({
   onTableau,
   sombre,
   enCours,
+  corpsConnus,
+  onCorpsCharge,
   gestes,
 }: {
   archives: MessageAffiche[]
@@ -76,10 +102,29 @@ export function Archives({
   onTableau: (tableau: Tableau) => void
   sombre: boolean
   enCours: boolean
+  corpsConnus: ReadonlyMap<string, CorpsMessage>
+  onCorpsCharge: (id: string, corps: CorpsMessage) => void
   gestes: GestesDeLaTable
 }) {
   const [deplie, setDeplie] = useState<string | null>(null)
   const [aNommer, setANommer] = useState<{ message: string; sur: string } | null>(null)
+  const [lu, setLu] = useState<MessageAffiche | null>(null)
+  const [aDefaire, setADefaire] = useState<{ id: string; nom: string; messages: string[] } | null>(
+    null,
+  )
+  const [aSupprimer, setASupprimer] = useState<MessageAffiche | null>(null)
+
+  /**
+   * L'objet que la tuile en cours de glissement recouvre, s'il y en a un.
+   *
+   * Sans ce retour, la règle du recouvrement reste invisible : on lâche, et on
+   * découvre après coup si un tas s'est formé. Un contour qui s'allume avant le
+   * lâcher transforme une règle subie en règle vérifiable.
+   *
+   * On ne remonte que l'identifiant survolé, jamais la position : retracer la
+   * table à chaque pixel est précisément ce que ce composant évite.
+   */
+  const [survole, setSurvole] = useState<string | null>(null)
 
   const nomsDesLibelles = useMemo(
     () => new Map(libelles.map((l) => [l.id, l.nom])),
@@ -108,11 +153,22 @@ export function Archives({
     [tableau, tasVivants, seuls],
   )
 
-  /** Tout ce qui est posé, pour savoir ce qu'on survole en lâchant. */
+  /** Tout ce qui est posé, pour savoir ce qu'on survole en lâchant.
+   *
+   *  La taille en fait partie : un tas est plus court qu'une tuile, et viser
+   *  sous son bord inférieur, c'est viser la table. */
   const poses: Pose[] = useMemo(
     () => [
-      ...tasVivants.map((id) => ({ id, position: dispose.tas[id] ?? { x: 0, y: 0 } })),
-      ...seuls.map((m) => ({ id: m.id, position: dispose.messages[m.id] ?? { x: 0, y: 0 } })),
+      ...tasVivants.map((id) => ({
+        id,
+        position: dispose.tas[id] ?? { x: 0, y: 0 },
+        taille: TAS,
+      })),
+      ...seuls.map((m) => ({
+        id: m.id,
+        position: dispose.messages[m.id] ?? { x: 0, y: 0 },
+        taille: TUILE,
+      })),
     ],
     [tasVivants, seuls, dispose],
   )
@@ -163,6 +219,23 @@ export function Archives({
     [poses, poser, nomsDesLibelles, gestes],
   )
 
+  /** Ce que recouvrirait la tuile si on la lâchait maintenant. */
+  const survoler = useCallback(
+    (soiMeme: string, position: Position) => {
+      setSurvole(cibleSousLaTuile(position, poses, soiMeme)?.id ?? null)
+    },
+    [poses],
+  )
+
+  /** Ouvre un message en lecture, et le marque lu comme partout ailleurs. */
+  const ouvrir = useCallback(
+    (message: MessageAffiche) => {
+      setLu(message)
+      if (message.nonLu) gestes.onLu(message.id)
+    },
+    [gestes],
+  )
+
   const [accent] = ton('archive', sombre)
 
   if (archives.length === 0) {
@@ -178,7 +251,7 @@ export function Archives({
         <Vide
           icone="archive"
           titre="Aucune archive"
-          detail="Les messages que vous archivez depuis les autres pages viendront se poser ici. Vous pourrez alors les grouper en tas, et chaque tas sera un libellé retrouvé dans Gmail."
+          detail="Cette table porte vos messages rangés sous un libellé Gmail. Rangez-en un depuis les autres pages, ou depuis Gmail, et il viendra se poser ici."
         />
       </div>
     )
@@ -215,34 +288,107 @@ export function Archives({
             backgroundSize: '28px 28px',
           }}
         >
-          {tasVivants.map((id) => (
-            <TasPose
-              key={id}
-              nom={nomsDesLibelles.get(id) ?? 'Sans nom'}
-              messages={parTas.get(id) ?? []}
-              position={dispose.tas[id] ?? { x: 0, y: 0 }}
-              accent={accent}
-              ouvert={deplie === id}
-              onBasculer={() => setDeplie((d) => (d === id ? null : id))}
-              onDeplacer={(p) => poser(id, p, true)}
-              onOuvrirMessage={gestes.onOuvrir}
-              onSortir={(message) =>
-                void gestes.onSortir(message, id).catch((e) => gestes.onErreur(String(e)))
-              }
-            />
-          ))}
+          {tasVivants.map((id) => {
+            const messages = parTas.get(id) ?? []
+            const nom = nomsDesLibelles.get(id) ?? 'Sans nom'
+
+            return (
+              <TasPose
+                key={id}
+                nom={nom}
+                messages={messages}
+                position={dispose.tas[id] ?? { x: 0, y: 0 }}
+                accent={accent}
+                vise={survole === id}
+                ouvert={deplie === id}
+                onBasculer={() => setDeplie((d) => (d === id ? null : id))}
+                onDeplacer={(p) => poser(id, p, true)}
+                onOuvrirMessage={ouvrir}
+                onDefaire={() =>
+                  setADefaire({ id, nom, messages: messages.map((m) => m.id) })
+                }
+                onSortir={(message) =>
+                  void gestes.onSortir(message, id).catch((e) => gestes.onErreur(String(e)))
+                }
+                onSupprimer={setASupprimer}
+              />
+            )
+          })}
 
           {seuls.map((message) => (
             <TuilePosee
               key={message.id}
               message={message}
               position={dispose.messages[message.id] ?? { x: 0, y: 0 }}
-              onLacher={(p) => lacher(message, p)}
-              onOuvrir={() => gestes.onOuvrir(message)}
+              vise={survole === message.id}
+              onLacher={(p) => {
+                setSurvole(null)
+                lacher(message, p)
+              }}
+              onSurvol={(p) => survoler(message.id, p)}
+              onOuvrir={() => ouvrir(message)}
+              onSupprimer={() => setASupprimer(message)}
             />
           ))}
         </div>
       </div>
+
+      {lu && (
+        <LecteurEnGrand
+          message={lu}
+          corps={corpsConnus.get(lu.id) ?? null}
+          onCorpsCharge={onCorpsCharge}
+          onFermer={() => setLu(null)}
+          actions={
+            <Bouton
+              variante="danger"
+              icone="delete"
+              onClick={() => {
+                const cible = lu
+                setLu(null)
+                setASupprimer(cible)
+              }}
+            >
+              Supprimer
+            </Bouton>
+          }
+        />
+      )}
+
+      {aDefaire && (
+        <Confirmation
+          titre={`Défaire le tas « ${aDefaire.nom} » ?`}
+          sous={`Ses ${aDefaire.messages.length} message${
+            aDefaire.messages.length > 1 ? 's redeviennent des tuiles libres' : ' redevient une tuile libre'
+          } et le libellé « ${aDefaire.nom} » disparaît de Gmail — y compris des messages qui le portent ailleurs. Aucun message n'est supprimé.`}
+          libelle="Défaire le tas"
+          icone="open_in_full"
+          onAnnuler={() => setADefaire(null)}
+          onConfirmer={() => {
+            const cible = aDefaire
+            setADefaire(null)
+            setDeplie((d) => (d === cible.id ? null : d))
+            void gestes
+              .onDefaireLeTas(cible.id, cible.messages)
+              .catch((e) => gestes.onErreur(String(e)))
+          }}
+        />
+      )}
+
+      {aSupprimer && (
+        <Confirmation
+          titre="Supprimer ce message ?"
+          sous={`« ${aSupprimer.sujet || '(sans objet)'} » part à la corbeille de Gmail, où il reste récupérable trente jours.`}
+          libelle="Supprimer"
+          icone="delete"
+          onAnnuler={() => setASupprimer(null)}
+          onConfirmer={() => {
+            const cible = aSupprimer
+            setASupprimer(null)
+            void gestes.onSupprimer(cible.id).catch((e) => gestes.onErreur(String(e)))
+          }}
+        />
+      )}
 
       {aNommer && (
         <NommerLeTas
@@ -297,7 +443,8 @@ function BarreDeTable({
             ? 'Rien sur la table'
             : `${decompte(tas, 'tas', 'tas')} · ${decompte(seuls, 'message seul', 'messages seuls')}`}
           {' — '}
-          posez une tuile sur une autre pour en faire un tas.
+          un tas est un libellé Gmail ; recouvrez une tuile avec une autre pour
+          en faire un.
         </div>
       </div>
 
@@ -349,6 +496,8 @@ function useGlissement(
   depart: Position,
   taille: { largeur: number; hauteur: number },
   onLacher: (position: Position) => void,
+  /** Appelée pendant le geste avec la position courante, pour le contour. */
+  onSurvol?: (position: Position) => void,
 ) {
   const noeud = useRef<HTMLDivElement>(null)
   const saisie = useRef<{ x: number; y: number } | null>(null)
@@ -385,6 +534,13 @@ function useGlissement(
 
     // `translate3d` seul : la tuile reste sur sa couche, rien n'est repeint.
     element.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(1.03)`
+
+    // Le survol est remonté à React, mais il ne porte qu'un identifiant : le
+    // composant parent ne se retrace que lorsque la cible **change**, soit
+    // quelques fois par geste, et non soixante fois par seconde.
+    onSurvol?.(
+      borner({ x: depart.x + dx, y: depart.y + dy }, taille.largeur, taille.hauteur),
+    )
   }
 
   const surPointerUp = (e: PointerEventReact<HTMLDivElement>) => {
@@ -444,15 +600,27 @@ function styleDePose(position: Position, attrape: boolean) {
 function TuilePosee({
   message,
   position,
+  vise,
   onLacher,
+  onSurvol,
   onOuvrir,
+  onSupprimer,
 }: {
   message: MessageAffiche
   position: Position
+  /** Vrai quand une autre tuile la recouvre en ce moment même. */
+  vise: boolean
   onLacher: (position: Position) => void
+  onSurvol: (position: Position) => void
   onOuvrir: () => void
+  onSupprimer: () => void
 }) {
-  const { noeud, attrape, aGlisse, poignee } = useGlissement(position, TUILE, onLacher)
+  const { noeud, attrape, aGlisse, poignee } = useGlissement(
+    position,
+    TUILE,
+    onLacher,
+    onSurvol,
+  )
   const [fond, encre] = palette(rangDeLAdresse(message.adresse))
 
   return (
@@ -472,14 +640,13 @@ function TuilePosee({
           onOuvrir()
         }
       }}
-      className="absolute flex select-none flex-col gap-1.5 rounded-xl border p-3"
+      className="tuile-de-table absolute flex select-none flex-col gap-1.5 rounded-xl border p-3"
       style={{
         ...styleDePose(position, attrape),
         width: TUILE.largeur,
         height: TUILE.hauteur,
         background: 'var(--card)',
-        borderColor: 'var(--line)',
-        boxShadow: attrape ? '0 18px 40px rgb(0 0 0 / 26%)' : 'var(--shadow)',
+        ...contourDeVisee(vise, attrape),
       }}
     >
       <div className="flex items-center gap-2">
@@ -500,8 +667,45 @@ function TuilePosee({
       <div className="line-clamp-2 text-[0.75rem] leading-snug" style={{ color: 'var(--sub)' }}>
         {message.sujet || '(sans objet)'}
       </div>
+
+      {/* Caché tant que la tuile n'est pas survolée : une croix visible sur
+          deux cents tuiles ferait de la table un champ de mines. */}
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          onSupprimer()
+        }}
+        title="Mettre à la corbeille"
+        aria-label={`Supprimer « ${message.sujet || 'sans objet'} »`}
+        className="geste-de-tuile bouton bouton-icone absolute top-1.5 right-1.5 rounded-md p-1"
+      >
+        <Icone nom="delete" taille="0.8125rem" />
+      </button>
     </div>
   )
+}
+
+/**
+ * Le contour d'un objet qu'une tuile recouvre en ce moment.
+ *
+ * C'est ce qui rend la règle du recouvrement vérifiable **avant** le lâcher :
+ * sans lui, on ne découvre qu'après coup si un tas s'est formé, et former un tas
+ * redevient un coup de chance — exactement ce que le nouveau critère cherche à
+ * supprimer.
+ */
+function contourDeVisee(vise: boolean, attrape = false) {
+  if (vise) {
+    return {
+      borderColor: 'var(--accent)',
+      boxShadow: '0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)',
+    }
+  }
+  return {
+    borderColor: 'var(--line)',
+    boxShadow: attrape ? '0 18px 40px rgb(0 0 0 / 26%)' : 'var(--shadow)',
+  }
 }
 
 /** Un tas : un libellé Gmail, et les archives qui le portent. */
@@ -510,21 +714,28 @@ function TasPose({
   messages,
   position,
   accent,
+  vise,
   ouvert,
   onBasculer,
   onDeplacer,
   onOuvrirMessage,
+  onDefaire,
   onSortir,
+  onSupprimer,
 }: {
   nom: string
   messages: MessageAffiche[]
   position: Position
   accent: string
+  /** Vrai quand une tuile recouvre le tas en ce moment même. */
+  vise: boolean
   ouvert: boolean
   onBasculer: () => void
   onDeplacer: (position: Position) => void
   onOuvrirMessage: (message: MessageAffiche) => void
+  onDefaire: () => void
   onSortir: (message: string) => void
+  onSupprimer: (message: MessageAffiche) => void
 }) {
   const { noeud, attrape, aGlisse, poignee } = useGlissement(position, TAS, onDeplacer)
 
@@ -572,17 +783,37 @@ function TasPose({
             onBasculer()
           }
         }}
-        className="relative flex flex-col justify-center gap-1 rounded-xl border px-3"
+        className="tuile-de-table relative flex flex-col justify-center gap-1 rounded-xl border px-3"
         style={{
           height: TAS.hauteur,
           background: 'var(--card)',
-          borderColor: attrape ? accent : 'var(--line)',
-          boxShadow: attrape ? '0 18px 40px rgb(0 0 0 / 26%)' : 'var(--shadow)',
+          ...contourDeVisee(vise, attrape),
+          ...(attrape && !vise ? { borderColor: accent } : {}),
         }}
       >
         <div className="flex items-center gap-2">
           <Icone nom="rule_folder" taille="1rem" rempli style={{ color: accent }} />
           <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-semibold">{nom}</span>
+
+          {/* Défaire le tas : le seul geste sans retour de cette page. Il n'est
+              offert que sur le tas déplié — on ne défait pas ce qu'on n'a pas
+              regardé, et la confirmation nomme ce qui va disparaître. */}
+          {ouvert && (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                onDefaire()
+              }}
+              title="Défaire le tas et supprimer le libellé"
+              aria-label={`Défaire le tas « ${nom} »`}
+              className="bouton bouton-icone flex-none rounded-md p-1"
+            >
+              <Icone nom="open_in_full" taille="0.8125rem" />
+            </button>
+          )}
+
           {/* Une seule icône, retournée : la police n'a pas de chevron vers
               le haut, et en inventer un au tracé serait un dessin de plus à
               maintenir pour une rotation qui dit la même chose. */}
@@ -618,6 +849,7 @@ function TasPose({
               message={m}
               onOuvrir={() => onOuvrirMessage(m)}
               onSortir={() => onSortir(m.id)}
+              onSupprimer={() => onSupprimer(m)}
             />
           ))}
         </div>
@@ -631,10 +863,12 @@ function LigneDuTas({
   message,
   onOuvrir,
   onSortir,
+  onSupprimer,
 }: {
   message: MessageAffiche
   onOuvrir: () => void
   onSortir: () => void
+  onSupprimer: () => void
 }) {
   const [fond, encre] = palette(rangDeLAdresse(message.adresse))
 
@@ -656,6 +890,9 @@ function LigneDuTas({
         </span>
       </button>
 
+      {/* Sortir et supprimer côte à côte, et dans cet ordre : le geste sans
+          conséquence d'abord, celui qui jette ensuite — comme sur les fenêtres
+          de confirmation, où « Annuler » précède toujours l'action. */}
       <button
         type="button"
         onClick={onSortir}
@@ -664,6 +901,16 @@ function LigneDuTas({
         className="bouton bouton-icone flex-none rounded-md p-1"
       >
         <Icone nom="close" taille="0.8125rem" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onSupprimer}
+        title="Mettre à la corbeille"
+        aria-label={`Supprimer « ${message.sujet || 'sans objet'} »`}
+        className="bouton bouton-icone flex-none rounded-md p-1"
+      >
+        <Icone nom="delete" taille="0.8125rem" />
       </button>
     </div>
   )

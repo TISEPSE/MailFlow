@@ -31,6 +31,9 @@ use crate::error::{AppError, Resultat};
 pub enum Methode {
     Get,
     Post,
+    /// Le seul verbe destructeur, et le seul appel de tout MailFlow qui
+    /// détruise quelque chose chez Google : la suppression d'un libellé.
+    Delete,
 }
 
 /// Reponse HTTP réduite à ce dont la décision de réessai a besoin.
@@ -128,6 +131,16 @@ fn url_complet(id: &str) -> String {
 
 fn url_libelles() -> String {
     format!("{BASE_API}/users/me/labels")
+}
+
+/// URL d'un libellé précis, pour `users.labels.delete`.
+///
+/// L'identifiant est encodé : il vient de Gmail, mais il traverse l'IPC depuis
+/// l'interface, et rien ne garantit à ce point qu'il n'a pas été retouché en
+/// route. C'est la même précaution qu'à [`url_modify`], au même endroit.
+fn url_libelle(id: &str) -> String {
+    let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
+    format!("{BASE_API}/users/me/labels/{id}")
 }
 
 /// URL de `users.messages.attachments.get`.
@@ -446,6 +459,43 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         self.modifier_libelles(id, &[], &[libelle]).await
     }
 
+    /// Retire un libellé de plusieurs messages, en un seul appel.
+    ///
+    /// C'est ce que fait « défaire un tas ». En file indienne, un tas de
+    /// quarante messages coûterait quarante allers-retours — une dizaine de
+    /// secondes pendant lesquelles la table se viderait tuile par tuile sous les
+    /// yeux de l'utilisateur. `batchModify` en fait un seul, et le tas se défait
+    /// d'un coup, comme le geste le laisse attendre.
+    pub async fn retirer_libelle_lot(&self, ids: &[String], libelle: &str) -> Resultat<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let corps = serde_json::json!({
+            "ids": ids,
+            "addLabelIds": [],
+            "removeLabelIds": [libelle],
+        })
+        .to_string();
+
+        self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
+            .await
+            .map(|_| ())
+    }
+
+    /// Supprime un libellé chez Gmail.
+    ///
+    /// **Le seul appel destructeur de MailFlow.** Il ne touche à aucun message —
+    /// Gmail se contente de retirer l'étiquette de tout ce qui la portait — mais
+    /// il est sans retour : un libellé supprimé ne se restaure pas, et les
+    /// messages qui le portaient ailleurs le perdent aussi. C'est pourquoi
+    /// l'interface le fait précéder d'une confirmation qui le nomme.
+    pub async fn supprimer_libelle(&self, id: &str) -> Resultat<()> {
+        self.appeler(Methode::Delete, &url_libelle(id), None)
+            .await
+            .map(|_| ())
+    }
+
     /// Ajoute et retire des libellés sur un message.
     async fn modifier_libelles(
         &self,
@@ -561,6 +611,10 @@ pub mod tests_support {
     /// Transport de test : rejoue une file de réponses et note ce qu'il a reçu.
     /// Une requête telle que le transport l'a vue partir.
     struct RequeteVue {
+        /// Notée depuis qu'un verbe destructeur existe : `DELETE` et `POST` ne
+        /// se rattrapent pas de la même façon, et un test doit pouvoir dire
+        /// lequel des deux est parti.
+        methode: Methode,
         url: String,
         corps: Option<String>,
         jeton: String,
@@ -581,12 +635,13 @@ pub mod tests_support {
     impl Transport for FauxTransport {
         async fn envoyer(
             &self,
-            _methode: Methode,
+            methode: Methode,
             url: &str,
             corps: Option<String>,
             jeton: &str,
         ) -> Resultat<ReponseBrute> {
             self.recus.borrow_mut().push(RequeteVue {
+                methode,
                 url: url.to_string(),
                 corps,
                 jeton: jeton.to_string(),
@@ -690,6 +745,16 @@ pub mod tests_support {
                 .borrow()
                 .iter()
                 .filter_map(|r| r.corps.clone())
+                .collect()
+        }
+
+        pub fn methodes(&self) -> Vec<Methode> {
+            self.client
+                .transport
+                .recus
+                .borrow()
+                .iter()
+                .map(|r| r.methode)
                 .collect()
         }
 
@@ -988,6 +1053,63 @@ mod tests {
         let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
         assert_eq!(envoye["addLabelIds"], serde_json::json!(["L1"]));
         assert_eq!(envoye["removeLabelIds"], serde_json::json!(["INBOX"]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn defaire_un_tas_ne_coute_qu_un_seul_appel() {
+        // Quarante messages en file indienne, c'est une dizaine de secondes
+        // pendant lesquelles la table se viderait tuile par tuile. Le tas doit
+        // se défaire d'un coup, comme le geste le laisse attendre.
+        let c = client(vec![ok("{}")]);
+        let ids: Vec<String> = (0..40).map(|n| format!("m{n}")).collect();
+
+        c.client.retirer_libelle_lot(&ids, "Label_7").await.unwrap();
+
+        assert_eq!(c.appels(), 1);
+
+        let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
+        assert_eq!(envoye["removeLabelIds"], serde_json::json!(["Label_7"]));
+        assert_eq!(envoye["addLabelIds"], serde_json::json!([]));
+        assert_eq!(envoye["ids"].as_array().unwrap().len(), 40);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn defaire_un_tas_vide_n_appelle_rien() {
+        // Le client n'a aucune réponse en réserve : le moindre appel échouerait
+        // le test, ce qui est exactement la garantie recherchée.
+        let c = client(vec![]);
+
+        c.client.retirer_libelle_lot(&[], "Label_7").await.unwrap();
+
+        assert_eq!(c.appels(), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn supprimer_un_libelle_part_bien_en_delete() {
+        // Le seul appel destructeur de MailFlow. Un `POST` sur cette URL créerait
+        // un libellé au lieu d'en retirer un — l'exact contraire du geste.
+        let c = client(vec![ok("")]);
+
+        c.client.supprimer_libelle("Label_7").await.unwrap();
+
+        assert_eq!(c.methodes(), vec![Methode::Delete]);
+        assert!(
+            c.urls()[0].ends_with("/users/me/labels/Label_7"),
+            "{:?}",
+            c.urls()
+        );
+        assert!(c.corps_envoyes().is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn l_identifiant_d_un_libelle_est_encode_dans_l_url() {
+        // Il vient de Gmail, mais il traverse l'IPC depuis l'interface : rien ne
+        // garantit à ce point qu'il n'a pas été retouché en route.
+        let c = client(vec![ok("")]);
+
+        c.client.supprimer_libelle("../messages/m1").await.unwrap();
+
+        assert!(!c.urls()[0].contains("/messages/m1"), "{:?}", c.urls());
     }
 
     #[tokio::test(start_paused = true)]

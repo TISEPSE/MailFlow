@@ -55,6 +55,8 @@ import {
   libellePoser,
   libelleRetirer,
   libellesLister,
+  llmEtat,
+  tasDefaire,
   tableauEcrire,
   tableauLire,
   messageMarquerLu,
@@ -396,6 +398,61 @@ export default function App() {
       setAvancementResumes(null)
     }
   }, [])
+
+  /**
+   * L'analyse relancée à la main, depuis la page Newsletters.
+   *
+   * # Pourquoi elle existe en plus de la phase automatique
+   *
+   * La clé se pose presque toujours **après** le premier démarrage : on ouvre
+   * l'application, on découvre les résumés, on va chercher une clé, on la colle
+   * dans les Paramètres — et la troisième phase est passée depuis longtemps.
+   * Sans ce bouton, il fallait redémarrer pour en profiter, sans que rien ne le
+   * dise.
+   *
+   * # Elle parle, là où la phase automatique a le droit de se taire
+   *
+   * Un démarrage sans clé ne doit rien afficher : l'utilisateur n'a pas demandé
+   * d'IA. Mais un bouton sur lequel on vient de cliquer et qui ne produit rien
+   * de visible est pire que pas de bouton du tout — on le reclique, et on
+   * conclut que l'application est cassée. Les trois issues sont donc dites.
+   *
+   * Les corps sont préchargés d'abord : `resumes_produire` saute en silence
+   * tout message dont le corps manque, et c'est le cas de tout ce qui est
+   * arrivé depuis le dernier relevé complet.
+   */
+  const analyserLesNewsletters = useCallback(async () => {
+    const messages = boite.filter((m) => m.categorie === 'newsletter')
+    if (!messages.length) {
+      annoncer('Aucune newsletter à analyser.')
+      return
+    }
+
+    const etatLlm = await llmEtat().catch(() => null)
+    if (!etatLlm?.cleConfiguree) {
+      annoncer('Aucune clé configurée : posez-la dans les Paramètres.', true)
+      return
+    }
+
+    const ids = messages.map((m) => m.id)
+    const avant = Object.keys(await resumesConnus(ids).catch(() => ({}))).length
+
+    setAvancementResumes({ faits: avant, total: ids.length })
+    await corpsPrecharger(ids).catch(() => null)
+    await resumerLesNewsletters(messages)
+
+    const apres = Object.keys(await resumesConnus(ids).catch(() => ({}))).length
+    const produits = apres - avant
+
+    annoncer(
+      produits > 0
+        ? `${produits} résumé${produits > 1 ? 's' : ''} produit${produits > 1 ? 's' : ''}.`
+        : avant === ids.length
+          ? 'Toutes les newsletters sont déjà résumées.'
+          : "Aucun résumé n'a pu être produit — le journal en dit la raison.",
+      produits === 0 && avant < ids.length,
+    )
+  }, [boite, annoncer, resumerLesNewsletters])
 
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
   const afficherLaVueMelangee = useCallback(async () => {
@@ -1156,14 +1213,37 @@ export default function App() {
               onTableau={poserSurLaTable}
               sombre={sombre}
               enCours={enRecherche}
+              corpsConnus={corpsConnus}
+              onCorpsCharge={(id, corps) =>
+                setCorpsConnus((connus) => ranger(connus, id, corps))
+              }
               gestes={{
                 onRelever: () => void chargerLesArchives(true),
                 onErreur: (m) => annoncer(m, true),
-                onOuvrir: (message) => {
-                  // La table ne lit pas : elle range. Ouvrir un message renvoie
-                  // à la page qui sait l'afficher, pointée sur lui.
-                  setMessageVise(message.id)
-                  setVue(message.categorie)
+                onLu: (id) => void marquerLu(id),
+                onSupprimer: async (id) => {
+                  await messageCorbeille(id)
+                  // Retirée de la table sans attendre un relevé : la tuile est
+                  // sous les yeux de l'utilisateur, et la voir survivre au
+                  // geste ferait croire que rien ne s'est passé.
+                  setArchives((liste) => liste.filter((m) => m.id !== id))
+                  annoncer('Message mis à la corbeille.')
+                },
+                onDefaireLeTas: async (libelle, messages) => {
+                  await tasDefaire(libelle, messages)
+
+                  // Les tuiles s'éparpillent d'elles-mêmes : privées de ce
+                  // libellé, elles retombent dans « seuls » par le seul jeu de
+                  // `repartir`. Rien de plus n'est à écrire pour cela.
+                  setArchives((liste) =>
+                    liste.map((m) =>
+                      messages.includes(m.id)
+                        ? { ...m, libelles: (m.libelles ?? []).filter((l) => l !== libelle) }
+                        : m,
+                    ),
+                  )
+                  setLibelles((connus) => connus.filter((l) => l.id !== libelle))
+                  annoncer('Tas défait.')
                 },
                 onCreerLibelle: async (nom) => {
                   const aJour = await libelleCreer(nom)
@@ -1205,6 +1285,7 @@ export default function App() {
               resumes={resumes}
               avancementResumes={avancementResumes}
               onArreterResumes={() => void resumesArreter()}
+              onAnalyser={() => void analyserLesNewsletters()}
               vise={messageVise}
               onVise={() => setMessageVise(null)}
               logos={logos}

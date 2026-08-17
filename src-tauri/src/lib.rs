@@ -112,6 +112,7 @@ pub fn run() {
             commands::libelle_creer,
             commands::libelle_poser,
             commands::libelle_retirer,
+            commands::tas_defaire,
             commands::archives_lister,
             commands::archives_en_cache,
             commands::tableau_lire,
