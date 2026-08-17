@@ -23,7 +23,7 @@ import {
   poids,
 } from '../lib/presentation'
 import { ApercuPieceJointe } from './ApercuPieceJointe'
-import { pieceJointeVignette } from '../lib/tauri'
+import { lienOuvrir, messageDErreur, pieceJointeVignette } from '../lib/tauri'
 import { lirePreferences } from '../lib/preferences'
 import type {
   CompteConnu,
@@ -38,14 +38,20 @@ export function ListeMessages({
   onSelect,
   logos,
   comptes,
+  coches,
+  onBasculer,
 }: {
   messages: MessageAffiche[]
   selection: string | null
   onSelect: (id: string) => void
   logos: Record<string, string>
   /** Renseignés dans la vue mélangée seulement : chaque tuile porte alors la
-   *  photo du compte qui a reçu le message, et un liseré de sa couleur. */
+   *  photo du compte qui a reçu le message. */
   comptes?: readonly CompteConnu[]
+  /** Messages cochés pour un geste groupé. Vide la plupart du temps. */
+  coches?: ReadonlySet<string>
+  /** Coche ou décoche un message. Absent quand la vue ne le permet pas. */
+  onBasculer?: (id: string) => void
 }) {
   return (
     <div
@@ -70,13 +76,24 @@ export function ListeMessages({
             )
           : null
         const compteRecepteur = comptes?.find((c) => c.adresse === m.compte)
+        const coche = coches?.has(m.id) ?? false
         return (
           <button
             key={m.id}
             type="button"
-            onClick={() => onSelect(m.id)}
+            // Ctrl (ou Cmd) coche au lieu d'ouvrir : c'est le geste attendu
+            // partout pour désigner plusieurs éléments, et il n'entre pas en
+            // conflit avec la lecture, qui reste le clic simple.
+            onClick={(e) => {
+              if ((e.ctrlKey || e.metaKey) && onBasculer) {
+                onBasculer(m.id)
+                return
+              }
+              onSelect(m.id)
+            }}
             aria-current={choisi}
             data-neuf={neuf}
+            data-coche={coche || undefined}
             className="tuile relative flex flex-none items-center gap-2.5 overflow-hidden border-b px-3 text-left"
             // Aucun fond en style en ligne : il l'emporterait sur les règles de
             // survol et de sélection, qui sont dans la feuille de styles.
@@ -85,15 +102,17 @@ export function ListeMessages({
             // sujet court et un sujet long donnaient sinon des tuiles de
             // hauteurs différentes, et le trait de la première ne tombait sur
             // rien.
+            // Pas de liseré de couleur en vue mélangée : la pastille du compte,
+            // en haut à droite de la tuile, suffit à dire d'où vient le
+            // message. Deux repères pour une même information encombraient la
+            // colonne sans rien apprendre de plus.
+            //
+            // Le seul liseré qui subsiste marque la coche, et il est passager :
+            // il disparaît dès que la sélection est vidée.
             style={{
               borderColor: 'var(--line)',
               height: HAUTEUR_LIGNE,
-              // Le liseré du compte, dans la vue mélangée. Il se lit d'un coup
-              // d'œil sur toute la colonne, là où il faudrait examiner chaque
-              // étiquette pour trier à la lecture.
-              boxShadow: teinteDuCompte
-                ? `inset 3px 0 0 0 ${teinteDuCompte[1]}`
-                : undefined,
+              boxShadow: coche ? 'inset 3px 0 0 0 var(--accent)' : undefined,
             }}
           >
             {/* La pastille de non-lu passe en repère absolu : en colonne, elle
@@ -105,12 +124,26 @@ export function ListeMessages({
                 style={{ background: 'var(--accent)' }}
               />
             )}
-            <Pastille
-              texte={initiales(m.nom)}
-              fond={fond}
-              couleur={encre}
-              logo={logos[domaineDe(m.adresse)]}
-            />
+            {/* La pastille cède la place à une coche : c'est le repère le plus
+                lisible, et il occupe exactement la même surface, si bien que
+                rien ne se déplace quand on coche. */}
+            {coche ? (
+              <span className="flex flex-none items-center justify-center">
+                <Icone
+                  nom="check_circle"
+                  taille="1.875rem"
+                  rempli
+                  style={{ color: 'var(--accent)' }}
+                />
+              </span>
+            ) : (
+              <Pastille
+                texte={initiales(m.nom)}
+                fond={fond}
+                couleur={encre}
+                logo={logos[domaineDe(m.adresse)]}
+              />
+            )}
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-2">
                 <span
@@ -130,9 +163,9 @@ export function ListeMessages({
                       width: 18,
                       height: 18,
                       background: teinteDuCompte[0],
-                      // Un anneau de la couleur du compte : la photo Google
-                      // est ronde et neutre, l'anneau la rattache au liseré de
-                      // la tuile.
+                      // Un anneau de la couleur du compte : la photo Google est
+                      // ronde et neutre, et deux comptes se ressemblent vite.
+                      // C'est désormais le seul repère de couleur de la tuile.
                       boxShadow: `0 0 0 1.5px ${teinteDuCompte[1]}`,
                     }}
                     title={`Reçu sur ${m.compte}`}
@@ -254,7 +287,12 @@ export function Lecture({
         </div>
       </div>
 
-      <Destinataires message={message} onCopier={onCopier} />
+      {/* `key` sur l'identifiant du message : chaque message rouvre le panneau
+          selon le réglage des Paramètres, au lieu d'hériter du repli décidé
+          sur le message précédent. C'est ce que veut dire « afficher les
+          destinataires dépliés » — le choix vaut pour chaque mail, pas pour la
+          première lecture de la session. */}
+      <Destinataires key={message.id} message={message} onCopier={onCopier} />
 
       <Corps
         message={message}
@@ -281,12 +319,16 @@ function Destinataires({
   message: MessageAffiche
   onCopier?: (adresse: string) => void
 }) {
-  // L'état de départ vient des Paramètres ; le repli du moment vaut ensuite
-  // pour la session, car le refaire à chaque message serait pire que le panneau
-  // lui-même. La préférence est lue directement, et non reçue en cascade
-  // depuis l'application : la traverser sur trois étages pour un booléen coûte
-  // plus cher qu'une lecture, et une lecture différée ferait clignoter le
-  // panneau à l'ouverture.
+  // L'état de départ vient des Paramètres, et il est repris **à chaque
+  // message** : l'appelant remonte ce composant en le clefant sur
+  // l'identifiant. Replier le panneau sur un message ne décide donc rien pour
+  // le suivant — sans quoi le réglage n'aurait servi qu'à la première lecture
+  // de la session.
+  //
+  // La préférence est lue directement, et non reçue en cascade depuis
+  // l'application : la traverser sur trois étages pour un booléen coûte plus
+  // cher qu'une lecture, et une lecture différée ferait clignoter le panneau à
+  // l'ouverture.
   const [ouvert, setOuvert] = useState(() => lirePreferences().destinatairesDeplies)
 
   const lignes: { role: string; contacts: { nom: string; adresse: string }[] }[] = [
@@ -485,7 +527,7 @@ function Corps({
  * Rien n'est jamais **ouvert** : ouvrir un fichier venu d'un e-mail reviendrait
  * à laisser un expéditeur choisir quel programme démarre sur la machine.
  */
-function PiecesJointes({
+export function PiecesJointes({
   message,
   pieces,
   surPapier,
@@ -778,6 +820,52 @@ function CadreIsole({ html }: { html: string }) {
     let enMesure = false
     let vivant = true
 
+    /** Document du cadre sur lequel l'écoute des clics est posée, s'il y en a un. */
+    let documentEcoute: Document | null = null
+
+    /**
+     * Ouvre dans le navigateur du système le lien sur lequel on vient de
+     * cliquer.
+     *
+     * Sans cette interception, un clic ne produisait rien : le cadre n'a ni
+     * `allow-scripts` ni `allow-popups`, si bien que le moteur refuse la
+     * fenêtre surgissante, et le garde-fou de navigation de l'application ne
+     * voit pas les navigations de sous-cadre.
+     *
+     * L'écoute est posée **depuis l'application**, sur le document du cadre —
+     * ce que `allow-same-origin` permet. Aucun script ne s'exécute pour autant
+     * *dans* le cadre : les trois verrous décrits plus haut restent en place,
+     * et c'est bien du code de l'application qui tourne, pas du code de
+     * l'expéditeur.
+     *
+     * L'attribut est lu tel qu'il est écrit dans le message, et non résolu :
+     * Rust doit voir exactement ce que l'expéditeur a mis, et refuser lui-même
+     * ce qui n'est pas une adresse absolue de schéma autorisé.
+     */
+    const surClic = (evenement: Event) => {
+      // Surtout pas `instanceof Element` : la cible appartient au document du
+      // cadre, donc à un autre realm, avec ses propres constructeurs. Le test
+      // serait faux pour *tout* élément du message, et l'interception ne se
+      // déclencherait jamais. On reconnaît donc la capacité, pas la classe.
+      const cible = evenement.target as {
+        closest?: (selecteur: string) => Element | null
+      } | null
+
+      const lien = cible?.closest?.('a[href], area[href]')
+      if (!lien) return
+
+      // Annulé dans tous les cas : même refusée par Rust, cette navigation ne
+      // doit pas emporter le cadre — ni, pire, l'application.
+      evenement.preventDefault()
+
+      const adresse = lien.getAttribute('href')?.trim()
+      if (!adresse || adresse.startsWith('#')) return
+
+      void lienOuvrir(adresse).catch((e) =>
+        console.warn('lien non ouvert', messageDErreur(e)),
+      )
+    }
+
     const mesurer = (document: Document) => {
       // Le garde-fou empêche la boucle : replier le cadre change la mise en
       // page du document, ce que l'observateur signale aussitôt.
@@ -812,6 +900,10 @@ function CadreIsole({ html }: { html: string }) {
       // pas un échec : c'est trop tôt, et l'événement de chargement rappellera.
       if (!document?.body) return false
 
+      document.removeEventListener('click', surClic, true)
+      document.addEventListener('click', surClic, true)
+      documentEcoute = document
+
       mesurer(document)
       observateur?.disconnect()
       observateur = new ResizeObserver(() => mesurer(document))
@@ -831,6 +923,7 @@ function CadreIsole({ html }: { html: string }) {
     return () => {
       vivant = false
       element.removeEventListener('load', brancher)
+      documentEcoute?.removeEventListener('click', surClic, true)
       observateur?.disconnect()
     }
   }, [html])
@@ -839,10 +932,10 @@ function CadreIsole({ html }: { html: string }) {
     <iframe
       ref={cadre}
       title="Contenu du message"
-      // Le clic sur un lien navigue le cadre lui-même — le journal a montré
-      // qu'une fenêtre surgissante, elle, n'atteignait jamais le backend. Cette
-      // navigation-ci est annulée côté Rust, qui ouvre l'adresse dans le
-      // navigateur du système.
+      // Ni `allow-scripts` ni `allow-popups` : rien ne s'exécute ici, et le
+      // cadre ne peut pas ouvrir de fenêtre. Le clic sur un lien est donc
+      // intercepté par l'application elle-même, qui confie l'adresse à Rust —
+      // voir `surClic` plus haut.
       sandbox="allow-same-origin"
       srcDoc={documentIsole(html)}
       scrolling={hauteur === null ? 'auto' : 'no'}

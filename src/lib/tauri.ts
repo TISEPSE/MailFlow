@@ -289,6 +289,18 @@ export function majOuvrir(): Promise<void> {
   return invoke<void>('maj_ouvrir')
 }
 
+/**
+ * Ouvre dans le navigateur du systeme un lien cliqué dans un message.
+ *
+ * L'adresse vient d'un e-mail : elle n'est pas ouverte telle quelle, mais
+ * confrontee cote Rust a une liste blanche de schemas. Un `file://` ou un
+ * schema depose par une application installee est refuse — sans quoi un
+ * expediteur choisirait quel programme demarre sur la machine.
+ */
+export function lienOuvrir(url: string): Promise<void> {
+  return invoke<void>('lien_ouvrir', { url })
+}
+
 /** Adresse du compte relié, ou `null` si aucun ne l'est. */
 export function compteAdresse(): Promise<string | null> {
   return invoke<string | null>('compte_adresse')

@@ -1145,6 +1145,51 @@ pub async fn maj_verifier(app: AppHandle) -> Resultat<crate::maj::Verification> 
     Ok(verification)
 }
 
+/// Ouvre dans le navigateur du système un lien cliqué dans un message.
+///
+/// # Pourquoi cette commande existe
+///
+/// Le corps d'un message s'affiche dans un cadre en bac à sable, sans
+/// `allow-scripts` ni `allow-popups`. Un clic sur un lien n'y produisait donc
+/// rien du tout : la fenêtre surgissante est refusée par le moteur, et le
+/// garde-fou de navigation de l'application ne voit pas les navigations de
+/// sous-cadre. L'interception se fait maintenant côté application — voir
+/// `CadreIsole` — et aboutit ici.
+///
+/// # Ce qui est vérifié
+///
+/// L'adresse vient d'un e-mail, c'est-à-dire de n'importe qui, et elle a
+/// traversé l'IPC. Elle est donc soumise à la même liste blanche de schémas que
+/// tout ce qui sort vers le système : `http`, `https`, `mailto`. Sans quoi un
+/// expéditeur choisirait quel programme démarre sur la machine — `file://` sur
+/// un dossier local, un schéma déposé par une application installée, ou pire.
+///
+/// Une adresse relative n'a pas de sens hors de son site d'origine : elle ne
+/// s'analyse pas et se voit refusée, plutôt que d'être devinée.
+#[tauri::command]
+pub async fn lien_ouvrir(url: String) -> Resultat<()> {
+    let sortie = tauri::Url::parse(&url)
+        .ok()
+        .filter(crate::sortie_autorisee)
+        .ok_or_else(|| {
+            log::warn!("lien de message refusé : schéma non autorisé ou adresse relative");
+            AppError::Config("Ce lien ne peut pas être ouvert.".into())
+        })?;
+
+    // Le journal ne porte que le schéma et l'hôte : une adresse complète de
+    // newsletter contient couramment un identifiant de suivi, et parfois
+    // l'adresse de l'utilisateur en clair.
+    log::info!(
+        "lien de message ouvert : {}://{}",
+        sortie.scheme(),
+        sortie.host_str().unwrap_or("-")
+    );
+
+    tauri_plugin_opener::open_url(sortie.as_str(), None::<&str>)
+        .map_err(|e| AppError::Config(format!("navigateur injoignable : {e}")))?;
+    Ok(())
+}
+
 /// Ouvre la page d'une publication dans le navigateur du système.
 ///
 /// L'adresse n'est pas reçue du frontend mais redemandée à GitHub : une adresse

@@ -200,6 +200,22 @@ button:not(:disabled),
   transform: translateY(0.12em);
 }
 
+/* Même correction, pour un champ de saisie.
+
+   `transform` ne convient pas ici : le moteur peint le curseur de saisie
+   depuis la boîte de ligne, avant transformation. Le texte descendait donc de
+   0,12 em et le curseur restait où il était — c'est le décalage qu'on voyait
+   dans la barre de recherche, curseur trop haut d'un cheveu sur la première
+   lettre.
+
+   `position: relative` déplace la boîte peinte elle-même, curseur compris :
+   les deux bougent ensemble, et l'alignement du texte avec le reste de la
+   barre reste celui qui a été mesuré. */
+.texte-optique-champ {
+  position: relative;
+  top: 0.12em;
+}
+
 /* Repère au clavier. Il vaut pour tous les thèmes, y compris sombre. */
 :focus-visible {
   outline: 2px solid var(--accent);

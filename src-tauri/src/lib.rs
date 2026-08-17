@@ -92,6 +92,7 @@ pub fn run() {
             commands::compte_ajouter,
             commands::compte_oublier,
             commands::logos_expediteurs,
+            commands::lien_ouvrir,
             commands::maj_verifier,
             commands::maj_ouvrir,
         ])
@@ -211,6 +212,21 @@ mod tests_navigation {
         assert!(sortie_autorisee(&url(
             "mailto:contact@exemple.fr?subject=Bonjour"
         )));
+    }
+
+    #[test]
+    fn une_adresse_relative_d_e_mail_ne_s_ouvre_pas() {
+        // Les liens cliqués dans un message passent par `lien_ouvrir`, qui les
+        // analyse avant de les confier au système. Une adresse relative n'a pas
+        // de sens hors de son site d'origine : elle ne doit pas être devinée à
+        // partir de l'adresse de l'application, sous peine d'ouvrir autre chose
+        // que ce que l'expéditeur désignait.
+        for relative in ["/desabonnement", "../suivi", "page.html", "//exemple.fr/x"] {
+            assert!(
+                Url::parse(relative).is_err() || !sortie_autorisee(&url(relative)),
+                "« {relative} » ne doit pas atteindre le navigateur"
+            );
+        }
     }
 
     #[test]

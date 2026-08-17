@@ -200,7 +200,7 @@ export function Regles({
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Rechercher une règle par nom ou adresse"
             aria-label="Rechercher une règle"
-            className="texte-optique selectionnable min-w-0 flex-1 bg-transparent text-[0.8438rem] leading-5 outline-none"
+            className="texte-optique-champ selectionnable min-w-0 flex-1 bg-transparent text-[0.8438rem] leading-5 outline-none"
             style={{ color: 'var(--fg)' }}
           />
         </div>
