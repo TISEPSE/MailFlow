@@ -53,26 +53,11 @@ fn fichier_releve(racine: &Path, compte: &str) -> PathBuf {
     dossier_du_compte(racine, compte).join("boite.json")
 }
 
-/// Fichier du relevé des archives, dans le dossier d'un compte.
-///
-/// Séparé de la boîte de réception, et non mêlé à elle : ce sont deux relevés
-/// distincts, faits de deux requêtes différentes, et l'un peut être à jour
-/// quand l'autre ne l'est pas. Les confondre ferait disparaître les archives à
-/// chaque relevé de la boîte.
-fn fichier_archives(racine: &Path, compte: &str) -> PathBuf {
-    dossier_du_compte(racine, compte).join("archives.json")
-}
-
-/// Range le relevé des archives d'un compte.
-pub fn ranger_archives(racine: &Path, compte: &str, archives: &[MessageAffiche]) {
-    ranger_dans(&fichier_archives(racine, compte), racine, compte, archives);
-}
-
-/// Relit les archives d'un compte, ou `None`.
-pub fn lire_archives(racine: &Path, compte: &str) -> Option<Vec<MessageAffiche>> {
-    let texte = std::fs::read_to_string(fichier_archives(racine, compte)).ok()?;
-    serde_json::from_str(&texte).ok()
-}
+// Un relevé d'archives vivait ici, mis en cache comme la boîte de réception.
+// Il n'y a plus rien à mettre en cache : la table ne relève plus, elle lit le
+// registre que le geste d'archivage écrit (voir `crate::archives`). Un fichier
+// `archives.json` laissé par une version antérieure dort dans ce dossier et
+// sera balayé au premier « Tout effacer ».
 
 /// Écrit un fichier lisible du seul propriétaire.
 ///
