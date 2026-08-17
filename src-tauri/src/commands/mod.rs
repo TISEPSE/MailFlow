@@ -745,11 +745,27 @@ pub async fn archives_lister(
 ///
 /// C'est ce qui s'affiche à l'ouverture de la page : une table qui met dix
 /// secondes à apparaître n'est plus une table, c'est une attente.
+///
+/// # Le cache est un souvenir, pas une vérité
+///
+/// Il a été écrit par la version qui l'a relevé, sous la définition d'archive
+/// qui avait cours ce jour-là. Celle-ci a changé : une archive est désormais un
+/// message **portant un libellé**, et un cache antérieur contient des centaines
+/// de messages qui n'en portent aucun. Les rendre tels quels remplirait la table
+/// de tuiles que l'utilisateur venait précisément de faire disparaître, et il
+/// lui faudrait deviner qu'un relevé manuel les enlèverait.
+///
+/// Le filtre applique donc la définition **du jour** à des données d'hier. Le
+/// relevé suivant écrasera le fichier, et la question ne se posera plus.
 #[tauri::command]
 pub async fn archives_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     let racine = dossier_cache(&app)?;
     let compte = compte_actif(&app);
-    let mut archives = cache::lire_archives(&racine, &compte).unwrap_or_default();
+    let mut archives: Vec<MessageAffiche> = cache::lire_archives(&racine, &compte)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|m| !m.libelles.is_empty())
+        .collect();
 
     let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
     cache::reclasser(&mut archives, &regles);
