@@ -841,6 +841,38 @@ textarea:focus-visible {
 }
 
 
+/* Le ressort d'arrivée d'une tuile lâchée sur la table.
+
+   Il était promis par une transition sur `transform`, qui ne l'a jamais tenu :
+   le déplacement passe par `left`/`top`, si bien que cette transition
+   n'animait que le retour du décalage à zéro — autrement dit le défaut qu'on
+   voyait, la tuile glissant en arrière avant de se téléporter à sa nouvelle
+   place.
+
+   En image clé, il porte sur le bon geste : la tuile arrive déjà posée, et
+   marque son atterrissage d'un léger dépassement. C'est ce dépassement qui
+   donne la matière, et non la durée.
+
+   L'animation se retire d'elle-même — `forwards` serait une erreur ici : elle
+   figerait un `transform` sur la tuile, et le glissement suivant partirait
+   d'un état qui n'est pas neutre. */
+@keyframes pose-de-tuile {
+  0% {
+    transform: scale(1.03);
+  }
+  60% {
+    transform: scale(0.988);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.tuile-posee {
+  animation: pose-de-tuile 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+
 /* L'attente d'un résumé : la carte respire.
 
    Elle a d'abord été signalée par deux bandes qui se remplissaient à la place

@@ -9,11 +9,15 @@
 
 import type { MessageAffiche, Position, Tableau } from '../types/backend'
 
-/** Taille d'une tuile sur la table, en pixels. */
-export const TUILE = { largeur: 208, hauteur: 96 } as const
+/** Taille d'une tuile sur la table, en pixels.
+ *
+ *  Un cran plus grande qu'avant : à 208 sur 96, un sujet un peu long se
+ *  coupait au deuxième mot, et l'on devait ouvrir le message pour savoir ce
+ *  qu'on déplaçait. Une table sert à reconnaître avant d'ouvrir. */
+export const TUILE = { largeur: 236, hauteur: 110 } as const
 
 /** Taille d'un tas replié. Plus court qu'une tuile : il ne montre qu'un titre. */
-export const TAS = { largeur: 208, hauteur: 76 } as const
+export const TAS = { largeur: 236, hauteur: 84 } as const
 
 /**
  * Étendue de la table.

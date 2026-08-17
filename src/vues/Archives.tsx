@@ -37,7 +37,7 @@
  * perd ses affaires : la surface est plus grande que l'écran, mais finie, et un
  * bouton réaligne tout en grille.
  */
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as PointerEventReact } from 'react'
 import { Bouton, Confirmation, Icone, Modale, Vide } from '../composants/base'
 import { LecteurEnGrand } from '../composants/LecteurEnGrand'
@@ -486,6 +486,41 @@ function useGlissement(
   /** Vrai dès que le pointeur a bougé assez pour que ce soit un glissement. */
   const aBouge = useRef(false)
 
+  /** Vrai entre le lâcher et l'arrivée de la nouvelle position. */
+  const aPoser = useRef(false)
+
+  /**
+   * Efface le décalage exactement quand la nouvelle place est écrite.
+   *
+   * `useLayoutEffect` et non `useEffect` : il court avant que le navigateur ne
+   * peigne. Le `left`/`top` neuf et la remise à zéro du décalage tombent donc
+   * dans la même image, et la tuile ne passe jamais par son ancienne place.
+   *
+   * Sans tableau de dépendances : la nouvelle position peut être identique à
+   * l'ancienne — on lâche une tuile là où elle était — et l'effet doit courir
+   * quand même, sinon le décalage resterait pour de bon.
+   */
+  useLayoutEffect(() => {
+    if (!aPoser.current) return
+    aPoser.current = false
+
+    const element = noeud.current
+    if (!element) return
+
+    element.style.transform = ''
+
+    // La rendue à sa place, elle rebondit une fois. C'est le ressort promis,
+    // et il porte enfin sur le bon geste : l'arrivée, pas le retour en arrière.
+    //
+    // Retirée puis reposée, avec une lecture forcée de la mise en page entre
+    // les deux : une classe d'animation déjà présente ne rejoue rien, et le
+    // deuxième lâcher serait resté sans ressort. La lecture de `offsetWidth`
+    // est ce qui oblige le moteur à prendre acte du retrait avant l'ajout.
+    element.classList.remove('tuile-posee')
+    void element.offsetWidth
+    element.classList.add('tuile-posee')
+  })
+
   const surPointerDown = (e: PointerEventReact<HTMLDivElement>) => {
     // Bouton principal seulement : un clic droit ouvre le menu du système.
     if (e.button !== 0) return
@@ -530,9 +565,21 @@ function useGlissement(
     setAttrape(false)
 
     if (!debut || !element) return
-    element.style.transform = ''
 
-    if (!aBouge.current) return
+    if (!aBouge.current) {
+      element.style.transform = ''
+      return
+    }
+
+    // Le décalage n'est **pas** effacé ici. Il l'était, et c'était le défaut
+    // qu'on voyait au lâcher : la tuile revenait à son point de départ le temps
+    // que React reçoive sa nouvelle position, puis y sautait. Pire, la
+    // transition posée sur `transform` animait ce retour — la tuile glissait
+    // visiblement en arrière avant de se téléporter.
+    //
+    // Il est effacé dans l'effet de mise en page ci-dessous, au moment où la
+    // nouvelle position est écrite, donc dans la même image.
+    aPoser.current = true
 
     const arrivee = borner(
       {
@@ -568,9 +615,11 @@ function styleDePose(position: Position, attrape: boolean) {
     // Ce qu'on tient passe devant, sinon la tuile glisse *sous* sa voisine et
     // l'on croit l'avoir perdue.
     zIndex: attrape ? 30 : 1,
-    // Le ressort n'est appliqué qu'au lâcher : pendant le geste, toute
-    // transition ferait traîner la tuile derrière le doigt.
-    transition: attrape ? 'none' : 'transform 320ms cubic-bezier(0.22, 1.4, 0.36, 1)',
+    // Rien sur `transform`. La transition qui s'y trouvait n'a jamais animé le
+    // déplacement — celui-ci passe par `left`/`top` — elle n'animait que le
+    // retour en arrière du décalage, c'est-à-dire le défaut lui-même. Le
+    // ressort d'arrivée est joué par `.tuile-posee`, en image clé.
+    transition: attrape ? 'none' : 'box-shadow 180ms ease',
     cursor: attrape ? 'grabbing' : 'grab',
     touchAction: 'none' as const,
   }
