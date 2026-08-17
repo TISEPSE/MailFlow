@@ -27,7 +27,7 @@ use crate::gmail::execution::RapportExecution;
 use crate::gmail::synchronisation::synchroniser;
 use crate::gmail::transport::TransportHttp;
 use crate::rules::{self, Rule, RuleSet, RulesStore};
-use crate::secrets::KeyringStore;
+use crate::secrets::{KeyringStore, SecretStore};
 
 pub mod resumes;
 
@@ -39,6 +39,13 @@ pub mod resumes;
 pub struct EtatAuth {
     session: Mutex<SessionAuth<KeyringStore>>,
     client: Option<ClientOAuth>,
+
+    /// Jetons d'accès des comptes qui ne sont pas l'actif, gardés le temps de
+    /// leur validité — voir [`JetonsDuCompte`].
+    ///
+    /// En mémoire seulement : un jeton d'accès vit une heure, et l'écrire sur
+    /// le disque n'apporterait qu'un secret de plus à protéger.
+    autres_jetons: Mutex<std::collections::HashMap<String, crate::auth::jetons::Jetons>>,
 }
 
 impl EtatAuth {
@@ -69,6 +76,7 @@ impl EtatAuth {
         Self {
             session: Mutex::new(SessionAuth::nouvelle(KeyringStore::new())),
             client,
+            autres_jetons: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -99,6 +107,167 @@ impl SourceJeton for JetonsDeSession<'_> {
         }
         session.access_token(client, Utc::now()).await
     }
+}
+
+/// Donne au client Gmail le jeton d'un compte **qui n'est pas l'actif**.
+///
+/// # Le défaut que cela corrige
+///
+/// Sous « Tous les comptes », la liste mélange les messages de toutes les
+/// boîtes — mais un seul jeton existait, celui du compte actif. Ouvrir la pièce
+/// jointe d'un message reçu sur une autre adresse revenait donc à la demander
+/// avec les clés du voisin : Gmail répondait « demande impossible à traiter »,
+/// et rien n'expliquait pourquoi, puisque la lettre, elle, venait du cache
+/// disque et s'affichait très bien.
+///
+/// Le corps ne trahissait rien, la pièce jointe si — parce qu'elle seule
+/// n'est jamais mise en cache.
+///
+/// # Comment
+///
+/// Chaque compte en réserve garde son `refresh_token` dans le trousseau, sur
+/// son propre créneau ([`comptes::cle_compte`]). On l'échange contre un jeton
+/// d'accès, qu'on garde en mémoire le temps de sa validité : sans ce cache,
+/// précharger soixante corps mélangés ferait soixante échanges.
+struct JetonsDuCompte<'a> {
+    etat: &'a EtatAuth,
+    adresse: String,
+}
+
+impl SourceJeton for JetonsDuCompte<'_> {
+    async fn jeton(&self, forcer: bool) -> Resultat<String> {
+        let client = self.etat.client()?;
+
+        // Le verrou est tenu pendant l'échange : deux commandes lancées de
+        // front sur le même compte doivent en faire un seul, pas deux.
+        let mut cache = self.etat.autres_jetons.lock().await;
+
+        if !forcer
+            && let Some(connu) = cache.get(&self.adresse)
+            && connu.utilisable(Utc::now())
+        {
+            return Ok(connu.access_token().to_string());
+        }
+
+        let creneau = comptes::cle_compte(&self.adresse);
+        let magasin = KeyringStore::new();
+
+        let refresh = magasin.get(&creneau)?.ok_or_else(|| {
+            log::warn!("aucun jeton en réserve pour ce compte");
+            AppError::NonAuthentifie
+        })?;
+
+        let reponse = client.renouveler(&refresh).await?;
+        let jetons = crate::auth::jetons::Jetons::depuis(reponse, Utc::now());
+
+        // Google peut faire tourner le jeton durable. Ne pas réécrire
+        // laisserait le trousseau sur une valeur périmée, et le compte
+        // deviendrait injoignable au prochain lancement.
+        if let Some(nouveau) = jetons.refresh_token()
+            && nouveau != refresh
+        {
+            magasin.set(&creneau, nouveau)?;
+        }
+
+        let acces = jetons.access_token().to_string();
+        cache.insert(self.adresse.clone(), jetons);
+        Ok(acces)
+    }
+}
+
+/// L'une ou l'autre source de jeton, choisie selon le compte visé.
+///
+/// Une énumération plutôt qu'un objet de trait : [`SourceJeton`] a une méthode
+/// `async`, et le rendre utilisable en objet demanderait de boxer chaque appel
+/// pour un choix qui se fait une fois par commande.
+enum JetonsAdaptes<'a> {
+    Session(JetonsDeSession<'a>),
+    Autre(JetonsDuCompte<'a>),
+}
+
+impl SourceJeton for JetonsAdaptes<'_> {
+    async fn jeton(&self, forcer: bool) -> Resultat<String> {
+        match self {
+            Self::Session(source) => source.jeton(forcer).await,
+            Self::Autre(source) => source.jeton(forcer).await,
+        }
+    }
+}
+
+/// Choisit avec quelles clés parler à Gmail pour un message donné.
+///
+/// Le compte actif garde le chemin historique — celui qui tient son jeton en
+/// mémoire et sait le renouveler. Les autres passent par le trousseau.
+/// Un compte inconnu retombe sur l'actif : c'est ce que faisait tout le code
+/// avant, et rien n'est perdu à essayer.
+fn jetons_pour<'a>(etat: &'a EtatAuth, actif: &str, compte: Option<&str>) -> JetonsAdaptes<'a> {
+    match compte_a_viser(actif, compte) {
+        Some(adresse) => JetonsAdaptes::Autre(JetonsDuCompte { etat, adresse }),
+        None => JetonsAdaptes::Session(JetonsDeSession { etat }),
+    }
+}
+
+/// Quel compte en réserve viser, ou `None` pour rester sur l'actif.
+///
+/// Séparé de [`jetons_pour`] pour être testable : la décision est tout ce qui
+/// peut être faux ici, et elle ne demande ni trousseau ni réseau.
+fn compte_a_viser(actif: &str, compte: Option<&str>) -> Option<String> {
+    let vise = compte.map(str::trim).filter(|c| !c.is_empty())?;
+
+    // La comparaison ignore la casse : Gmail rend parfois l'adresse telle que
+    // l'utilisateur l'a tapée, l'annuaire la range en minuscules. Les croire
+    // différentes ferait chercher dans le trousseau un compte qui est déjà là,
+    // et le geste échouerait pour un « G » majuscule.
+    if vise.eq_ignore_ascii_case(actif.trim()) {
+        return None;
+    }
+
+    Some(vise.to_lowercase())
+}
+
+/// Table « identifiant de message → compte qui l'a reçu », lue dans les relevés
+/// déjà rangés sur le disque.
+///
+/// C'est le backend qui répond à cette question, et non l'interface, bien que
+/// celle-ci connaisse déjà le compte de chaque message : une réponse venue du
+/// webview serait une réponse venue d'un endroit qui affiche du HTML
+/// d'expéditeur. Le disque, lui, ne ment pas.
+///
+/// Construite d'un coup plutôt qu'interrogée message par message : le
+/// préchargement en demande soixante d'affilée, et relire les mêmes fichiers
+/// soixante fois pour cela serait absurde.
+fn comptes_des_messages(app: &AppHandle) -> std::collections::HashMap<String, String> {
+    let mut table = std::collections::HashMap::new();
+
+    let (Ok(dossier), Ok(racine)) = (dossier_config(app), dossier_cache(app)) else {
+        return table;
+    };
+
+    for compte in comptes::charger(&dossier).connus {
+        let Some(boite) = cache::lire_boite(&racine, &compte.adresse) else {
+            continue;
+        };
+        for message in boite {
+            table.insert(message.id, compte.adresse.clone());
+        }
+    }
+
+    table
+}
+
+/// Le compte qui a reçu ce message, s'il est connu.
+fn compte_du_message(app: &AppHandle, id: &str) -> Option<String> {
+    comptes_des_messages(app).remove(id)
+}
+
+/// Les clés qu'il faut pour parler à Gmail d'un message précis.
+///
+/// Raccourci des deux appels précédents, employé par toutes les commandes qui
+/// visent un seul message : c'est le geste qu'il ne faut pas oublier, donc il
+/// tient en un mot.
+fn jetons_du_message<'a>(app: &AppHandle, etat: &'a EtatAuth, id: &str) -> JetonsAdaptes<'a> {
+    let compte = compte_du_message(app, id);
+    jetons_pour(etat, &compte_actif(app), compte.as_deref())
 }
 
 /// Dossier de configuration applicatif de l'utilisateur.
@@ -581,7 +750,13 @@ pub async fn message_corps(
         return Ok(connu);
     }
 
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    // Sous « Tous les comptes », ce message peut appartenir à une autre boîte
+    // que celle qui est active. Le demander avec le jeton de l'actif ferait
+    // répondre à Gmail qu'il ne connaît pas ce message.
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &id),
+    );
     lire_le_corps(&client, &dossier, &id).await
 }
 
@@ -668,7 +843,10 @@ pub async fn piece_jointe_enregistrer(
         .or_else(|_| app.path().home_dir())
         .map_err(|e| AppError::Config(format!("dossier de téléchargement introuvable : {e}")))?;
 
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &message),
+    );
     let octets = client.piece_jointe(&message, &piece).await?;
 
     std::fs::create_dir_all(&dossier)
@@ -695,11 +873,15 @@ pub async fn piece_jointe_enregistrer(
 /// délibéré.
 #[tauri::command]
 pub async fn piece_jointe_apercu(
+    app: AppHandle,
     etat: State<'_, EtatAuth>,
     message: String,
     piece: String,
 ) -> Resultat<Apercu> {
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &message),
+    );
     let octets = client.piece_jointe(&message, &piece).await?;
 
     let apercu = apercu::preparer(&octets);
@@ -744,7 +926,10 @@ pub async fn piece_jointe_vignette(
         return Ok(Some(deja));
     }
 
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &message),
+    );
     let octets = client.piece_jointe(&message, &piece).await?;
 
     let Some(png) = apercu::vignette(&octets) else {
@@ -839,14 +1024,6 @@ pub async fn corps_precharger(
     let dossier = corps::dossier_cache_dans(&app);
     let total = ids.len();
 
-    // Un seul client pour toute la boîte, et non un par message : voir
-    // [`lire_le_corps`].
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-
-    // Même parallélisme que le relevé, pour la même raison : c'est la latence
-    // qui domine, pas le débit. Chaque corps entraîne en outre le rapatriement
-    // de ses images, qui a déjà son propre plafond dans `gmail::logos`.
-    //
     // Les corps déjà rangés sont écartés ici, sur la seule présence du fichier :
     // les lire pour savoir qu'ils existent reviendrait à décoder soixante
     // documents pour rien.
@@ -854,28 +1031,59 @@ pub async fn corps_precharger(
         .into_iter()
         .partition(|id| !corps::chemin_cache(&dossier, id).exists());
 
-    let mut lectures = futures_util::stream::iter(a_lire)
-        .map(|id| {
-            let dossier = &dossier;
-            let client = &client;
-            async move {
-                // Un corps illisible n'arrête pas les autres : il sera
-                // simplement rechargé à l'ouverture du message.
-                if let Err(e) = lire_le_corps(client, dossier, &id).await {
-                    log::info!("corps de {id} non préchargé : {e}");
-                }
-            }
-        })
-        .buffered(crate::gmail::boite::PARALLELISME);
-
     // Les corps déjà rangés sont comptés sans appel : relancer l'application ne
     // recommence rien, mais la barre doit tout de même partir d'où il faut.
     let mut faits = deja.len();
     let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });
 
-    while lectures.next().await.is_some() {
-        faits += 1;
-        let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });
+    // Sous « Tous les comptes », la liste mêle les boîtes. On regroupe donc par
+    // compte : un client, donc un jeton, par boîte visée. Tout demander avec le
+    // jeton de l'actif ne rapporterait que les siens, et les autres seraient
+    // rechargés un à un — chacun échouant à son tour — à chaque ouverture.
+    let actif = compte_actif(&app);
+    let proprietaires = comptes_des_messages(&app);
+
+    let mut par_compte: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+
+    for id in a_lire {
+        let compte = proprietaires
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| actif.clone());
+        par_compte.entry(compte).or_default().push(id);
+    }
+
+    for (compte, ids) in par_compte {
+        // Un seul client par boîte, et non un par message : voir
+        // [`lire_le_corps`].
+        let client = ClientGmail::nouveau(
+            TransportHttp::nouveau()?,
+            jetons_pour(&etat, &actif, Some(&compte)),
+        );
+
+        // Même parallélisme que le relevé, pour la même raison : c'est la
+        // latence qui domine, pas le débit. Chaque corps entraîne en outre le
+        // rapatriement de ses images, qui a déjà son propre plafond dans
+        // `gmail::logos`.
+        let mut lectures = futures_util::stream::iter(ids)
+            .map(|id| {
+                let dossier = &dossier;
+                let client = &client;
+                async move {
+                    // Un corps illisible n'arrête pas les autres : il sera
+                    // simplement rechargé à l'ouverture du message.
+                    if let Err(e) = lire_le_corps(client, dossier, &id).await {
+                        log::info!("corps de {id} non préchargé : {e}");
+                    }
+                }
+            })
+            .buffered(crate::gmail::boite::PARALLELISME);
+
+        while lectures.next().await.is_some() {
+            faits += 1;
+            let _ = app.emit(EVENEMENT_PRECHARGEMENT, Avancement { faits, total });
+        }
     }
 
     // Le dossier des corps ne se vidait jamais de lui-même. C'est le moment de
@@ -1041,17 +1249,93 @@ pub async fn libelle_creer(
 }
 
 /// Range un message sous un libellé, ou l'archive simplement.
+///
+/// # Le libellé traverse la frontière des comptes
+///
+/// L'interface propose les libellés du compte actif, et n'en connaît pas
+/// d'autres. Sous « Tous les comptes », ranger un message reçu ailleurs
+/// enverrait donc à Gmail l'identifiant d'un libellé qui n'existe pas dans
+/// cette boîte-là — un identifiant Gmail n'a de sens que dans le compte qui l'a
+/// émis.
+///
+/// L'identifiant est donc traduit en **nom**, puis retrouvé ou créé sous ce nom
+/// dans la boîte visée. C'est ce que l'utilisateur veut dire : « range ceci dans
+/// mes Factures » désigne les Factures de la boîte concernée, pas un numéro.
 #[tauri::command]
 pub async fn message_ranger(
+    app: AppHandle,
     etat: State<'_, EtatAuth>,
     id: String,
     libelle: Option<String>,
 ) -> Resultat<()> {
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-    client.ranger(&[id], libelle.as_deref()).await?;
+    let actif = compte_actif(&app);
+    let proprietaire = compte_du_message(&app, &id);
+    let ailleurs = compte_a_viser(&actif, proprietaire.as_deref()).is_some();
+
+    // Archiver depuis la vue mélangée doit agir sur la boîte qui a reçu le
+    // message, pas sur celle qui est active.
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_pour(&etat, &actif, proprietaire.as_deref()),
+    );
+
+    let vise = match libelle {
+        Some(origine) if ailleurs => {
+            let chez_l_actif =
+                ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+            transposer_le_libelle(&chez_l_actif, &client, &origine).await?
+        }
+        autre => autre,
+    };
+
+    client.ranger(&[id], vise.as_deref()).await?;
 
     log::info!("message rangé hors de la boîte de réception");
     Ok(())
+}
+
+/// Retrouve, dans la boîte visée, le libellé que l'utilisateur a désigné dans
+/// celle qu'il regardait.
+///
+/// Rend `None` — donc « archiver sans libellé » — plutôt que d'échouer quand la
+/// correspondance ne se fait pas : le geste demandé était d'abord de sortir le
+/// message de la boîte de réception, et le manquer entièrement pour un libellé
+/// introuvable serait la mauvaise moitié à sacrifier.
+async fn transposer_le_libelle<T, J, T2, J2>(
+    origine: &ClientGmail<T, J>,
+    cible: &ClientGmail<T2, J2>,
+    identifiant: &str,
+) -> Resultat<Option<String>>
+where
+    T: crate::gmail::client::Transport,
+    J: SourceJeton,
+    T2: crate::gmail::client::Transport,
+    J2: SourceJeton,
+{
+    let Some(nom) = origine
+        .libelles()
+        .await?
+        .into_iter()
+        .find(|l| l.id == identifiant)
+        .map(|l| l.name)
+    else {
+        log::warn!("libellé introuvable dans le compte actif, message simplement archivé");
+        return Ok(None);
+    };
+
+    // La comparaison ignore la casse : Gmail refuse deux libellés dont les noms
+    // ne diffèrent que par elle, et en créer un second échouerait.
+    if let Some(deja) = cible
+        .libelles()
+        .await?
+        .into_iter()
+        .find(|l| l.name.eq_ignore_ascii_case(&nom))
+    {
+        return Ok(Some(deja.id));
+    }
+
+    log::info!("libellé créé dans la boîte visée pour y ranger le message");
+    Ok(Some(cible.creer_libelle(&nom).await?.id))
 }
 
 /// Ouvre un brouillon de réponse dans le client de courrier du système.
@@ -1071,8 +1355,9 @@ pub async fn repondre_au_message(
 ) -> Resultat<()> {
     let url = url_mailto(&destinataire, &sujet, &copies.unwrap_or_default())?;
 
-    tauri_plugin_opener::open_url(&url, None::<&str>)
-        .map_err(|e| AppError::Config(format!("aucun client de courrier joignable : {e}")))?;
+    // Même chemin que les liens : depuis une AppImage, le client de courrier
+    // hériterait des bibliothèques embarquées et ne démarrerait pas.
+    crate::sortie::ouvrir(&url)?;
 
     log::info!("brouillon de réponse ouvert dans le client du système");
     Ok(())
@@ -1224,8 +1509,18 @@ pub async fn maj_ouvrir(app: AppHandle) -> Resultat<()> {
 /// demanderait une autorisation Google bien plus large, pour un geste sur
 /// lequel on ne peut pas revenir.
 #[tauri::command]
-pub async fn message_corbeille(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+pub async fn message_corbeille(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    id: String,
+) -> Resultat<()> {
+    // Supprimer depuis la vue mélangée doit atteindre la bonne boîte : avec le
+    // jeton de l'actif, Gmail ne trouvait pas le message et le geste échouait
+    // sans que la tuile disparaisse.
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &id),
+    );
     client.mettre_a_la_corbeille(&id).await?;
 
     log::info!("message mis à la corbeille");
@@ -1242,8 +1537,15 @@ pub async fn message_corbeille(etat: State<'_, EtatAuth>, id: String) -> Resulta
 /// Ouvrir un message ici en dit donc moins que l'ouvrir dans Gmail, mais le
 /// marque tout autant comme lu.
 #[tauri::command]
-pub async fn message_marquer_lu(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+pub async fn message_marquer_lu(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    id: String,
+) -> Resultat<()> {
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &id),
+    );
     client.marquer_lu(&[id]).await
 }
 
@@ -1677,5 +1979,60 @@ mod tests_pieces_jointes {
         let second = chemin_libre(dossier.path(), "facture.pdf");
         assert_ne!(premier, second);
         assert_eq!(second.file_name().unwrap(), "facture (2).pdf");
+    }
+}
+
+#[cfg(test)]
+mod tests_routage_des_comptes {
+    use super::*;
+
+    #[test]
+    fn un_message_du_compte_actif_garde_le_chemin_historique() {
+        // La session tient déjà son jeton en mémoire et sait le renouveler :
+        // passer par le trousseau pour rien coûterait un échange à chaque
+        // ouverture de message.
+        assert_eq!(compte_a_viser("moi@gmail.com", Some("moi@gmail.com")), None);
+    }
+
+    #[test]
+    fn un_message_d_un_autre_compte_reclame_son_propre_jeton() {
+        // C'est le défaut corrigé : sous « Tous les comptes », la pièce jointe
+        // d'un message reçu ailleurs était demandée avec les clés de l'actif,
+        // et Gmail répondait qu'il ne connaissait pas ce message.
+        assert_eq!(
+            compte_a_viser("moi@gmail.com", Some("boulot@exemple.fr")),
+            Some("boulot@exemple.fr".to_string())
+        );
+    }
+
+    #[test]
+    fn une_majuscule_ne_fait_pas_croire_a_un_autre_compte() {
+        // Gmail rend parfois l'adresse telle qu'elle a été tapée ; l'annuaire
+        // la range en minuscules.
+        assert_eq!(compte_a_viser("moi@gmail.com", Some("Moi@Gmail.com")), None);
+        assert_eq!(compte_a_viser("Moi@Gmail.com", Some("moi@gmail.com")), None);
+    }
+
+    #[test]
+    fn un_compte_inconnu_retombe_sur_l_actif() {
+        // C'est ce que faisait tout le code auparavant : rien n'est perdu à
+        // essayer, et un message dont on ignore la boîte n'a pas à échouer
+        // avant même d'avoir demandé.
+        assert_eq!(compte_a_viser("moi@gmail.com", None), None);
+        assert_eq!(compte_a_viser("moi@gmail.com", Some("   ")), None);
+    }
+
+    #[test]
+    fn l_adresse_visee_est_normalisee_avant_de_chercher_dans_le_trousseau() {
+        // Le créneau du trousseau est construit sur l'adresse en minuscules —
+        // voir `comptes::cle_compte`. Chercher sur une autre forme ne
+        // trouverait rien.
+        let vise = compte_a_viser("moi@gmail.com", Some("  Boulot@Exemple.FR  ")).unwrap();
+
+        assert_eq!(vise, "boulot@exemple.fr");
+        assert_eq!(
+            comptes::cle_compte(&vise),
+            comptes::cle_compte("  Boulot@Exemple.FR  ")
+        );
     }
 }
