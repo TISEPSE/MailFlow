@@ -200,36 +200,52 @@ button:not(:disabled),
   transform: translateY(0.12em);
 }
 
-/* Les champs de saisie n'ont aucune règle, et c'est le résultat d'une mesure.
+/* Le décalage optique d'un champ de saisie.
 
-   Trois tentatives ont eu lieu avant celle-ci, toutes fondées sur une
-   intuition, toutes fausses. Les nombres relevés dans Chrome, sur le champ de
-   recherche (corps 17 px), ferment la question :
+   Quatrième tentative, et la première fondée sur la bonne mesure. Les trois
+   précédentes relevaient des *boîtes* et supposaient que le curseur s'y
+   conformait. Il a fallu le mesurer pour ce qu'il est — des pixels peints —
+   en le colorant et en capturant l'écran jusqu'à en attraper une phase
+   allumée, puisqu'il clignote.
 
-     variante                 line-height   boîte de contenu   boîte de ligne   jeu
-     sans règle               25,5 px       25,5 px            25,5 px          0
-     position/top: 0.2em      25,5 px       25,5 px            25,5 px          0
-     line-height: 1           17 px         20 px              17 px            3
+   Relevés dans Chrome, en lignes de pixels depuis le haut du champ :
 
-   Le « jeu » est ce qui compte : c'est l'espace dans lequel la boîte de ligne
-   flotte à l'intérieur du champ. Le curseur remplit la boîte de ligne, les
-   glyphes se posent sur sa ligne de base — tant que le jeu est nul, les deux
-   sont solidaires et rien ne peut les désaccorder.
+     champ                  hauteur   encre     curseur   centre champ / encre
+     libellé, corps 13       46 px    18→26     15→29        23,0 / 22,5
+     recherche, corps 17     26 px     6→17      3→21        13,0 / 12,0
+     recherche, line-height 1 20 px    3→14      0→18        10,0 /  9,0
 
-   Il est **déjà nul sans rien faire**. `line-height: 1`, que j'allais poser
-   ici, l'aurait porté à 3 px : Chrome impose une hauteur intérieure minimale à
-   un `<input>`, si bien qu'une boîte de ligne plus courte s'y met à flotter.
-   La correction aurait créé le défaut qu'elle prétendait guérir.
+   Trois choses en sortent, et deux d'entre elles ferment des pistes :
 
-   Quant à `position: relative; top: 0.2em`, il ne changeait pas le jeu — il
-   descendait le champ entier de 3,4 px dans une barre haute de 64. C'est cela
-   qu'on voyait : non pas un curseur désaligné du texte, mais un texte posé
-   trop bas dans son cadre, avec un curseur naturellement plus haut que les
-   capitales. Le retirer rend le champ au centrage du conteneur, qui est juste.
+   1. **Le curseur et l'encre sont concentriques.** 22,5 contre 22,5 ; 12,0
+      contre 12,5. Il n'y a aucun décalage entre eux à corriger.
 
-   Si un décalage optique redevient nécessaire un jour, qu'il porte sur le
-   conteneur et jamais sur le champ — et qu'il soit mesuré. */
+   2. **Le curseur est plus haut que l'encre, et rien n'y changera.** Quinze
+      pixels de curseur pour neuf pixels de capitales : il vaut l'ascendante
+      plus la descendante de la fonte, place des jambages comprise, qu'un mot
+      capitalisé laisse vide. `line-height: 1` ne le réduit pas — la troisième
+      ligne du tableau le montre, le curseur y remplit toujours la boîte
+      entière. C'est le comportement de tous les moteurs, et le réduire
+      couperait les jambages des mots qui en ont.
 
+   3. **L'encre, elle, est bien haute d'un pixel** dans son champ : 12,0 pour
+      un centre à 13,0. Voilà le seul défaut réel, et il vaut un pixel.
+
+   Un pixel sur un corps de 17 fait 0,059 em ; un demi-pixel sur un corps de 13
+   en fait 0,038. `0.05em` ramène les deux à moins d'un sixième de pixel du
+   centre, c'est-à-dire bien à l'intérieur du pas de la trame.
+
+   `position: relative` et non `transform` : le moteur peint le curseur avant
+   transformation, si bien qu'un `translateY` descendrait le texte en laissant
+   le curseur en place — c'était la première tentative. Déplacer la boîte les
+   emmène tous les deux, et leur concentricité est préservée.
+
+   La valeur précédente, 0,2 em, avait été relevée à l'œil : elle descendait le
+   texte de 3,4 px là où il en fallait 1. */
+.champ-de-saisie {
+  position: relative;
+  top: 0.05em;
+}
 /* Le numéro qui arrive dans une carte de newsletter entre par la droite.
 
    La feuille en place est d'abord poussée vers la gauche par une animation

@@ -229,6 +229,37 @@ export function completer(
 }
 
 /**
+ * Les archives du compte qu'on regarde, et d'aucun autre.
+ *
+ * # Ce qu'elle protège
+ *
+ * Le changement de compte vide déjà l'état, mais la liste des archives avait
+ * justement été oubliée dans cette remise à zéro pendant des semaines, sans que
+ * rien ne le signale : on voyait les archives d'un compte sous l'identité de
+ * l'autre. Un filtre au moment de l'affichage rend l'oubli sans conséquence —
+ * chaque message porte le compte qui l'a reçu, il suffit de le lire.
+ *
+ * # Ce qui l'a rendue nuisible
+ *
+ * Écrite en ligne dans `App`, elle recevait `compteAffiche` — un état qui ne
+ * dit **pas** quel compte on regarde, mais si l'on a basculé à la main. Il vaut
+ * `null` au démarrage, la comparaison ne gardait donc rien, et la table
+ * paraissait vide alors que le message archivé était bien là.
+ *
+ * D'où cette fonction, et son test : un compte inconnu **ne vide pas la
+ * table**. Il ne peut rien mélanger — on n'en connaît qu'un — et cacher ce que
+ * l'utilisateur vient d'archiver est un défaut bien pire que celui qu'on
+ * cherchait à prévenir.
+ */
+export function archivesDuCompte(
+  archives: readonly MessageAffiche[],
+  compte: string | null,
+): MessageAffiche[] {
+  if (!compte) return [...archives]
+  return archives.filter((m) => m.compte === compte)
+}
+
+/**
  * Répartit les archives entre les tas et ce qui reste seul sur la table.
  *
  * Un message peut porter plusieurs libellés — Gmail le permet. Il est alors

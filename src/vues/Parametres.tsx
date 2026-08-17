@@ -1084,7 +1084,7 @@ function ModaleCleResumes({
             }}
             placeholder="AIza…"
             aria-label="Clé d'API pour les résumés"
-            className="selectionnable w-full rounded-lg border bg-transparent px-3 font-mono text-[0.8125rem] outline-none"
+            className="champ-de-saisie selectionnable w-full rounded-lg border bg-transparent px-3 font-mono text-[0.8125rem] outline-none"
             style={{
               borderColor: refus ? TEINTE_REFUS : 'var(--line)',
               color: 'var(--fg)',

@@ -959,7 +959,7 @@ function NommerLeTas({
           }}
           placeholder="Factures, Voyages, Impôts…"
           aria-label="Nom du tas"
-          className="selectionnable w-full rounded-lg border bg-transparent px-3 text-[0.875rem] outline-none"
+          className="champ-de-saisie selectionnable w-full rounded-lg border bg-transparent px-3 text-[0.875rem] outline-none"
           style={{ borderColor: 'var(--line)', color: 'var(--fg)', height: '2.4rem' }}
         />
 

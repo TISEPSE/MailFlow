@@ -4,6 +4,7 @@ import {
   TAS,
   TUILE,
   aligner,
+  archivesDuCompte,
   borner,
   centre,
   cibleSousLaTuile,
@@ -220,6 +221,39 @@ describe('tout ranger', () => {
         expect(seChevauchent(toutes[i]!, TUILE, toutes[j]!, TUILE)).toBe(false)
       }
     }
+  })
+})
+
+describe("la table ne montre que le compte qu'on regarde", () => {
+  const chez = (id: string, compte: string): MessageAffiche => ({
+    ...message(id),
+    compte,
+  })
+
+  it("ne vide pas la table quand le compte n'est pas encore fixé", () => {
+    // Le défaut rapporté : le filtre recevait un état qui vaut `null` au
+    // démarrage, et la table paraissait vide alors que le message venait
+    // d'être archivé et se trouvait bien sur le disque. Cacher ce que
+    // l'utilisateur vient de poser est pire que le mélange qu'on prévenait —
+    // et il n'y a rien à mélanger tant qu'on ne connaît qu'un compte.
+    const archives = [chez('m1', 'un@gmail.com')]
+
+    expect(archivesDuCompte(archives, null)).toHaveLength(1)
+    expect(archivesDuCompte(archives, '')).toHaveLength(1)
+  })
+
+  it("écarte les archives d'un autre compte", () => {
+    const archives = [chez('m1', 'un@gmail.com'), chez('m2', 'deux@gmail.com')]
+
+    expect(archivesDuCompte(archives, 'un@gmail.com').map((m) => m.id)).toEqual(['m1'])
+  })
+
+  it("ne modifie pas la liste qu'on lui donne", () => {
+    const archives = [chez('m1', 'un@gmail.com')]
+
+    archivesDuCompte(archives, null).push(chez('m2', 'un@gmail.com'))
+
+    expect(archives).toHaveLength(1)
   })
 })
 

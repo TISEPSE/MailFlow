@@ -627,7 +627,7 @@ function ChoixDeRangement({
             }}
             placeholder="Factures, Voyages…"
             aria-label="Nom du nouveau libellé"
-            className="selectionnable min-w-0 flex-1 rounded-xl border px-3.5 py-3 text-[0.8125rem] leading-5 outline-none"
+            className="champ-de-saisie selectionnable min-w-0 flex-1 rounded-xl border px-3.5 py-3 text-[0.8125rem] leading-5 outline-none"
             style={{
               background: 'var(--sunk)',
               borderColor: 'var(--line)',

@@ -17,6 +17,7 @@ import { Archives } from './vues/Archives'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
+import { archivesDuCompte } from './lib/table'
 import { useLogos, usePreferences, useToasts } from './lib/crochets'
 import { autresQueMoi } from './lib/reponse'
 import { grouperNewsletters, phraseDuRapport } from './lib/newsletters'
@@ -361,6 +362,29 @@ export default function App() {
   }, [annoncer])
 
   /**
+   * Le compte qu'on regarde, et il ne vaut jamais rien.
+   *
+   * `compteAffiche` ne répond pas à cette question : il ne dit que « a-t-on
+   * basculé à la main », et vaut `null` tant qu'on ne l'a pas fait. L'employer
+   * comme adresse a vidé la table des archives pour tout le monde — le message
+   * archivé était bien sur le disque, la comparaison ne le retenait pas.
+   *
+   * Le repli suit l'ordre de ce qui fait autorité : le choix explicite, puis le
+   * profil du compte connecté, puis le premier compte connu.
+   */
+  const compteRegarde = useMemo(
+    () =>
+      (compteAffiche === TOUS_LES_COMPTES ? null : compteAffiche) ??
+      profil?.adresse ??
+      comptes[0]?.adresse ??
+      null,
+    [compteAffiche, profil, comptes],
+  )
+
+  /** Vrai sous « Tous les comptes » : une vue, pas une boîte. */
+  const melange = compteAffiche === TOUS_LES_COMPTES
+
+  /**
    * Les archives du compte qu'on regarde, et d'aucun autre.
    *
    * Une ceinture par-dessus les bretelles : `basculerVers` vide déjà l'état au
@@ -374,12 +398,9 @@ export default function App() {
    * n'existent pas chez l'autre. Une table mélangée serait une table dont la
    * moitié des gestes échoue.
    */
-  const archivesDuCompte = useMemo(
-    () =>
-      compteAffiche === TOUS_LES_COMPTES
-        ? []
-        : archives.filter((m) => m.compte === compteAffiche),
-    [archives, compteAffiche],
+  const archivesVisibles = useMemo(
+    () => (melange ? [] : archivesDuCompte(archives, compteRegarde)),
+    [archives, melange, compteRegarde],
   )
 
   /** Écrit la disposition, et la garde à l'écran sans attendre le disque.
@@ -853,17 +874,19 @@ export default function App() {
 
   /** Boîtes dont la page des règles montre le contenu.
    *
-   *  Celle qu'on regarde, ou toutes sous « Tous les comptes ». Avant le premier
-   *  relevé, `compteAffiche` n'est pas encore fixé : la première boîte connue
-   *  fait l'affaire, c'est celle du compte actif. */
+   *  Celle qu'on regarde, ou toutes sous « Tous les comptes ». Cette page
+   *  portait son propre repli pour le cas où `compteAffiche` n'était pas encore
+   *  fixé ; la table des archives ne l'avait pas, et c'est ce qui l'a vidée.
+   *  Deux endroits qui répondent à la même question doivent la poser au même
+   *  endroit — d'où `compteRegarde`. */
   const comptesDesRegles = useMemo(
     () =>
-      compteAffiche === TOUS_LES_COMPTES
+      melange
         ? comptes.map((c) => c.adresse)
-        : compteAffiche
-          ? [compteAffiche]
-          : comptes.slice(0, 1).map((c) => c.adresse),
-    [compteAffiche, comptes],
+        : compteRegarde
+          ? [compteRegarde]
+          : [],
+    [melange, compteRegarde, comptes],
   )
 
   /** Boîte visée par une règle qu'aucun message ne rattache à un compte. */
@@ -1163,7 +1186,7 @@ export default function App() {
                   setMenuCompte(false)
                   void basculerVers(adresse)
                 }}
-                melange={compteAffiche === TOUS_LES_COMPTES}
+                melange={melange}
                 onMelanger={() => {
                   setMenuCompte(false)
                   void afficherLaVueMelangee()
@@ -1277,7 +1300,7 @@ export default function App() {
               onFrequence={(f: Frequence) => regler({ frequence: f })}
               onRevoirLeGuide={() => regler({ guideVu: false })}
               onToutEffacer={toutEffacer}
-              melange={compteAffiche === TOUS_LES_COMPTES}
+              melange={melange}
               onMelanger={() => void afficherLaVueMelangee()}
               toucheRecherche={prefs.toucheRecherche}
               onToucheRecherche={(t) => regler({ toucheRecherche: t })}
@@ -1347,12 +1370,12 @@ export default function App() {
             />
           ) : vue === 'archives' ? (
             <Archives
-              archives={archivesDuCompte}
+              archives={archivesVisibles}
               libelles={libelles}
               tableau={tableau}
               onTableau={poserSurLaTable}
               sombre={sombre}
-              melange={compteAffiche === TOUS_LES_COMPTES}
+              melange={melange}
               corpsConnus={corpsConnus}
               onCorpsCharge={(id, corps) =>
                 setCorpsConnus((connus) => ranger(connus, id, corps))
