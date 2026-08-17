@@ -10,6 +10,7 @@
 
 use tauri::Manager;
 
+pub mod archives;
 pub mod auth;
 pub mod cache;
 pub mod commands;
@@ -114,7 +115,6 @@ pub fn run() {
             commands::libelle_retirer,
             commands::tas_defaire,
             commands::archives_lister,
-            commands::archives_en_cache,
             commands::tableau_lire,
             commands::tableau_ecrire,
             commands::repondre_au_message,

@@ -219,10 +219,14 @@ export function ligneLocale(message: MessageAffiche): string {
   return resserrerSujet(message.sujet) || '(sans objet)'
 }
 
-/** « 4 numéros », ou une chaîne vide quand il n'y en a qu'un à montrer. */
+/** « 4 mails », ou une chaîne vide quand il n'y en a qu'un à montrer.
+ *
+ *  « Mails » et non « numéros » : le mot venait du vocabulaire de la presse,
+ *  et il fallait le traduire mentalement à chaque lecture. Ce qui est empilé
+ *  sur cette carte, ce sont des mails. */
 export function decompteDuGroupe(groupe: GroupeNewsletters): string {
   const n = groupe.messages.length
-  return n > 1 ? `${n} numéros` : ''
+  return n > 1 ? `${n} mails` : ''
 }
 
 /**

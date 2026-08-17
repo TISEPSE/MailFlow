@@ -51,7 +51,6 @@ import {
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
-  archivesEnCache,
   archivesLister,
   libelleCreer,
   libellePoser,
@@ -328,36 +327,20 @@ export default function App() {
   }, [annoncer, chercherLesLogos])
 
   /**
-   * Charge la table des archives, une fois, à la première ouverture de la page.
+   * Charge la table des archives.
    *
-   * Le cache d'abord, le réseau ensuite : une table qui met dix secondes à
-   * apparaître n'est plus une table, c'est une attente. La disposition suit le
-   * même chemin — elle est locale, donc immédiate.
+   * Deux lectures de fichier, aucun réseau : la table porte ce que MailFlow a
+   * archivé, et c'est le geste d'archivage qui l'écrit. Elle apparaît donc
+   * instantanément, et il n'y a plus rien à attendre ni à annoncer.
    */
-  const chargerLesArchives = useCallback(
-    async (forcer = false) => {
-      try {
-        setTableau(await tableauLire().catch(() => ({ tas: {}, messages: {} })))
-
-        const enCache = await archivesEnCache().catch(() => [])
-        if (enCache.length > 0) setArchives(enCache)
-
-        // Le relevé réseau n'est refait que si le cache est vide, ou si la page
-        // vient d'être ouverte : les archives ne bougent pas d'elles-mêmes.
-        //
-        // Sans drapeau `enRecherche` : ce relevé se déclenche au simple fait
-        // d'ouvrir la page, et il ferait alors tourner toutes les icônes de la
-        // barre latérale à chaque visite. Le cache tient l'écran pendant ce
-        // temps, il n'y a donc aucune attente à signaler.
-        if (forcer || enCache.length === 0) {
-          setArchives(await archivesLister())
-        }
-      } catch (e) {
-        annoncer(messageDErreur(e), true)
-      }
-    },
-    [annoncer],
-  )
+  const chargerLesArchives = useCallback(async () => {
+    try {
+      setTableau(await tableauLire().catch(() => ({ tas: {}, messages: {} })))
+      setArchives(await archivesLister())
+    } catch (e) {
+      annoncer(messageDErreur(e), true)
+    }
+  }, [annoncer])
 
   /**
    * Les archives du compte qu'on regarde, et d'aucun autre.
@@ -717,7 +700,7 @@ export default function App() {
    */
   useEffect(() => {
     if (vue !== 'archives' || !interrogeable(etat)) return
-    void chargerLesArchives(true)
+    void chargerLesArchives()
   }, [vue, etat, chargerLesArchives])
 
   /** Relevé périodique. La fréquence est un réglage, pas une constante : le
@@ -1357,7 +1340,7 @@ export default function App() {
                 setCorpsConnus((connus) => ranger(connus, id, corps))
               }
               gestes={{
-                onRelever: () => void chargerLesArchives(true),
+                onRelever: () => void chargerLesArchives(),
                 onErreur: (m) => annoncer(m, true),
                 onLu: (id) => void marquerLu(id),
                 onSupprimer: async (id) => {

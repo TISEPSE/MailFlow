@@ -707,61 +707,31 @@ pub async fn boite_melangee(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     Ok(tout)
 }
 
-/// Nom de l'événement d'avancement du relevé des archives.
-pub const EVENEMENT_ARCHIVES: &str = "archives-relevees";
-
-/// Relève les messages archivés du compte actif.
+/// Les messages archivés depuis MailFlow, pour la table.
 ///
-/// Un relevé à part, et non un filtre sur la boîte : un message archivé n'est
-/// pas dans la boîte de réception, par définition. Il faut donc le demander à
-/// Gmail avec sa propre requête — voir [`crate::gmail::boite::ARCHIVES`].
+/// # Aucun appel réseau, et c'est le fond de l'affaire
+///
+/// Cette commande demandait à Gmail « tout ce qui n'est pas dans la boîte de
+/// réception ». C'était la définition juste d'une archive au sens de Gmail — et
+/// la mauvaise pour cette page : elle ramenait des messages de 2024 triés par
+/// un filtre, des notifications Instagram, un courriel de ChatGPT, tout ce qui
+/// a quitté la boîte depuis toujours. Deux cents appels pour couvrir la table
+/// de tuiles que personne n'y avait posées.
+///
+/// La table est un plan de travail : on y met ce qu'on archive, on l'y classe.
+/// Elle se lit donc dans le registre que le geste d'archivage écrit
+/// ([`crate::archives`]), en une lecture de fichier, sans réseau et sans délai.
 #[tauri::command]
-pub async fn archives_lister(
-    app: AppHandle,
-    etat: State<'_, EtatAuth>,
-) -> Resultat<Vec<MessageAffiche>> {
-    use tauri::Emitter;
-
+pub async fn archives_lister(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     let compte = compte_actif(&app);
-    let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
+    let mut archives = crate::archives::charger(&dossier_config(&app)?, &compte);
 
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-    let archives =
-        crate::gmail::boite::charger_archives(&client, &regles, &compte, |faits, total| {
-            let _ = app.emit(EVENEMENT_ARCHIVES, Avancement { faits, total });
-        })
-        .await
-        .inspect_err(|e| log::warn!("relevé des archives interrompu : {e}"))?;
-
-    if let Ok(racine) = dossier_cache(&app) {
-        cache::ranger_archives(&racine, &compte, &archives);
-    }
-
-    log::info!("{} message(s) archivé(s) relevé(s)", archives.len());
-    Ok(archives)
-}
-
-/// Rend le dernier relevé d'archives connu, sans toucher au réseau.
-///
-/// C'est ce qui s'affiche à l'ouverture de la page : une table qui met dix
-/// secondes à apparaître n'est plus une table, c'est une attente.
-///
-/// # Le cache est un souvenir, pas une vérité
-///
-/// Il a été écrit sous la définition d'archive qui avait cours ce jour-là, et
-/// celle-ci a changé. C'est le relevé qui le remet d'aplomb : la page en lance
-/// un à chaque ouverture, en fond, pendant que le cache tient l'écran. Filtrer
-/// ici reviendrait à réécrire la requête à deux endroits, et le second finirait
-/// par mentir sur le premier.
-#[tauri::command]
-pub async fn archives_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
-    let racine = dossier_cache(&app)?;
-    let compte = compte_actif(&app);
-    let mut archives = cache::lire_archives(&racine, &compte).unwrap_or_default();
-
+    // Les règles peuvent avoir changé depuis l'archivage : la tuile doit porter
+    // la même couleur que partout ailleurs.
     let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
     cache::reclasser(&mut archives, &regles);
 
+    log::info!("{} message(s) sur la table des archives", archives.len());
     Ok(archives)
 }
 
@@ -801,6 +771,11 @@ pub async fn libelle_poser(
         jetons_du_message(&app, &etat, &id),
     );
     client.poser_libelle(&id, &libelle).await?;
+    noter_le_libelle(&app, &id, |libelles| {
+        if !libelles.iter().any(|l| l == &libelle) {
+            libelles.push(libelle.clone());
+        }
+    });
 
     log::info!("message déposé sur un tas");
     Ok(())
@@ -822,9 +797,42 @@ pub async fn libelle_retirer(
         jetons_du_message(&app, &etat, &id),
     );
     client.retirer_libelle(&id, &libelle).await?;
+    noter_le_libelle(&app, &id, |libelles| libelles.retain(|l| l != &libelle));
 
     log::info!("message sorti d'un tas");
     Ok(())
+}
+
+/// Reporte dans le registre des archives un changement de libellé.
+///
+/// # Ce qui se perdait sans cela
+///
+/// Les tas de la table **sont** des libellés Gmail, mais la tuile qu'on y
+/// dépose est lue depuis le registre local. Sans ce report, le libellé était
+/// bien posé chez Google — vérifiable depuis le téléphone — et pourtant le tas
+/// se défaisait au redémarrage suivant : le registre, lui, n'avait rien vu
+/// passer, et rendait la tuile telle qu'elle était au moment de l'archivage.
+///
+/// Un échec ne fait rien échouer : le libellé est posé là où il compte, chez
+/// Gmail. Un relevé suivant remettra les deux d'accord.
+fn noter_le_libelle(app: &AppHandle, id: &str, changer: impl FnOnce(&mut Vec<String>)) {
+    let Ok(config) = dossier_config(app) else {
+        return;
+    };
+    let compte = compte_du_message(app, id).unwrap_or_else(|| compte_actif(app));
+
+    let registre = crate::archives::charger(&config, &compte);
+    let Some(message) = registre.iter().find(|m| m.id == id) else {
+        return;
+    };
+
+    let mut libelles = message.libelles.clone();
+    changer(&mut libelles);
+
+    let registre = crate::archives::noter_les_libelles(registre, id, libelles);
+    if let Err(e) = crate::archives::enregistrer(&config, &compte, &registre) {
+        log::warn!("libellé non reporté au registre : {e}");
+    }
 }
 
 /// Défait un tas : ses messages en sortent, et le libellé disparaît de Gmail.
@@ -851,6 +859,7 @@ pub async fn libelle_retirer(
 /// message par message : il n'y a ici qu'une boîte à qui parler.
 #[tauri::command]
 pub async fn tas_defaire(
+    app: AppHandle,
     etat: State<'_, EtatAuth>,
     libelle: String,
     ids: Vec<String>,
@@ -859,6 +868,10 @@ pub async fn tas_defaire(
 
     client.retirer_libelle_lot(&ids, &libelle).await?;
     client.supprimer_libelle(&libelle).await?;
+
+    for id in &ids {
+        noter_le_libelle(&app, id, |libelles| libelles.retain(|l| l != &libelle));
+    }
 
     // Le nom du libellé n'est pas journalisé : il est écrit par l'utilisateur et
     // peut nommer un correspondant, un dossier médical, un litige.
@@ -1502,10 +1515,59 @@ pub async fn message_ranger(
         autre => autre,
     };
 
-    client.ranger(&[id], vise.as_deref()).await?;
+    client
+        .ranger(std::slice::from_ref(&id), vise.as_deref())
+        .await?;
+
+    // Le geste d'archivage **est** ce qui remplit la table.
+    //
+    // Elle demandait auparavant à Gmail « tout ce qui n'est pas dans la boîte »,
+    // ce qui ramenait des messages de 2024 triés par un filtre, des
+    // notifications Instagram, un courriel de ChatGPT — des centaines de choses
+    // que personne n'avait posées là. Une table de travail montre ce qu'on y a
+    // mis, sinon elle n'est pas une table de travail.
+    let compte = proprietaire.unwrap_or(actif);
+    inscrire_aux_archives(&app, &compte, &id, vise.as_deref());
 
     log::info!("message rangé hors de la boîte de réception");
     Ok(())
+}
+
+/// Inscrit au registre des archives le message qu'on vient de ranger.
+///
+/// Le message est repris du relevé en cache plutôt que redemandé à Gmail : il
+/// est sous les yeux de l'utilisateur à la seconde où il clique, un appel de
+/// plus n'apprendrait rien et ferait attendre.
+///
+/// Un échec n'interrompt rien : le message est déjà archivé chez Gmail, et
+/// c'est ce qui compte. Il manquera sur la table, ce qui se répare en le
+/// réarchivant — bien moins grave qu'une erreur devant un geste qui a réussi.
+fn inscrire_aux_archives(app: &AppHandle, compte: &str, id: &str, libelle: Option<&str>) {
+    let (Ok(config), Ok(cache_racine)) = (dossier_config(app), dossier_cache(app)) else {
+        return;
+    };
+
+    let Some(mut message) = cache::lire_boite(&cache_racine, compte)
+        .unwrap_or_default()
+        .into_iter()
+        .find(|m| m.id == id)
+    else {
+        log::info!("message archivé absent du relevé en cache, pas inscrit à la table");
+        return;
+    };
+
+    // Le libellé posé du même geste : sans lui, la tuile arriverait seule sur
+    // la table alors qu'elle appartient déjà à un tas.
+    if let Some(pose) = libelle
+        && !message.libelles.iter().any(|l| l == pose)
+    {
+        message.libelles.push(pose.to_string());
+    }
+
+    let registre = crate::archives::poser(crate::archives::charger(&config, compte), message);
+    if let Err(e) = crate::archives::enregistrer(&config, compte, &registre) {
+        log::warn!("registre des archives non écrit : {e}");
+    }
 }
 
 /// Retrouve, dans la boîte visée, le libellé que l'utilisateur a désigné dans
@@ -1736,6 +1798,14 @@ pub async fn message_corbeille(
         jetons_du_message(&app, &etat, &id),
     );
     client.mettre_a_la_corbeille(&id).await?;
+
+    // Il quitte aussi la table : proposer de classer un message qui n'existe
+    // plus serait une invitation à un geste sans effet.
+    if let Ok(config) = dossier_config(&app) {
+        let compte = compte_du_message(&app, &id).unwrap_or_else(|| compte_actif(&app));
+        let registre = crate::archives::retirer(crate::archives::charger(&config, &compte), &id);
+        let _ = crate::archives::enregistrer(&config, &compte, &registre);
+    }
 
     log::info!("message mis à la corbeille");
     Ok(())

@@ -249,14 +249,16 @@ export function tasDefaire(libelle: string, ids: string[]): Promise<void> {
   return invoke<void>('tas_defaire', { libelle, ids })
 }
 
-/** Relève les messages archivés chez Gmail. Passe par le réseau. */
+/**
+ * Les messages archives depuis MailFlow, pour la table.
+ *
+ * Aucun appel reseau : c'est le geste d'archivage qui ecrit le registre, et
+ * cette commande le relit. La table demandait auparavant a Gmail « tout ce qui
+ * n'est pas dans la boite », ce qui ramenait des messages de 2024 tries par un
+ * filtre et des notifications que personne n'y avait posees.
+ */
 export function archivesLister(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('archives_lister')
-}
-
-/** Dernier relevé d'archives connu, lu sur le disque, sans réseau. */
-export function archivesEnCache(): Promise<MessageAffiche[]> {
-  return invoke<MessageAffiche[]>('archives_en_cache')
 }
 
 /** Disposition de la table des archives du compte actif. */

@@ -213,7 +213,7 @@ function Synthese({
         <span className="min-w-0 flex-1">
           <span className="block text-[0.875rem] font-semibold tracking-tight">
             {groupes.length} publication{groupes.length > 1 ? 's' : ''}
-            {numeros > groupes.length ? `, ${numeros} numéros` : ''}
+            {numeros > groupes.length ? `, ${numeros} mails` : ''}
           </span>
           <span className="block text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
             {derniere ? `Dernier reçu à ${heureCourte(derniere)}` : 'En attente du relevé'}
@@ -489,6 +489,33 @@ function CarteGroupe({
             <Icone nom="schedule" taille="0.75rem" />
             {courant.date ? heureCourte(courant.date) : ''}
           </span>
+
+          {/* Résumer se demande **ici** : on décide de lire ou non avant
+              d'ouvrir, et un bouton logé derrière l'ouverture arriverait après
+              la question qu'il devait aider à trancher.
+
+              En icône seule, et dans l'en-tête plutôt que dans la rangée
+              d'actions : à quatre boutons, la rangée débordait de la carte et
+              « Supprimer » s'y trouvait coupé en deux. Un geste facultatif ne
+              doit pas pousser dehors ceux qui ne le sont pas. */}
+          {onResumer && !resumes?.[courant.id] && (
+            <button
+              type="button"
+              onClick={onResumer}
+              disabled={resumeEnCours}
+              title={
+                nombre > 1
+                  ? `Résume les ${nombre} mails en quelques lignes, en un seul appel`
+                  : 'Résume ce mail en quelques lignes'
+              }
+              aria-label="Résumer cette publication"
+              className={`bouton bouton-icone flex-none rounded-md p-1 ${
+                resumeEnCours ? 'etincelle-ia mouvement-utile' : ''
+              }`}
+            >
+              <Icone nom="auto_awesome" taille="0.9375rem" rempli={resumeEnCours} />
+            </button>
+          )}
         </div>
 
         {/* `key` sur l'identifiant : changer de numéro remonte ce bloc, ce qui
@@ -505,9 +532,19 @@ function CarteGroupe({
               qui répétaient en moins bien ce que le résumé dit déjà, et qui
               occupaient la place où il pouvait s'étendre. La consigne du modèle
               a été allongée d'autant. */}
-          <p className="text-[0.8125rem] leading-relaxed font-medium">
-            {resumes?.[courant.id]?.texte ?? ligneLocale(courant)}
-          </p>
+          {resumeEnCours ? (
+            // Deux bandes qui respirent, à la place exacte du résumé à venir :
+            // l'attente se voit là où le résultat paraîtra, et la carte ne
+            // change pas de hauteur quand il arrive.
+            <div aria-live="polite" aria-label="Résumé en cours">
+              <span className="bande-ia mouvement-utile block h-[0.95rem] w-full rounded" />
+              <span className="bande-ia mouvement-utile mt-1.5 block h-[0.95rem] w-3/5 rounded" />
+            </div>
+          ) : (
+            <p className="text-[0.8125rem] leading-relaxed font-medium">
+              {resumes?.[courant.id]?.texte ?? ligneLocale(courant)}
+            </p>
+          )}
 
           {decompte && (
             <button
@@ -582,8 +619,8 @@ function CarteGroupe({
                 <button
                   type="button"
                   onClick={() => onArchiver(m.id)}
-                  title="Archiver ce numéro"
-                  aria-label="Archiver ce numéro"
+                  title="Archiver ce mail"
+                  aria-label="Archiver ce mail"
                   className="bouton bouton-icone flex-none rounded-md p-1"
                 >
                   <Icone nom="archive" taille="0.875rem" />
@@ -591,8 +628,8 @@ function CarteGroupe({
                 <button
                   type="button"
                   onClick={() => onSupprimer(m.id)}
-                  title="Mettre ce numéro à la corbeille"
-                  aria-label="Mettre ce numéro à la corbeille"
+                  title="Mettre ce mail à la corbeille"
+                  aria-label="Mettre ce mail à la corbeille"
                   className="bouton bouton-icone flex-none rounded-md p-1"
                 >
                   <Icone nom="delete" taille="0.875rem" />
@@ -605,25 +642,6 @@ function CarteGroupe({
         )}
 
         <div className="mt-auto flex items-center gap-2 px-4 py-3.5">
-          {/* Résumer se demande **ici**, sur la carte, et pas dans la fenêtre
-              de lecture : on décide de lire ou non *avant* d'ouvrir, et un
-              bouton logé derrière l'ouverture arrive après la question qu'il
-              devait aider à trancher. */}
-          {onResumer && !resumes?.[courant.id] && (
-            <Bouton
-              icone="auto_awesome"
-              onClick={onResumer}
-              enAttente={resumeEnCours}
-              disabled={resumeEnCours}
-              titre={
-                nombre > 1
-                  ? `Résume les ${nombre} numéros en une phrase, en un seul appel`
-                  : 'Résume ce numéro en une phrase'
-              }
-            >
-              Résumer
-            </Bouton>
-          )}
           <Bouton icone="open_in_full" onClick={() => onVoir(courant)}>
             Voir le mail
           </Bouton>
@@ -633,7 +651,7 @@ function CarteGroupe({
             onClick={() => setAConfirmer('archiver')}
             titre={
               nombre > 1
-                ? `Les ${nombre} numéros quittent la boîte de réception. Rien n'est supprimé.`
+                ? `Les ${nombre} mails quittent la boîte de réception. Rien n'est supprimé.`
                 : "Le message quitte la boîte de réception. Rien n'est supprimé."
             }
           >
@@ -655,10 +673,10 @@ function CarteGroupe({
           titre={
             aConfirmer === 'supprimer'
               ? nombre > 1
-                ? `Mettre les ${nombre} numéros à la corbeille ?`
+                ? `Mettre les ${nombre} mails à la corbeille ?`
                 : 'Mettre cette newsletter à la corbeille ?'
               : nombre > 1
-                ? `Archiver les ${nombre} numéros ?`
+                ? `Archiver les ${nombre} mails ?`
                 : 'Archiver cette newsletter ?'
           }
           sous={

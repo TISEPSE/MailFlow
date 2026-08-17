@@ -205,7 +205,7 @@ describe('ligneLocale et decompteDuGroupe', () => {
       message('a@x.fr', 'x', '2026-08-14T08:00:00Z'),
       message('a@x.fr', 'y', '2026-08-13T08:00:00Z'),
     ])
-    expect(decompteDuGroupe(plusieurs)).toBe('2 numéros')
+    expect(decompteDuGroupe(plusieurs)).toBe('2 mails')
   })
 })
 
