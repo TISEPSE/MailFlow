@@ -19,6 +19,7 @@ function message(destinataires: string[], copies: string[] = []): MessageAffiche
     nonLu: false,
     categorie: 'humain',
     compte: 'moi@gmail.com',
+    libelles: [],
   }
 }
 

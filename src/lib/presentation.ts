@@ -24,7 +24,7 @@ export function palette(index: number): readonly [string, string] {
 }
 
 /** Ce qui porte une couleur dans la barre de navigation. */
-export type Teintable = CategorieMessage | 'regle'
+export type Teintable = CategorieMessage | 'regle' | 'archive'
 
 /** Couleurs par catégorie : [texte, fond].
  *
@@ -40,6 +40,9 @@ export const TONS: Record<
   newsletter: { clair: ['#2455CC', '#DCE6FF'], sombre: ['#7FA5FF', '#23304F'] },
   formation: { clair: ['#25714A', '#DDEFE2'], sombre: ['#4FC98A', '#1F3229'] },
   regle: { clair: ['#5B45B8', '#E4DDFA'], sombre: ['#B08CFF', '#2C2540'] },
+  // Un brun de papier : la table des archives est du rangement, pas de
+  // l'urgence, et sa couleur ne doit rien réclamer.
+  archive: { clair: ['#7A5A33', '#F2E7D8'], sombre: ['#D3AB73', '#332A20'] },
 }
 
 export function ton(quoi: Teintable, sombre: boolean): readonly [string, string] {

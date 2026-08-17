@@ -800,3 +800,12 @@ textarea:focus-visible {
   transform: none;
 }
 
+
+/* Une ligne dans un tas déplié.
+
+   Le survol ne colore que la ligne visée, et pas la carte entière : dans une
+   pile de quarante messages, un fond qui s'allume trop large fait perdre celui
+   qu'on vise. */
+.ligne-de-tas:hover {
+  background: color-mix(in srgb, var(--sub) 10%, transparent);
+}

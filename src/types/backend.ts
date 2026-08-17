@@ -90,13 +90,13 @@ export interface Contact {
 /** Miroir de `gmail::boite::MessageAffiche`. */
 export interface MessageAffiche {
   id: string
-  /** Nom choisi par l'expediteur. Cosmetique : ne sert jamais a comparer. */
+  /** Nom choisi par l'expéditeur. Cosmétique : ne sert jamais à comparer. */
   nom: string
-  /** Adresse normalisee. C'est elle qui sert a creer une regle. */
+  /** Adresse normalisée. C'est elle qui sert à créer une règle. */
   adresse: string
-  /** Destinataires visibles, en-tete `To`. */
+  /** Destinataires visibles, en-tête `To`. */
   destinataires: Contact[]
-  /** Personnes en copie, en-tete `Cc`. La copie cachee n'y figure pas. */
+  /** Personnes en copie, en-tête `Cc`. La copie cachée n'y figure pas. */
   copies: Contact[]
   sujet: string
   /** Extrait fourni par Gmail. Du texte, jamais du balisage. */
@@ -104,8 +104,36 @@ export interface MessageAffiche {
   date: string | null
   nonLu: boolean
   categorie: CategorieMessage
-  /** Adresse du compte qui a recu ce message. Sert a la vue melangee. */
+  /** Adresse du compte qui a reçu ce message. Sert à la vue mélangée. */
   compte: string
+  /**
+   * Libellés posés par l'utilisateur, sans ceux du système.
+   *
+   * C'est ce qui fait les tas de la table des archives : un tas **est** un
+   * libellé Gmail. Absent des relevés écrits par une version antérieure, d'où
+   * le défaut à la lecture côté Rust.
+   */
+  libelles: string[]
+}
+
+/** Position d'un objet sur la table des archives. Miroir de `tableau::Position`. */
+export interface Position {
+  x: number
+  y: number
+}
+
+/**
+ * Disposition de la table des archives. Miroir de `tableau::Tableau`.
+ *
+ * Ne porte que des positions : le classement, lui, vit chez Gmail sous forme
+ * de libellés. Perdre ce fichier fait perdre une mise en page, jamais un
+ * rangement.
+ */
+export interface Tableau {
+  /** Position des tas, par identifiant de libellé Gmail. */
+  tas: Record<string, Position>
+  /** Position des messages laissés seuls sur la table. */
+  messages: Record<string, Position>
 }
 
 /** Miroir de `rules::model::Categorie`. */

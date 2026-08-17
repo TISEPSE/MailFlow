@@ -144,6 +144,15 @@ fn url_batch_modify() -> String {
     format!("{BASE_API}/users/me/messages/batchModify")
 }
 
+/// Modification des libellés d'un seul message.
+///
+/// L'identifiant est encodé : il vient de Gmail, mais il traverse l'IPC, et
+/// une barre oblique y désignerait une autre ressource de l'API.
+fn url_modify(id: &str) -> String {
+    let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
+    format!("{BASE_API}/users/me/messages/{id}/modify")
+}
+
 fn url_trash(id: &str) -> String {
     let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
     format!("{BASE_API}/users/me/messages/{id}/trash")
@@ -416,6 +425,41 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
         .to_string();
 
         self.appeler(Methode::Post, &url_batch_modify(), Some(corps))
+            .await
+            .map(|_| ())
+    }
+
+    /// Pose un libellé sur un message, sans toucher à sa boîte de réception.
+    ///
+    /// Distinct de [`Self::ranger`], qui retire `INBOX` du même geste. Sur la
+    /// table des archives, le message est déjà hors de la boîte : le déposer sur
+    /// un tas le classe, cela ne l'archive pas une seconde fois.
+    pub async fn poser_libelle(&self, id: &str, libelle: &str) -> Resultat<()> {
+        self.modifier_libelles(id, &[libelle], &[]).await
+    }
+
+    /// Retire un libellé d'un message, sans rien d'autre.
+    ///
+    /// Sortir une tuile d'une pile la laisse sur la table. Elle ne revient pas
+    /// dans la boîte de réception : personne n'a demandé cela.
+    pub async fn retirer_libelle(&self, id: &str, libelle: &str) -> Resultat<()> {
+        self.modifier_libelles(id, &[], &[libelle]).await
+    }
+
+    /// Ajoute et retire des libellés sur un message.
+    async fn modifier_libelles(
+        &self,
+        id: &str,
+        ajouts: &[&str],
+        retraits: &[&str],
+    ) -> Resultat<()> {
+        let corps = serde_json::json!({
+            "addLabelIds": ajouts,
+            "removeLabelIds": retraits,
+        })
+        .to_string();
+
+        self.appeler(Methode::Post, &url_modify(id), Some(corps))
             .await
             .map(|_| ())
     }

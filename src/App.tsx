@@ -13,6 +13,7 @@ import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
+import { Archives } from './vues/Archives'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
@@ -48,8 +49,14 @@ import {
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
+  archivesEnCache,
+  archivesLister,
   libelleCreer,
+  libellePoser,
+  libelleRetirer,
   libellesLister,
+  tableauEcrire,
+  tableauLire,
   messageMarquerLu,
   messageRanger,
   repondreAuMessage,
@@ -71,9 +78,10 @@ import type {
   Regle,
   ReglesDuCompte,
   Resume,
+  Tableau,
 } from './types/backend'
 
-type Vue = CategorieMessage | 'regles' | 'parametres'
+type Vue = CategorieMessage | 'regles' | 'archives' | 'parametres'
 
 /**
  * Valeur de `compteAffiche` désignant la vue mélangée.
@@ -90,6 +98,7 @@ const TOUS_LES_COMPTES = '\u0000tous'
  *  indéfini : lire `.clair` dessus effaçait toute l'application. */
 function teinteDeLaVue(v: Vue): Teintable {
   if (v === 'regles') return 'regle'
+  if (v === 'archives') return 'archive'
   if (v === 'parametres') return 'humain'
   return v
 }
@@ -100,6 +109,7 @@ const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'newsletter', libelle: 'Newsletters', glyphe: 'newspaper' },
   { vue: 'formation', libelle: 'Rappels de formations', glyphe: 'school' },
   { vue: 'regles', libelle: 'Règles automatiques', glyphe: 'bolt' },
+  { vue: 'archives', libelle: 'Archives', glyphe: 'archive' },
 ]
 
 
@@ -155,6 +165,17 @@ export default function App() {
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
   const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [libelles, setLibelles] = useState<LibelleGmail[]>([])
+
+  /** Les messages archivés, et où ils sont posés sur la table.
+   *
+   *  Relevés à part de la boîte : un message archivé n'est, par définition, pas
+   *  dans la boîte de réception, et Gmail demande sa propre requête. Ils ne se
+   *  chargent qu'à la première ouverture de la page — payer ce relevé au
+   *  démarrage pour une page qu'on n'ouvrira peut-être pas serait de l'attente
+   *  offerte à personne. */
+  const [archives, setArchives] = useState<MessageAffiche[]>([])
+  const [tableau, setTableau] = useState<Tableau>({ tas: {}, messages: {} })
+  const [archivesDemandees, setArchivesDemandees] = useState(false)
 
   /** Corps déjà chargés, gardés le temps de la session.
    *
@@ -301,6 +322,51 @@ export default function App() {
       setEnRecherche(false)
     }
   }, [annoncer, chercherLesLogos])
+
+  /**
+   * Charge la table des archives, une fois, à la première ouverture de la page.
+   *
+   * Le cache d'abord, le réseau ensuite : une table qui met dix secondes à
+   * apparaître n'est plus une table, c'est une attente. La disposition suit le
+   * même chemin — elle est locale, donc immédiate.
+   */
+  const chargerLesArchives = useCallback(
+    async (forcer = false) => {
+      setEnRecherche(true)
+      try {
+        setTableau(await tableauLire().catch(() => ({ tas: {}, messages: {} })))
+
+        const enCache = await archivesEnCache().catch(() => [])
+        if (enCache.length > 0) setArchives(enCache)
+
+        // Le relevé réseau n'est refait que si le cache est vide, ou si
+        // l'utilisateur le demande : les archives ne bougent pas d'elles-mêmes,
+        // et deux cents messages coûtent deux cents appels.
+        if (forcer || enCache.length === 0) {
+          setArchives(await archivesLister())
+        }
+      } catch (e) {
+        annoncer(messageDErreur(e), true)
+      } finally {
+        setEnRecherche(false)
+      }
+    },
+    [annoncer],
+  )
+
+  /** Écrit la disposition, et la garde à l'écran sans attendre le disque.
+   *
+   *  L'écriture est volontairement non attendue : faire patienter la tuile
+   *  jusqu'à la fin d'une écriture fichier ferait traîner chaque dépose. */
+  const poserSurLaTable = useCallback(
+    (suivant: Tableau) => {
+      setTableau(suivant)
+      void tableauEcrire(suivant).catch((e) =>
+        console.warn('disposition non enregistrée', messageDErreur(e)),
+      )
+    },
+    [],
+  )
 
   /**
    * Troisième phase : les résumés des newsletters relevées.
@@ -467,6 +533,16 @@ export default function App() {
       await chargerLaBoite()
     })
   }, [rafraichir, chargerLaBoite])
+
+  /** La table des archives se charge à sa première ouverture, et pas avant.
+   *
+   *  Payer deux cents appels au démarrage pour une page qu'on n'ouvrira
+   *  peut-être pas serait de l'attente offerte à personne. */
+  useEffect(() => {
+    if (vue !== 'archives' || archivesDemandees || !interrogeable(etat)) return
+    setArchivesDemandees(true)
+    void chargerLesArchives()
+  }, [vue, archivesDemandees, etat, chargerLesArchives])
 
   /** Relevé périodique. La fréquence est un réglage, pas une constante : le
    *  minuteur se reconstruit quand elle change. */
@@ -1049,6 +1125,53 @@ export default function App() {
                   return `Règle modifiée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
+            />
+          ) : vue === 'archives' ? (
+            <Archives
+              archives={archives}
+              libelles={libelles}
+              tableau={tableau}
+              onTableau={poserSurLaTable}
+              sombre={sombre}
+              enCours={enRecherche}
+              gestes={{
+                onRelever: () => void chargerLesArchives(true),
+                onErreur: (m) => annoncer(m, true),
+                onOuvrir: (message) => {
+                  // La table ne lit pas : elle range. Ouvrir un message renvoie
+                  // à la page qui sait l'afficher, pointée sur lui.
+                  setMessageVise(message.id)
+                  setVue(message.categorie)
+                },
+                onCreerLibelle: async (nom) => {
+                  const aJour = await libelleCreer(nom)
+                  setLibelles(aJour)
+                  return aJour
+                },
+                onDeposer: async (message, libelle) => {
+                  await libellePoser(message, libelle)
+                  // L'archive est mise à jour sur place : relever à nouveau
+                  // pour un seul libellé coûterait deux cents appels, et la
+                  // tuile resterait immobile pendant tout ce temps.
+                  setArchives((liste) =>
+                    liste.map((m) =>
+                      m.id === message && !m.libelles.includes(libelle)
+                        ? { ...m, libelles: [...m.libelles, libelle] }
+                        : m,
+                    ),
+                  )
+                },
+                onSortir: async (message, libelle) => {
+                  await libelleRetirer(message, libelle)
+                  setArchives((liste) =>
+                    liste.map((m) =>
+                      m.id === message
+                        ? { ...m, libelles: m.libelles.filter((l) => l !== libelle) }
+                        : m,
+                    ),
+                  )
+                },
+              }}
             />
           ) : vue === 'newsletter' ? (
             <Newsletters

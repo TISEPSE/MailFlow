@@ -23,6 +23,7 @@ pub mod maj;
 pub mod rules;
 pub mod secrets;
 pub mod sortie;
+pub mod tableau;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -109,6 +110,12 @@ pub fn run() {
             commands::message_ranger,
             commands::libelles_lister,
             commands::libelle_creer,
+            commands::libelle_poser,
+            commands::libelle_retirer,
+            commands::archives_lister,
+            commands::archives_en_cache,
+            commands::tableau_lire,
+            commands::tableau_ecrire,
             commands::repondre_au_message,
             commands::message_corbeille,
             commands::message_marquer_lu,

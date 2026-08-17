@@ -53,6 +53,27 @@ fn fichier_releve(racine: &Path, compte: &str) -> PathBuf {
     dossier_du_compte(racine, compte).join("boite.json")
 }
 
+/// Fichier du relevé des archives, dans le dossier d'un compte.
+///
+/// Séparé de la boîte de réception, et non mêlé à elle : ce sont deux relevés
+/// distincts, faits de deux requêtes différentes, et l'un peut être à jour
+/// quand l'autre ne l'est pas. Les confondre ferait disparaître les archives à
+/// chaque relevé de la boîte.
+fn fichier_archives(racine: &Path, compte: &str) -> PathBuf {
+    dossier_du_compte(racine, compte).join("archives.json")
+}
+
+/// Range le relevé des archives d'un compte.
+pub fn ranger_archives(racine: &Path, compte: &str, archives: &[MessageAffiche]) {
+    ranger_dans(&fichier_archives(racine, compte), racine, compte, archives);
+}
+
+/// Relit les archives d'un compte, ou `None`.
+pub fn lire_archives(racine: &Path, compte: &str) -> Option<Vec<MessageAffiche>> {
+    let texte = std::fs::read_to_string(fichier_archives(racine, compte)).ok()?;
+    serde_json::from_str(&texte).ok()
+}
+
 /// Écrit un fichier lisible du seul propriétaire.
 ///
 /// Les droits sont posés à la création et non après coup : entre un fichier
@@ -79,15 +100,20 @@ pub fn ecrire_prive(chemin: &Path, contenu: &str) -> std::io::Result<()> {
 /// l'application doit fonctionner sur un disque plein comme sur un disque en
 /// lecture seule. On le journalise et on continue.
 pub fn ranger_boite(racine: &Path, compte: &str, boite: &[MessageAffiche]) {
+    ranger_dans(&fichier_releve(racine, compte), racine, compte, boite);
+}
+
+/// Écriture commune à la boîte et aux archives.
+fn ranger_dans(chemin: &Path, racine: &Path, compte: &str, messages: &[MessageAffiche]) {
     let dossier = dossier_du_compte(racine, compte);
     if let Err(e) = std::fs::create_dir_all(&dossier) {
         log::info!("cache indisponible pour {compte} : {e}");
         return;
     }
 
-    match serde_json::to_string(boite) {
+    match serde_json::to_string(messages) {
         Ok(texte) => {
-            if let Err(e) = ecrire_prive(&fichier_releve(racine, compte), &texte) {
+            if let Err(e) = ecrire_prive(chemin, &texte) {
                 log::info!("relevé non mis en cache : {e}");
             }
         }
@@ -172,6 +198,7 @@ mod tests {
             non_lu: true,
             categorie: CategorieMessage::Humain,
             compte: "moi@gmail.com".into(),
+            libelles: Vec::new(),
         }
     }
 
@@ -344,6 +371,7 @@ mod scenarios {
             non_lu: true,
             categorie: CategorieMessage::Humain,
             compte: compte.into(),
+            libelles: Vec::new(),
         }
     }
 

@@ -707,6 +707,118 @@ pub async fn boite_melangee(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     Ok(tout)
 }
 
+/// Nom de l'événement d'avancement du relevé des archives.
+pub const EVENEMENT_ARCHIVES: &str = "archives-relevees";
+
+/// Relève les messages archivés du compte actif.
+///
+/// Un relevé à part, et non un filtre sur la boîte : un message archivé n'est
+/// pas dans la boîte de réception, par définition. Il faut donc le demander à
+/// Gmail avec sa propre requête — voir [`crate::gmail::boite::ARCHIVES`].
+#[tauri::command]
+pub async fn archives_lister(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<Vec<MessageAffiche>> {
+    use tauri::Emitter;
+
+    let compte = compte_actif(&app);
+    let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let archives =
+        crate::gmail::boite::charger_archives(&client, &regles, &compte, |faits, total| {
+            let _ = app.emit(EVENEMENT_ARCHIVES, Avancement { faits, total });
+        })
+        .await
+        .inspect_err(|e| log::warn!("relevé des archives interrompu : {e}"))?;
+
+    if let Ok(racine) = dossier_cache(&app) {
+        cache::ranger_archives(&racine, &compte, &archives);
+    }
+
+    log::info!("{} message(s) archivé(s) relevé(s)", archives.len());
+    Ok(archives)
+}
+
+/// Rend le dernier relevé d'archives connu, sans toucher au réseau.
+///
+/// C'est ce qui s'affiche à l'ouverture de la page : une table qui met dix
+/// secondes à apparaître n'est plus une table, c'est une attente.
+#[tauri::command]
+pub async fn archives_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
+    let racine = dossier_cache(&app)?;
+    let compte = compte_actif(&app);
+    let mut archives = cache::lire_archives(&racine, &compte).unwrap_or_default();
+
+    let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
+    cache::reclasser(&mut archives, &regles);
+
+    Ok(archives)
+}
+
+/// Disposition de la table des archives du compte actif.
+#[tauri::command]
+pub async fn tableau_lire(app: AppHandle) -> Resultat<crate::tableau::Tableau> {
+    Ok(crate::tableau::charger(
+        &dossier_config(&app)?,
+        &compte_actif(&app),
+    ))
+}
+
+/// Enregistre la disposition de la table.
+///
+/// Ne porte que des positions : ce qui classe réellement les messages, ce sont
+/// les libellés Gmail, posés par [`message_ranger`]. Perdre ce fichier fait
+/// perdre une mise en page, jamais un rangement.
+#[tauri::command]
+pub async fn tableau_ecrire(app: AppHandle, tableau: crate::tableau::Tableau) -> Resultat<()> {
+    crate::tableau::enregistrer(&dossier_config(&app)?, &compte_actif(&app), &tableau)
+}
+
+/// Pose un libellé sur un message déjà archivé.
+///
+/// C'est le geste du tableau : déposer une tuile sur un tas. Il ne faut surtout
+/// pas passer par [`message_ranger`], qui retire `INBOX` — le message est déjà
+/// hors de la boîte, et ce serait dire à Gmail d'archiver ce qui l'est déjà.
+#[tauri::command]
+pub async fn libelle_poser(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    id: String,
+    libelle: String,
+) -> Resultat<()> {
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &id),
+    );
+    client.poser_libelle(&id, &libelle).await?;
+
+    log::info!("message déposé sur un tas");
+    Ok(())
+}
+
+/// Retire un libellé d'un message, sans rien archiver ni supprimer.
+///
+/// C'est le geste inverse du dépôt sur un tas : sortir une tuile d'une pile la
+/// laisse sur la table, elle ne retourne pas dans la boîte de réception.
+#[tauri::command]
+pub async fn libelle_retirer(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    id: String,
+    libelle: String,
+) -> Resultat<()> {
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &id),
+    );
+    client.retirer_libelle(&id, &libelle).await?;
+
+    log::info!("message sorti d'un tas");
+    Ok(())
+}
+
 /// Efface tout le cache, tous comptes confondus.
 #[tauri::command]
 pub async fn cache_vider(app: AppHandle) -> Resultat<()> {

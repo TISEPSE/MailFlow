@@ -21,6 +21,7 @@ import type {
   ReglesDuCompte,
   Resume,
   EtatLlm,
+  Tableau,
   VerificationMaj,
 } from '../types/backend'
 
@@ -212,6 +213,47 @@ export function libellesLister(): Promise<LibelleGmail[]> {
 /** Cree un libelle et rend la liste complete, a jour. */
 export function libelleCreer(nom: string): Promise<LibelleGmail[]> {
   return invoke<LibelleGmail[]>('libelle_creer', { nom })
+}
+
+/**
+ * Pose un libellé sur un message déjà archivé, sans l'archiver à nouveau.
+ *
+ * C'est le geste de la table : déposer une tuile sur un tas. Distinct de
+ * `messageRanger`, qui retire le message de la boîte de réception du même
+ * mouvement — ici il en est déjà sorti.
+ */
+export function libellePoser(id: string, libelle: string): Promise<void> {
+  return invoke<void>('libelle_poser', { id, libelle })
+}
+
+/**
+ * Retire un libellé d'un message.
+ *
+ * Sortir une tuile d'une pile la laisse sur la table : elle ne revient pas
+ * dans la boîte de réception, ce que personne n'a demandé.
+ */
+export function libelleRetirer(id: string, libelle: string): Promise<void> {
+  return invoke<void>('libelle_retirer', { id, libelle })
+}
+
+/** Relève les messages archivés chez Gmail. Passe par le réseau. */
+export function archivesLister(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('archives_lister')
+}
+
+/** Dernier relevé d'archives connu, lu sur le disque, sans réseau. */
+export function archivesEnCache(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('archives_en_cache')
+}
+
+/** Disposition de la table des archives du compte actif. */
+export function tableauLire(): Promise<Tableau> {
+  return invoke<Tableau>('tableau_lire')
+}
+
+/** Enregistre la disposition de la table. Ne porte que des positions. */
+export function tableauEcrire(tableau: Tableau): Promise<void> {
+  return invoke<void>('tableau_ecrire', { tableau })
 }
 
 /** Range un message sous un libelle, ou l'archive quand `libelle` est absent. */

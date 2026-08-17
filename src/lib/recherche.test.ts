@@ -18,6 +18,7 @@ function message(
     nonLu: false,
     categorie: 'humain',
     compte: 'moi@gmail.com',
+    libelles: [],
     ...champs,
   }
 }

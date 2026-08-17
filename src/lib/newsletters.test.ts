@@ -27,6 +27,7 @@ function message(
     nonLu: false,
     categorie: 'newsletter',
     compte: 'moi@gmail.com',
+    libelles: [],
   }
 }
 

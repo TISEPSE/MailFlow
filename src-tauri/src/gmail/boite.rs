@@ -93,6 +93,33 @@ pub struct MessageAffiche {
     /// Sans intérêt tant qu'on regarde une boîte à la fois ; indispensable dès
     /// que la vue les mélange, où rien d'autre ne dit d'où vient un message.
     pub compte: String,
+
+    /// Libellés posés par l'utilisateur, sans ceux du système.
+    ///
+    /// C'est ce qui fait les tas de la table des archives : un tas **est** un
+    /// libellé Gmail, et non un rangement propre à MailFlow. Le classement
+    /// survit ainsi à la machine, se retrouve sur le téléphone, et reste vrai
+    /// même si MailFlow disparaît.
+    ///
+    /// `default` parce que le champ est arrivé après coup : un cache écrit par
+    /// une version antérieure doit continuer à se relire, sinon la première
+    /// ouverture après mise à jour montre une boîte vide.
+    #[serde(default)]
+    pub libelles: Vec<String>,
+}
+
+/// Les libellés que l'utilisateur a posés lui-même, parmi tous ceux du message.
+///
+/// Gmail mêle dans la même liste ses propres marques — `INBOX`, `UNREAD`,
+/// `CATEGORY_PROMOTIONS`, `IMPORTANT` — et les libellés créés à la main. Les
+/// siens portent un identifiant en toutes lettres ; ceux de l'utilisateur un
+/// identifiant de la forme `Label_17`. C'est la seule distinction que l'API
+/// offre, et elle est stable.
+pub fn libelles_de_l_utilisateur(tous: &[String]) -> Vec<String> {
+    tous.iter()
+        .filter(|l| l.starts_with("Label_"))
+        .cloned()
+        .collect()
 }
 
 impl MessageAffiche {
@@ -109,12 +136,29 @@ impl MessageAffiche {
             non_lu: m.label_ids.iter().any(|l| l == libelles::UNREAD),
             categorie: classer(m, regles),
             compte: compte.to_string(),
+            libelles: libelles_de_l_utilisateur(&m.label_ids),
         }
     }
 }
 
 /// Requête Gmail de la boîte de réception.
 const BOITE_DE_RECEPTION: &str = "in:inbox";
+
+/// Requête Gmail des messages archivés.
+///
+/// Gmail n'a pas de dossier « Archives » : archiver, c'est retirer le libellé
+/// `INBOX` et ne rien mettre à la place. Un message archivé se définit donc par
+/// où il n'est **pas**, et les quatre exclusions sont nécessaires :
+///
+/// - `-in:inbox`, sans quoi ce serait la boîte de réception ;
+/// - `-in:trash`, car un message à la corbeille n'est pas rangé, il est jeté ;
+/// - `-in:spam`, que l'utilisateur n'a pas choisi de mettre là ;
+/// - `-in:draft`, car un brouillon n'a pas encore été envoyé et n'appartient à
+///   personne d'autre qu'à celui qui l'écrit.
+///
+/// Le courrier envoyé, lui, reste : il est bien archivé au sens de Gmail, et
+/// c'est du courrier qu'on cherche parfois à retrouver.
+pub const ARCHIVES: &str = "-in:inbox -in:trash -in:spam -in:draft";
 
 /// Relève la boîte de réception et classe ce qu'elle contient.
 pub async fn charger_boite<T: Transport, J: SourceJeton>(
@@ -139,6 +183,30 @@ pub async fn charger_boite<T: Transport, J: SourceJeton>(
 /// ne pas avoir à s'en servir.
 pub const PARALLELISME: usize = 6;
 
+/// Relève les messages archivés, les plus récents d'abord.
+///
+/// Ne classe rien : sur la table des archives, ce qui compte est le libellé
+/// posé par l'utilisateur, pas la catégorie devinée à l'arrivée. Les règles
+/// sont tout de même passées pour que la tuile porte la même couleur qu'ailleurs
+/// — un même message ne doit pas changer d'apparence selon la page.
+pub async fn charger_archives<T: Transport, J: SourceJeton>(
+    client: &ClientGmail<T, J>,
+    regles: &RuleSet,
+    compte: &str,
+    avance: impl FnMut(usize, usize),
+) -> Resultat<Vec<MessageAffiche>> {
+    relever(client, regles, compte, ARCHIVES, PLAFOND_ARCHIVES, avance).await
+}
+
+/// Combien d'archives on rapporte.
+///
+/// Plus large que la boîte de réception, et pour une raison de fond : une boîte
+/// de réception qu'on tient à jour reste courte, alors que les archives sont
+/// faites pour s'accumuler. Mais la table doit rester une table — au-delà de
+/// deux cents tuiles, on ne cherche plus, on fouille, et c'est la recherche
+/// qu'il faut alors, pas un tableau.
+pub const PLAFOND_ARCHIVES: usize = 200;
+
 /// Même relevé, en rendant compte de son avancement.
 ///
 /// `avance` est appelée une première fois avec le total, puis après chaque
@@ -152,11 +220,36 @@ pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,
     compte: &str,
+    avance: impl FnMut(usize, usize),
+) -> Resultat<Vec<MessageAffiche>> {
+    relever(
+        client,
+        regles,
+        compte,
+        BOITE_DE_RECEPTION,
+        PLAFOND_BOITE,
+        avance,
+    )
+    .await
+}
+
+/// Relève une requête Gmail quelconque et en fait des messages affichables.
+///
+/// Commun à la boîte de réception et aux archives : seules la requête et la
+/// quantité changent, et rien d'autre ne devrait diverger entre les deux. Deux
+/// copies de cette boucle auraient fini par se répondre différemment sur un
+/// message illisible ou sur l'ordre du résultat.
+async fn relever<T: Transport, J: SourceJeton>(
+    client: &ClientGmail<T, J>,
+    regles: &RuleSet,
+    compte: &str,
+    requete: &str,
+    plafond: usize,
     mut avance: impl FnMut(usize, usize),
 ) -> Resultat<Vec<MessageAffiche>> {
     use futures_util::StreamExt;
 
-    let refs = client.lister(BOITE_DE_RECEPTION, PLAFOND_BOITE).await?;
+    let refs = client.lister(requete, plafond).await?;
     let total = refs.len();
     avance(0, total);
 
@@ -191,6 +284,47 @@ pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
     }
 
     Ok(boite)
+}
+
+#[cfg(test)]
+mod tests_archives {
+    use super::*;
+
+    #[test]
+    fn la_requete_des_archives_exclut_ce_qui_n_est_pas_range() {
+        // Gmail n'a pas de dossier « Archives » : un message archivé se définit
+        // par où il n'est pas. Chaque exclusion manquante ferait apparaître sur
+        // la table quelque chose que l'utilisateur n'y a jamais posé.
+        for exclusion in ["-in:inbox", "-in:trash", "-in:spam", "-in:draft"] {
+            assert!(ARCHIVES.contains(exclusion), "il manque « {exclusion} »");
+        }
+    }
+
+    #[test]
+    fn les_marques_de_gmail_ne_font_pas_des_tas() {
+        // `INBOX`, `UNREAD`, `CATEGORY_*` sont posées par Gmail lui-même. Les
+        // prendre pour des tas couvrirait la table de piles que personne n'a
+        // faites, et « Non lus » n'est pas un rangement.
+        let tous = vec![
+            "INBOX".to_string(),
+            "UNREAD".to_string(),
+            "CATEGORY_PROMOTIONS".to_string(),
+            "IMPORTANT".to_string(),
+            "Label_17".to_string(),
+            "Label_3".to_string(),
+        ];
+
+        assert_eq!(
+            libelles_de_l_utilisateur(&tous),
+            vec!["Label_17".to_string(), "Label_3".to_string()]
+        );
+    }
+
+    #[test]
+    fn un_message_sans_libelle_de_l_utilisateur_reste_seul_sur_la_table() {
+        assert!(libelles_de_l_utilisateur(&["INBOX".to_string()]).is_empty());
+        assert!(libelles_de_l_utilisateur(&[]).is_empty());
+    }
 }
 
 #[cfg(test)]
