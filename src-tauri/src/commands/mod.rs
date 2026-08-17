@@ -26,7 +26,7 @@ use crate::gmail::client::{ClientGmail, SourceJeton};
 use crate::gmail::execution::RapportExecution;
 use crate::gmail::synchronisation::synchroniser;
 use crate::gmail::transport::TransportHttp;
-use crate::rules::{Rule, RuleSet, RulesStore};
+use crate::rules::{self, Rule, RuleSet, RulesStore};
 use crate::secrets::KeyringStore;
 
 /// État d'authentification partagé, géré par Tauri.
@@ -145,7 +145,19 @@ pub struct EtatApplication {
 #[tauri::command]
 pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<EtatApplication> {
     let dossier = dossier_config(&app)?;
-    let store = RulesStore::pour_compte(&dossier, &compte_actif(&app));
+    let actif = compte_actif(&app);
+
+    // Migration des règles d'avant le cloisonnement, ici parce que c'est le
+    // premier appel au démarrage *et* celui que l'interface refait après une
+    // connexion : le compte actif vient peut-être seulement d'exister.
+    // L'opération est idempotente et ne fait rien dans le cas courant.
+    if let Err(e) = rules::migration::cloisonner(&dossier, &actif) {
+        // Un échec ne doit pas empêcher l'application de démarrer : l'ancien
+        // fichier reste en place et sera retenté au prochain lancement.
+        log::warn!("migration des règles impossible : {e}");
+    }
+
+    let store = RulesStore::pour_compte(&dossier, &actif);
 
     let nombre_de_regles = match store.charger() {
         Ok(regles) => Some(regles.automations.len()),

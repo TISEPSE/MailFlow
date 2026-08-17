@@ -19,11 +19,15 @@
 //! # L'ancien fichier global
 //!
 //! Les versions précédentes rangeaient tout dans un `regles.json` unique, à la
-//! racine. Il reste lu **tant qu'un compte n'a pas écrit les siennes** : les
-//! règles déjà posées valaient pour tous les comptes, et elles continuent donc
-//! de valoir pour chacun. Dès la première modification, le compte prend son
-//! indépendance et n'y revient plus. Personne ne perd de règle en mettant à
-//! jour, et personne n'a à les ressaisir.
+//! racine. Une première tentative de rattrapage le faisait **lire en repli**
+//! par tout compte n'ayant pas encore écrit le sien — et produisait un doublon :
+//! deux comptes sans fichier propre lisaient le même contenu, si bien que la
+//! vue « Tous les comptes » montrait la même règle deux fois.
+//!
+//! Ce repli n'existe plus. L'ancien fichier est migré une bonne fois vers le
+//! compte actif au démarrage, puis archivé — voir
+//! [`crate::rules::migration`]. Ce module ne connaît donc plus qu'un seul
+//! fichier par compte, et [`RulesStore::heritage`] ne sert qu'à la migration.
 //!
 //! Deux exigences guident ce module :
 //!
@@ -64,12 +68,6 @@ pub fn fichier_du_compte(dossier: &Path, compte: &str) -> PathBuf {
 
 pub struct RulesStore {
     chemin: PathBuf,
-
-    /// Ancien fichier global, consulté tant que `chemin` n'existe pas.
-    ///
-    /// `None` pour un magasin qui ne désigne aucun compte particulier — il n'y
-    /// a alors rien dont hériter.
-    herite: Option<PathBuf>,
 }
 
 impl RulesStore {
@@ -79,20 +77,18 @@ impl RulesStore {
     /// besoin. L'adresse du compte n'a pas à être valide : elle est réduite à un
     /// nom de fichier sûr avant tout usage.
     pub fn pour_compte(dossier: impl AsRef<Path>, compte: &str) -> Self {
-        let dossier = dossier.as_ref();
         Self {
-            chemin: fichier_du_compte(dossier, compte),
-            herite: Some(dossier.join(NOM_FICHIER)),
+            chemin: fichier_du_compte(dossier.as_ref(), compte),
         }
     }
 
-    /// Magasin de l'ancien fichier global, sans héritage.
+    /// Magasin de l'ancien fichier global.
     ///
-    /// Ne sert qu'à le lire ou l'effacer : plus rien ne s'y écrit.
+    /// Ne sert plus qu'à la migration, qui le lit une fois puis l'archive.
+    /// Aucun compte ne le consulte : voir l'en-tête du module.
     pub fn heritage(dossier: impl AsRef<Path>) -> Self {
         Self {
             chemin: dossier.as_ref().join(NOM_FICHIER),
-            herite: None,
         }
     }
 
@@ -111,14 +107,13 @@ impl RulesStore {
     /// remonte une erreur — on ne repart pas silencieusement de zéro, ce qui
     /// effacerait sans préavis toutes les automatisations de l'utilisateur.
     ///
-    /// Tant que le compte n'a jamais écrit ses propres règles, l'ancien fichier
-    /// global tient lieu de réponse : voir l'en-tête du module.
+    /// Un seul fichier est consulté, celui du compte. Aucun repli : c'en était
+    /// un qui faisait apparaître la même règle sous plusieurs comptes.
     pub fn charger(&self) -> Resultat<RuleSet> {
-        let source = match (&self.chemin, &self.herite) {
-            (chemin, _) if chemin.exists() => chemin,
-            (_, Some(herite)) if herite.exists() => herite,
-            _ => return Ok(RuleSet::default()),
-        };
+        if !self.chemin.exists() {
+            return Ok(RuleSet::default());
+        }
+        let source = &self.chemin;
 
         let texte = fs::read_to_string(source).map_err(|e| AppError::io(source.display(), e))?;
 
@@ -374,47 +369,34 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Héritage de l'ancien fichier global
+    // L'ancien fichier global
     // -----------------------------------------------------------------------
 
     #[test]
-    fn les_regles_d_avant_le_cloisonnement_valent_pour_chaque_compte() {
-        // Elles s'appliquaient à tous les comptes ; la mise à jour ne doit
-        // dépouiller personne.
+    fn l_ancien_fichier_global_n_est_plus_lu_par_aucun_compte() {
+        // Le repli qui existait ici faisait apparaître la même règle sous
+        // chaque compte n'ayant pas encore écrit le sien. Il est remplacé par
+        // une migration franche — voir `rules::migration`.
         let dossier = TempDir::new().unwrap();
         RulesStore::heritage(dossier.path())
             .enregistrer(&jeu("info@lemonde.fr"))
             .unwrap();
 
         for compte in ["perso@gmail.com", "pro@gmail.com"] {
-            let lues = RulesStore::pour_compte(dossier.path(), compte)
-                .charger()
-                .unwrap();
-            assert_eq!(lues.automations.len(), 1, "compte {compte}");
+            assert!(
+                RulesStore::pour_compte(dossier.path(), compte)
+                    .charger()
+                    .unwrap()
+                    .automations
+                    .is_empty(),
+                "le compte {compte} ne doit rien lire de l'ancien fichier"
+            );
         }
     }
 
     #[test]
-    fn un_compte_qui_a_ecrit_ses_regles_ne_revient_pas_a_l_ancien_fichier() {
-        // Y compris quand il n'en garde aucune : avoir tout supprimé est une
-        // décision, pas une absence de décision.
-        let dossier = TempDir::new().unwrap();
-        RulesStore::heritage(dossier.path())
-            .enregistrer(&jeu("info@lemonde.fr"))
-            .unwrap();
-
-        let perso = RulesStore::pour_compte(dossier.path(), "perso@gmail.com");
-        perso.enregistrer(&RuleSet::default()).unwrap();
-
-        assert!(
-            perso.charger().unwrap().automations.is_empty(),
-            "les anciennes règles ne doivent pas ressusciter"
-        );
-    }
-
-    #[test]
-    fn l_heritage_ne_reecrit_jamais_l_ancien_fichier() {
-        // Il sert encore aux comptes qui n'ont pas pris leur indépendance.
+    fn ecrire_les_regles_d_un_compte_ne_touche_pas_l_ancien_fichier() {
+        // La migration a besoin de le retrouver intact.
         let dossier = TempDir::new().unwrap();
         let global = RulesStore::heritage(dossier.path());
         global.enregistrer(&jeu("info@lemonde.fr")).unwrap();
