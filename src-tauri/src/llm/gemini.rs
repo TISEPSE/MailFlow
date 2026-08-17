@@ -37,15 +37,42 @@
 //! texte — sont des fonctions pures, testées sans réseau. L'appel HTTP est
 //! volontairement mince, comme dans [`crate::gmail::transport`].
 
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::error::{AppError, Resultat};
 use crate::llm::Resume;
 
-/// Modèle retenu : le plus large quota gratuit, largement suffisant pour
-/// condenser une newsletter en une phrase.
-pub const MODELE: &str = "gemini-2.5-flash-lite";
+/// Modèles acceptables, du préféré au plus ancien.
+///
+/// # Pourquoi une liste et non un nom
+///
+/// Google retire ses modèles, et il le fait pour les nouvelles clés d'abord.
+/// Une clé fraîchement créée s'est vu répondre :
+///
+/// ```text
+/// This model models/gemini-2.5-flash-lite is no longer available to new
+/// users. Please update your code to use models/gemini-3.5-flash-lite
+/// ```
+///
+/// Un nom écrit en dur transforme donc chaque retrait en panne totale de la
+/// fonctionnalité, pour un utilisateur qui n'a rien fait de mal et à qui la
+/// clé venait d'être demandée. La liste laisse le choix se faire tout seul :
+/// un refus pour modèle inconnu passe au suivant.
+///
+/// Tous conviennent à la tâche — condenser une newsletter en une phrase — et
+/// tous ont un quota gratuit. L'ordre est celui de la préférence, pas de la
+/// nécessité.
+pub const MODELES: &[&str] = &[
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
+];
+
+/// Le modèle préféré, celui qu'on annonce dans les Paramètres.
+pub const MODELE: &str = MODELES[0];
 
 /// Racine de l'API. Le nom du modèle s'y ajoute, jamais une clé.
 const RACINE: &str = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -139,10 +166,32 @@ fn tronquer(texte: &str, maximum: usize) -> String {
 /// Corps de la requête envoyée à Gemini.
 ///
 /// Le schéma de sortie est imposé : la réponse est du JSON valide par
-/// construction, et il n'y a rien à rattraper au parseur. La « réflexion » est
-/// coupée — résumer n'est pas un problème de raisonnement, et elle
-/// consommerait le quota gratuit pour rien.
-pub fn corps_de_requete(contenu: &str) -> Value {
+/// construction, et il n'y a rien à rattraper au parseur.
+///
+/// `reflexion` demande à couper la « réflexion » du modèle — résumer n'est pas
+/// un problème de raisonnement, et elle consommerait le quota gratuit pour
+/// rien. Le réglage n'existe pas sur toutes les générations : quand il est
+/// refusé, la requête repart sans lui plutôt que d'abandonner. Voir
+/// [`la_reflexion_est_en_cause`].
+pub fn corps_de_requete_avec(contenu: &str, reflexion_coupee: bool) -> Value {
+    let mut generation = json!({
+        "temperature": 0.2,
+        "maxOutputTokens": 512,
+        "responseMimeType": "application/json",
+        "responseSchema": {
+            "type": "OBJECT",
+            "properties": {
+                "resume":   { "type": "STRING" },
+                "hashtags": { "type": "ARRAY", "items": { "type": "STRING" } }
+            },
+            "required": ["resume", "hashtags"]
+        }
+    });
+
+    if reflexion_coupee && let Some(objet) = generation.as_object_mut() {
+        objet.insert("thinkingConfig".into(), json!({ "thinkingBudget": 0 }));
+    }
+
     json!({
         "system_instruction": { "parts": [{ "text": CONSIGNE }] },
         "contents": [{
@@ -151,20 +200,24 @@ pub fn corps_de_requete(contenu: &str) -> Value {
                 "<newsletter_a_resumer>\n{contenu}\n</newsletter_a_resumer>"
             ) }],
         }],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 512,
-            "responseMimeType": "application/json",
-            "responseSchema": {
-                "type": "OBJECT",
-                "properties": {
-                    "resume":   { "type": "STRING" },
-                    "hashtags": { "type": "ARRAY", "items": { "type": "STRING" } }
-                },
-                "required": ["resume", "hashtags"]
-            },
-            "thinkingConfig": { "thinkingBudget": 0 }
-        }
+        "generationConfig": generation
+    })
+}
+
+/// La requête ordinaire : réflexion coupée.
+pub fn corps_de_requete(contenu: &str) -> Value {
+    corps_de_requete_avec(contenu, true)
+}
+
+/// Google reproche-t-il le réglage de réflexion, plutôt que le reste ?
+///
+/// Un `400` peut venir de la clé, du schéma ou de ce réglage. Le distinguer
+/// évite de renvoyer l'utilisateur vérifier une clé qui n'a rien à se
+/// reprocher — et permet de refaire l'appel sans le réglage fautif.
+pub fn la_reflexion_est_en_cause(motif: Option<&str>) -> bool {
+    motif.is_some_and(|m| {
+        let bas = m.to_lowercase();
+        bas.contains("thinking") || bas.contains("thinkingconfig")
     })
 }
 
@@ -350,11 +403,6 @@ const DELAI_REQUETE: std::time::Duration = std::time::Duration::from_secs(45);
 /// Attente de repli quand la réponse de quota n'indique pas de délai.
 const DELAI_QUOTA_DEFAUT: u64 = 45;
 
-/// Une seule reprise : le quota gratuit se reconstitue lentement, et
-/// s'entêter le consomme sans rien produire. La newsletter garde alors sa
-/// ligne composée localement, et la suivante repart normalement.
-const REPRISES: u8 = 1;
-
 /// Fournisseur Gemini, prêt à résumer.
 ///
 /// La clé n'est jamais consignée dans le journal ni recopiée dans une adresse :
@@ -362,7 +410,19 @@ const REPRISES: u8 = 1;
 pub struct Gemini {
     http: reqwest::Client,
     cle: String,
-    modele: String,
+
+    /// Candidats, du préféré au plus ancien — voir [`MODELES`].
+    modeles: Vec<String>,
+
+    /// Rang du modèle qui a répondu la dernière fois.
+    ///
+    /// Une fois qu'un candidat a fonctionné, les suivants ne repartent plus du
+    /// début : sans cela, chaque résumé rejouerait le refus du modèle retiré
+    /// avant d'arriver au bon, et paierait un aller-retour pour rien.
+    retenu: AtomicUsize,
+
+    /// Faux dès que Google a reproché le réglage de réflexion.
+    reflexion_coupee: AtomicBool,
 }
 
 impl Gemini {
@@ -377,35 +437,94 @@ impl Gemini {
         Ok(Self {
             http,
             cle,
-            modele: MODELE.to_string(),
+            modeles: MODELES.iter().map(|m| (*m).to_string()).collect(),
+            retenu: AtomicUsize::new(0),
+            reflexion_coupee: AtomicBool::new(true),
         })
     }
 
-    /// Choisit un autre modèle que celui par défaut.
+    /// N'essaie qu'un modèle, celui-là.
     pub fn avec_modele(mut self, modele: impl Into<String>) -> Self {
-        self.modele = modele.into();
+        self.modeles = vec![modele.into()];
+        self.retenu.store(0, Ordering::Relaxed);
         self
     }
 
-    /// Envoie un corps déjà composé et lit ce qui revient.
-    ///
-    /// Un refus pour quota (429) est réessayé une fois, après l'attente que
-    /// Google indique lui-même. Les autres refus ne le sont pas : une clé
-    /// invalide le restera, et réessayer ne ferait que retarder le message qui
-    /// dit à l'utilisateur quoi corriger.
+    /// Le modèle en cours d'emploi.
+    pub fn modele(&self) -> &str {
+        let rang = self.retenu.load(Ordering::Relaxed);
+        self.modeles
+            .get(rang)
+            .or_else(|| self.modeles.first())
+            .map(String::as_str)
+            .unwrap_or(MODELE)
+    }
+
+    /// Résume un contenu, en essayant les modèles jusqu'à ce que l'un réponde.
     ///
     /// Rend l'échec sous sa forme détaillée. C'est à l'appelant de décider ce
-    /// qu'il en montre : [`Self::resumer_newsletter`] n'en montre rien,
-    /// [`Self::verifier`] en montre tout. Voir [`EchecGemini`].
-    async fn appeler(&self, corps: &Value) -> Result<Resume, EchecGemini> {
-        let url = adresse(&self.modele);
+    /// qu'il en montre : [`crate::llm::LlmProvider::resumer_newsletter`] n'en
+    /// montre rien, [`Self::verifier`] en montre tout. Voir [`EchecGemini`].
+    async fn appeler(&self, contenu: &str) -> Result<Resume, EchecGemini> {
+        let depart = self.retenu.load(Ordering::Relaxed);
+        let mut dernier: Option<EchecGemini> = None;
 
-        for tentative in 0..=REPRISES {
+        for rang in depart..self.modeles.len() {
+            let modele = &self.modeles[rang];
+
+            match self.essayer(modele, contenu).await {
+                Ok(resume) => {
+                    if rang != depart {
+                        log::info!("modèle de repli retenu : {modele}");
+                        self.retenu.store(rang, Ordering::Relaxed);
+                    }
+                    return Ok(resume);
+                }
+
+                // Ce modèle-là n'existe plus, ou pas pour cette clé. Le
+                // suivant de la liste peut très bien convenir : c'est
+                // exactement le cas signalé par Google en retirant
+                // `gemini-2.5-flash-lite` aux nouvelles clés.
+                Err(echec) if echec.tient_au_modele() => {
+                    log::info!("modèle {modele} indisponible, essai du suivant");
+                    dernier = Some(echec);
+                }
+
+                // Clé refusée, quota, réseau : changer de modèle n'y ferait
+                // rien, et essayer trois fois ne ferait que tripler l'attente.
+                Err(autre) => return Err(autre),
+            }
+        }
+
+        Err(dernier.unwrap_or(EchecGemini::Refus {
+            statut: 404,
+            motif: None,
+        }))
+    }
+
+    /// Un seul modèle, avec ses deux reprises possibles.
+    ///
+    /// Chacune ne peut jouer qu'une fois, et pour une raison distincte :
+    ///
+    /// - le **quota** (429) se reprend après le délai que Google indique
+    ///   lui-même ; s'entêter au-delà le consomme sans rien produire ;
+    /// - le **réglage de réflexion** peut être refusé par une génération qui ne
+    ///   le connaît pas. Il est alors retiré une bonne fois — pas seulement
+    ///   pour cette requête — et l'appel refait.
+    async fn essayer(&self, modele: &str, contenu: &str) -> Result<Resume, EchecGemini> {
+        let url = adresse(modele);
+
+        let mut quota_deja_repris = false;
+        let mut reflexion_deja_retiree = false;
+
+        loop {
+            let coupee = self.reflexion_coupee.load(Ordering::Relaxed);
+
             let reponse = self
                 .http
                 .post(&url)
                 .header("x-goog-api-key", &self.cle)
-                .json(corps)
+                .json(&corps_de_requete_avec(contenu, coupee))
                 .send()
                 .await
                 .map_err(|e| EchecGemini::Reseau(AppError::from(e)))?;
@@ -420,7 +539,8 @@ impl Gemini {
                 return lire_reponse(&texte).map_err(EchecGemini::Reponse);
             }
 
-            if statut == 429 && tentative < REPRISES {
+            if statut == 429 && !quota_deja_repris {
+                quota_deja_repris = true;
                 let attente = delai_apres_quota(&texte, DELAI_QUOTA_DEFAUT);
                 log::info!("quota Gemini atteint, reprise dans {attente} s");
                 tokio::time::sleep(std::time::Duration::from_secs(attente)).await;
@@ -428,19 +548,26 @@ impl Gemini {
             }
 
             let motif = motif_du_refus(&texte);
+
+            if statut == 400
+                && coupee
+                && !reflexion_deja_retiree
+                && la_reflexion_est_en_cause(motif.as_deref())
+            {
+                reflexion_deja_retiree = true;
+                self.reflexion_coupee.store(false, Ordering::Relaxed);
+                log::info!("réglage de réflexion refusé, requête refaite sans lui");
+                continue;
+            }
+
             // Le journal, lui, porte tout : il reste sur la machine, et c'est
             // la seule trace qui permette de comprendre après coup.
             log::warn!(
-                "Gemini a refusé ({statut}) : {}",
+                "Gemini a refusé ({statut}) sur {modele} : {}",
                 motif.as_deref().unwrap_or("sans motif")
             );
             return Err(EchecGemini::Refus { statut, motif });
         }
-
-        Err(EchecGemini::Refus {
-            statut: 429,
-            motif: None,
-        })
     }
 
     /// Vérifie que la clé fonctionne, au moindre coût.
@@ -453,12 +580,12 @@ impl Gemini {
     /// « ça n'a pas marché ». C'est le seul endroit du fournisseur où le motif
     /// de Google remonte jusqu'à l'écran — voir [`AppError::CleLlm`].
     pub async fn verifier(&self) -> Resultat<()> {
-        match self.appeler(&corps_de_requete("Bonjour.")).await {
+        match self.appeler("Bonjour.").await {
             Ok(_) => {
-                log::info!("clé de résumé vérifiée auprès de Gemini");
+                log::info!("clé de résumé vérifiée, modèle retenu : {}", self.modele());
                 Ok(())
             }
-            Err(echec) => Err(AppError::CleLlm(echec.explication(&self.modele))),
+            Err(echec) => Err(AppError::CleLlm(echec.explication(self.modele()))),
         }
     }
 }
@@ -480,6 +607,30 @@ pub enum EchecGemini {
 }
 
 impl EchecGemini {
+    /// Ce refus vient-il du modèle demandé, plutôt que de la clé ?
+    ///
+    /// Le `404` est le cas franc. Mais Google répond aussi par un `400` quand
+    /// il retire un modèle aux nouvelles clés, en le disant seulement dans son
+    /// message — d'où la lecture de celui-ci. Se tromper ici coûte un
+    /// aller-retour, jamais une donnée.
+    pub fn tient_au_modele(&self) -> bool {
+        let Self::Refus { statut, motif } = self else {
+            return false;
+        };
+
+        if *statut == 404 {
+            return true;
+        }
+
+        *statut == 400
+            && motif.as_deref().is_some_and(|m| {
+                let bas = m.to_lowercase();
+                bas.contains("no longer available")
+                    || bas.contains("is not found")
+                    || bas.contains("not supported")
+            })
+    }
+
     /// Une phrase pour l'utilisateur, qui nomme le geste à faire.
     ///
     /// Les codes sont ceux de l'API Gemini, et chacun a une cause distincte
@@ -570,9 +721,7 @@ impl crate::llm::LlmProvider for Gemini {
         if propre.trim().is_empty() {
             return Err(AppError::Resume("rien à résumer".into()));
         }
-        self.appeler(&corps_de_requete(&propre))
-            .await
-            .map_err(AppError::from)
+        self.appeler(&propre).await.map_err(AppError::from)
     }
 
     /// Synthèse de la journée, à partir des résumés déjà produits.
@@ -584,7 +733,7 @@ impl crate::llm::LlmProvider for Gemini {
             return Err(AppError::Resume("aucune newsletter à synthétiser".into()));
         }
         let assemble = contenus.join("\n");
-        self.appeler(&corps_de_requete(&tronquer(&assemble, CARACTERES_MAX)))
+        self.appeler(&tronquer(&assemble, CARACTERES_MAX))
             .await
             .map_err(AppError::from)
     }
@@ -676,6 +825,107 @@ mod tests {
             corps.pointer("/generationConfig/responseMimeType"),
             Some(&json!("application/json"))
         );
+    }
+
+    #[test]
+    fn la_requete_de_repli_abandonne_la_reflexion_et_rien_d_autre() {
+        // Une génération qui ne connaît pas ce réglage refuse la requête
+        // entière. On le retire, mais le schéma de sortie doit rester : c'est
+        // lui qui rend la réponse lisible sans rattrapage au parseur.
+        let corps = corps_de_requete_avec("x", false);
+
+        assert_eq!(corps.pointer("/generationConfig/thinkingConfig"), None);
+        assert_eq!(
+            corps.pointer("/generationConfig/responseMimeType"),
+            Some(&json!("application/json"))
+        );
+        assert!(corps.pointer("/generationConfig/responseSchema").is_some());
+        assert!(
+            corps
+                .pointer("/contents/0/parts/0/text")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .starts_with("<newsletter_a_resumer>")
+        );
+    }
+
+    #[test]
+    fn le_reproche_porte_sur_la_reflexion_est_reconnu() {
+        assert!(la_reflexion_est_en_cause(Some(
+            "Unknown name \"thinkingConfig\" at 'generation_config'"
+        )));
+        assert!(la_reflexion_est_en_cause(Some(
+            "Budget 0 is invalid for thinking"
+        )));
+
+        // Une clé invalide ne doit pas déclencher le repli : on referait
+        // l'appel pour rien, et le message qui dit quoi corriger arriverait
+        // avec un aller-retour de retard.
+        assert!(!la_reflexion_est_en_cause(Some("API key not valid")));
+        assert!(!la_reflexion_est_en_cause(None));
+    }
+
+    // -----------------------------------------------------------------------
+    // Quand Google retire un modèle
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn le_modele_prefere_est_le_premier_de_la_liste() {
+        assert_eq!(MODELE, MODELES[0]);
+        assert!(MODELES.len() > 1, "un repli au moins doit exister");
+    }
+
+    #[test]
+    fn un_modele_retire_aux_nouvelles_cles_fait_passer_au_suivant() {
+        // Le cas réellement rencontré : la clé était bonne, le modèle non.
+        // Sans ce passage au suivant, la fonctionnalité était entièrement
+        // hors service pour un utilisateur qui n'avait rien fait de mal.
+        let echec = EchecGemini::Refus {
+            statut: 400,
+            motif: Some(
+                "This model models/gemini-2.5-flash-lite is no longer available \
+                 to new users. Please update your code to use \
+                 models/gemini-3.5-flash-lite"
+                    .into(),
+            ),
+        };
+
+        assert!(echec.tient_au_modele());
+    }
+
+    #[test]
+    fn un_modele_inconnu_fait_passer_au_suivant() {
+        assert!(
+            EchecGemini::Refus {
+                statut: 404,
+                motif: None,
+            }
+            .tient_au_modele()
+        );
+    }
+
+    #[test]
+    fn une_cle_refusee_n_est_pas_un_probleme_de_modele() {
+        // Changer de modèle ne réparerait rien et tripleraient l'attente avant
+        // que l'utilisateur n'apprenne quoi corriger.
+        assert!(
+            !EchecGemini::Refus {
+                statut: 400,
+                motif: Some("API key not valid. Please pass a valid API key.".into()),
+            }
+            .tient_au_modele()
+        );
+
+        assert!(
+            !EchecGemini::Refus {
+                statut: 429,
+                motif: None,
+            }
+            .tient_au_modele()
+        );
+
+        assert!(!EchecGemini::Reseau(AppError::Reseau("délai".into())).tient_au_modele());
     }
 
     #[test]
