@@ -333,23 +333,24 @@ export default function App() {
    */
   const chargerLesArchives = useCallback(
     async (forcer = false) => {
-      setEnRecherche(true)
       try {
         setTableau(await tableauLire().catch(() => ({ tas: {}, messages: {} })))
 
         const enCache = await archivesEnCache().catch(() => [])
         if (enCache.length > 0) setArchives(enCache)
 
-        // Le relevé réseau n'est refait que si le cache est vide, ou si
-        // l'utilisateur le demande : les archives ne bougent pas d'elles-mêmes,
-        // et deux cents messages coûtent deux cents appels.
+        // Le relevé réseau n'est refait que si le cache est vide, ou si la page
+        // vient d'être ouverte : les archives ne bougent pas d'elles-mêmes.
+        //
+        // Sans drapeau `enRecherche` : ce relevé se déclenche au simple fait
+        // d'ouvrir la page, et il ferait alors tourner toutes les icônes de la
+        // barre latérale à chaque visite. Le cache tient l'écran pendant ce
+        // temps, il n'y a donc aucune attente à signaler.
         if (forcer || enCache.length === 0) {
           setArchives(await archivesLister())
         }
       } catch (e) {
         annoncer(messageDErreur(e), true)
-      } finally {
-        setEnRecherche(false)
       }
     },
     [annoncer],
@@ -591,9 +592,17 @@ export default function App() {
           setAvancement({ ...e.payload, etape: 'releve' })
         }
       }),
-      listen<Avancement>(EVENEMENT_PRECHARGEMENT, (e) =>
-        setAvancement({ ...e.payload, etape: 'corps' }),
-      ),
+      // Même garde que pour le relevé, et pour la même raison. Sans elle, tout
+      // préchargement demandé en cours de route — le bouton « Analyser » des
+      // newsletters, par exemple — posait l'écran de chargement du démarrage
+      // par-dessus la page qu'on était en train de lire, et faisait tourner
+      // toutes les icônes de la barre latérale. Un geste volontaire sur une
+      // page ne doit pas ressembler à une ouverture d'application.
+      listen<Avancement>(EVENEMENT_PRECHARGEMENT, (e) => {
+        if (chargementComplet.current) {
+          setAvancement({ ...e.payload, etape: 'corps' })
+        }
+      }),
       listen<Avancement>(EVENEMENT_RESUMES, (e) => setAvancementResumes(e.payload)),
     ]
     return () => {

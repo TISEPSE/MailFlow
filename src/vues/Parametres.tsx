@@ -262,21 +262,16 @@ export function Parametres({
           </Reglage>
         </Bloc>
 
-        <Bloc titre="Résumés IA">
-          <Reglage
-            icone="auto_awesome"
-            titre="Résumer les newsletters automatiquement"
-            detail="Pas encore disponible : aucun moteur de résumé n'est branché."
-          >
-            <Interrupteur
-              actif={false}
-              onChange={() => {}}
-              disabled
-              libelle="Résumer les newsletters automatiquement"
-              grand
-            />
-          </Reglage>
-        </Bloc>
+        {/* Un bloc « Résumés IA » vivait ici, avec un interrupteur mort et la
+            mention « aucun moteur de résumé n'est branché ». C'était vrai le
+            jour où il a été écrit, avant Gemini. Ce n'est plus le cas : le
+            réglage réel est `ResumesIA`, quelques lignes plus haut, et il sait
+            enregistrer la clé comme l'effacer.
+
+            Deux réglages pour un seul sujet, dont l'un affirme le contraire de
+            l'autre, coûtent plus cher qu'un réglage manquant : l'utilisateur
+            qui a posé sa clé et qui lit ensuite « pas encore disponible » a
+            toutes les raisons de croire que rien ne marche. */}
 
         <Bloc titre="Diagnostic">
           <Reglage
