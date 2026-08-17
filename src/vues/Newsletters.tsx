@@ -6,16 +6,23 @@
  * obligeait à ouvrir chacune pour savoir si elle valait la peine. Ici tout se
  * voit d'un coup — une synthèse en tête, puis une carte par publication.
  *
+ * # Une carte par publication, pas par message
+ *
+ * Un journal écrit depuis plusieurs adresses et plusieurs fois par semaine.
+ * À plat, il occupait autant de cartes qu'il avait envoyé de numéros, et la
+ * page se remplissait de doublons apparents. Les numéros d'un même émetteur
+ * sont donc empilés : une carte, une cascade derrière elle, et le détail au
+ * clic. Voir `lib/newsletters.ts`.
+ *
  * # Les résumés
  *
- * Ils viennent d'un modèle de langage, et aucun fournisseur n'est encore
- * branché. La mise en page les prévoit tout de même à leur place définitive :
- * le bloc existe et dit franchement que la fonctionnalité est à venir, plutôt
- * que d'inventer un résumé ou de laisser un trou qu'il faudrait recomposer plus
- * tard. Voir `src-tauri/src/llm/mod.rs`, qui déclare déjà les deux formes
- * attendues — la synthèse du jour et le résumé d'une newsletter.
+ * La ligne sous le nom de l'émetteur est composée sur la machine, à partir du
+ * sujet du dernier numéro. Quand un modèle de langage sera branché, sa phrase
+ * prendra exactement cette place — même emplacement, même hauteur — de sorte
+ * que la page ne bouge pas d'un pixel selon qu'il est là ou non. C'est ce qui
+ * rend l'IA réellement optionnelle plutôt que promise.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Bouton,
   Confirmation,
@@ -27,12 +34,16 @@ import {
 } from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
+import {
+  decompteDuGroupe,
+  grouperNewsletters,
+  ligneLocale,
+  resserrerSujet,
+  type GroupeNewsletters,
+} from '../lib/newsletters'
 import { messageCorps } from '../lib/tauri'
 import type { CorpsMessage, MessageAffiche } from '../types/backend'
-import { CorpsIsole } from '../composants/ListeMessages'
-
-/** Étiquette qui montre tout, toujours en tête des filtres. */
-const TOUTES = 'Tous'
+import { CorpsIsole, PiecesJointes } from '../composants/ListeMessages'
 
 export function Newsletters({
   messages,
@@ -44,6 +55,8 @@ export function Newsletters({
   corpsConnus,
   onCorpsCharge,
   chargement,
+  vise,
+  onVise,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -54,15 +67,28 @@ export function Newsletters({
   corpsConnus: ReadonlyMap<string, CorpsMessage>
   onCorpsCharge: (id: string, corps: CorpsMessage) => void
   chargement?: boolean
+  /** Message désigné par la recherche, à ouvrir sans attendre un clic. */
+  vise?: string | null
+  /** Prévient que la désignation a été honorée, pour qu'elle ne se répète pas. */
+  onVise?: () => void
 }) {
-  const [filtre, setFiltre] = useState(TOUTES)
   const [ouvert, setOuvert] = useState<MessageAffiche | null>(null)
 
-  // Les étiquettes viendront des résumés. Tant qu'aucun modèle ne tourne, il
-  // n'y en a qu'une, et la barre de filtres se réduit à elle.
-  const etiquettes = useMemo(() => [TOUTES], [])
+  const groupes = useMemo(() => grouperNewsletters(messages), [messages])
 
-  const visibles = filtre === TOUTES ? messages : messages
+  // La recherche désigne une newsletter : elle s'ouvre en grand, comme sur les
+  // autres pages. Sans ce raccord, un résultat de recherche portant sur une
+  // newsletter changeait bien de page mais n'ouvrait rien — la carte était
+  // quelque part dans la grille, à retrouver à l'œil.
+  useEffect(() => {
+    if (!vise) return
+    const cible = messages.find((m) => m.id === vise)
+    if (cible) {
+      setOuvert(cible)
+      onOuvrir(cible.id)
+    }
+    onVise?.()
+  }, [vise, messages, onOuvrir, onVise])
 
   if (chargement) return <SqueletteListe lignes={4} />
   if (!messages.length) return <Vide {...vide} />
@@ -70,29 +96,24 @@ export function Newsletters({
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-6">
-        <Synthese messages={messages} logos={logos} />
+        <Synthese groupes={groupes} logos={logos} />
 
-        <Filtres
-          etiquettes={etiquettes}
-          choisie={filtre}
-          onChoisir={setFiltre}
-        />
-
-        {/* Deux colonnes : une carte de newsletter tient dans la moitié d'un
-            écran, et deux de front font voir la journée d'un coup. */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {visibles.map((m, i) => (
-            <Carte
-              key={m.id}
-              message={m}
+        {/* Deux colonnes : une carte tient dans la moitié d'un écran, et deux
+            de front font voir la journée d'un coup. Les cartes s'alignent en
+            haut — une pile dépliée ne doit pas étirer sa voisine. */}
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          {groupes.map((groupe, i) => (
+            <CarteGroupe
+              key={groupe.cle}
+              groupe={groupe}
               rang={i}
               logos={logos}
-              onVoir={() => {
+              onVoir={(m) => {
                 setOuvert(m)
                 onOuvrir(m.id)
               }}
-              onArchiver={() => onArchiver(m.id)}
-              onSupprimer={() => onSupprimer(m.id)}
+              onArchiver={onArchiver}
+              onSupprimer={onSupprimer}
             />
           ))}
         </div>
@@ -113,19 +134,20 @@ export function Newsletters({
 /**
  * Bandeau de synthèse.
  *
- * Il tiendra les trois points du jour, tirés de l'ensemble des newsletters.
- * Sans modèle branché, il dit ce qu'il sait déjà — combien sont arrivées, et de
- * qui — plutôt que de rester vide en attendant.
+ * Il compte les publications plutôt que les messages : quinze numéros de trois
+ * journaux, ce sont trois choses à lire, pas quinze. Sa phrase est composée
+ * localement ; le modèle la remplacera sans déplacer quoi que ce soit.
  */
 function Synthese({
-  messages,
+  groupes,
   logos,
 }: {
-  messages: MessageAffiche[]
+  groupes: GroupeNewsletters[]
   logos: Record<string, string>
 }) {
-  const sources = [...new Map(messages.map((m) => [m.adresse, m])).values()].slice(0, 6)
-  const derniere = messages[0]?.date
+  const sources = groupes.slice(0, 6)
+  const numeros = groupes.reduce((n, g) => n + g.messages.length, 0)
+  const derniere = groupes[0]?.messages[0]?.date
 
   return (
     <div
@@ -144,185 +166,284 @@ function Synthese({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[0.875rem] font-semibold tracking-tight">
-            Synthèse du jour
+            {groupes.length} publication{groupes.length > 1 ? 's' : ''}
+            {numeros > groupes.length ? `, ${numeros} numéros` : ''}
           </span>
           <span className="block text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
-            {messages.length} newsletter{messages.length > 1 ? 's' : ''}
-            {derniere ? ` — dernière à ${heureCourte(derniere)}` : ''}
+            {derniere ? `Dernier reçu à ${heureCourte(derniere)}` : 'En attente du relevé'}
           </span>
         </span>
         <span className="flex flex-none items-center gap-1">
           <span className="pr-1 text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
             Sources
           </span>
-          {sources.map((m, i) => {
+          {sources.map((g, i) => {
             const [fond, encre] = palette(i)
             return (
               <Pastille
-                key={m.adresse}
-                texte={initiales(m.nom)}
+                key={g.cle}
+                texte={initiales(g.nom)}
                 taille="1.375rem"
                 fond={fond}
                 couleur={encre}
-                logo={logos[domaineDe(m.adresse)]}
+                logo={logos[domaineDe(g.adresse)]}
               />
             )
           })}
         </span>
       </div>
-
-      <AVenir
-        texte="La synthèse du jour résumera ces newsletters en trois points. Elle attend qu'un moteur de résumé soit branché."
-        centre
-      />
     </div>
   )
 }
 
-/** Barre d'étiquettes thématiques. */
-function Filtres({
-  etiquettes,
-  choisie,
-  onChoisir,
-}: {
-  etiquettes: string[]
-  choisie: string
-  onChoisir: (e: string) => void
-}) {
+/** Feuilles décalées derrière une carte, quand la publication a plusieurs numéros.
+ *
+ *  Purement décoratif, et donc `aria-hidden` : le décompte est déjà écrit en
+ *  toutes lettres sur la carte, un lecteur d'écran n'a que faire de l'illusion
+ *  de papier. */
+function Cascade({ nombre }: { nombre: number }) {
+  // Deux feuilles suffisent à dire « il y en a d'autres ». Trois épaisseurs de
+  // plus n'ajoutent que du bruit sous la carte.
+  const feuilles = Math.min(nombre - 1, 2)
+
   return (
-    <div className="flex items-center gap-2" role="tablist" aria-label="Filtrer par thème">
-      <Icone nom="tag" taille="0.9375rem" style={{ color: 'var(--sub)' }} />
-      {etiquettes.map((e) => (
-        <button
-          key={e}
-          type="button"
-          role="tab"
-          aria-selected={e === choisie}
-          onClick={() => onChoisir(e)}
-          className="segment inline-flex h-[1.875rem] items-center rounded-full px-3.5 text-[0.75rem] font-semibold"
-        >
-          {e}
-        </button>
+    <span aria-hidden>
+      {Array.from({ length: feuilles }, (_, i) => (
+        <span
+          key={i}
+          className="absolute inset-x-0 top-0 h-full rounded-2xl border"
+          style={{
+            borderColor: 'var(--line)',
+            background: 'var(--card)',
+            transform: `translate(${(i + 1) * 5}px, ${(i + 1) * 5}px) rotate(${(i + 1) * 0.35}deg)`,
+            zIndex: -1 - i,
+            opacity: 1 - (i + 1) * 0.25,
+          }}
+        />
       ))}
-      {etiquettes.length === 1 && (
-        <span className="pl-1 text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
-          Les thèmes viendront des résumés.
-        </span>
-      )}
-    </div>
+    </span>
   )
 }
 
-/** Carte d'une newsletter. */
-function Carte({
-  message,
+/** Carte d'une publication : son dernier numéro, et la pile des précédents. */
+function CarteGroupe({
+  groupe,
   rang,
   logos,
   onVoir,
   onArchiver,
   onSupprimer,
 }: {
-  message: MessageAffiche
+  groupe: GroupeNewsletters
   rang: number
   logos: Record<string, string>
-  onVoir: () => void
-  onArchiver: () => void
-  onSupprimer: () => void
+  onVoir: (m: MessageAffiche) => void
+  onArchiver: (id: string) => void
+  onSupprimer: (id: string) => void
 }) {
   const [fond, encre] = palette(rang)
+  const [deplie, setDeplie] = useState(false)
+
+  /** Numéro montré par la carte, désigné par son identifiant.
+   *
+   *  Un identifiant et non un rang : archiver un numéro décale les rangs, et la
+   *  carte se mettrait alors à montrer son voisin sans que personne ne l'ait
+   *  demandé. Un identifiant disparu retombe simplement sur le plus récent. */
+  const [visible, setVisible] = useState<string | null>(null)
 
   /** Geste en attente de confirmation, ou `null`.
    *
    *  Les deux boutons font disparaître la carte de la page. Rien n'est perdu —
    *  la corbeille garde trente jours, l'archive ne détruit rien — mais un clic
-   *  de travers coûterait d'aller rechercher le message dans Gmail. */
+   *  de travers coûterait d'aller rechercher les messages dans Gmail. Et le
+   *  geste porte ici sur toute la pile, ce qui rend la confirmation d'autant
+   *  plus nécessaire. */
   const [aConfirmer, setAConfirmer] = useState<'archiver' | 'supprimer' | null>(null)
 
+  const nombre = groupe.messages.length
+  const decompte = decompteDuGroupe(groupe)
+
+  /** Le numéro effectivement à l'écran. */
+  const courant = groupe.messages.find((m) => m.id === visible) ?? groupe.messages[0]
+
+  const agirSurToute = (geste: 'archiver' | 'supprimer') => {
+    for (const m of groupe.messages) {
+      if (geste === 'supprimer') onSupprimer(m.id)
+      else onArchiver(m.id)
+    }
+  }
+
   return (
-    <div
-      className="carte-survolable flex flex-col overflow-hidden rounded-2xl border"
-      style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
-    >
-      <div className="flex items-center gap-2.5 px-4 pt-4">
-        <Pastille
-          texte={initiales(message.nom)}
-          taille="2.125rem"
-          fond={fond}
-          couleur={encre}
-          logo={logos[domaineDe(message.adresse)]}
-        />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[0.875rem] font-semibold tracking-tight">
-            {message.nom}
+    // `isolate` crée un contexte d'empilement : sans lui, les feuilles en
+    // `z-index` négatif passeraient derrière le fond de la page plutôt que
+    // derrière leur seule carte.
+    <div className="relative isolate">
+      {nombre > 1 && <Cascade nombre={nombre} />}
+
+      <div
+        className="carte-survolable relative flex flex-col overflow-hidden rounded-2xl border"
+        style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+      >
+        <div className="flex items-center gap-2.5 px-4 pt-4">
+          <Pastille
+            texte={initiales(groupe.nom)}
+            taille="2.125rem"
+            fond={fond}
+            couleur={encre}
+            logo={logos[domaineDe(groupe.adresse)]}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[0.875rem] font-semibold tracking-tight">
+              {groupe.nom}
+            </span>
+            <span
+              className="block truncate font-mono text-[0.6562rem]"
+              style={{ color: 'var(--sub)' }}
+            >
+              {groupe.adresse}
+            </span>
           </span>
           <span
-            className="block truncate font-mono text-[0.6562rem]"
+            className="flex flex-none items-center gap-1 text-[0.6875rem]"
             style={{ color: 'var(--sub)' }}
           >
-            {message.adresse}
+            <Icone nom="schedule" taille="0.75rem" />
+            {courant.date ? heureCourte(courant.date) : ''}
           </span>
-        </span>
-        <span
-          className="flex flex-none items-center gap-1 text-[0.6875rem]"
-          style={{ color: 'var(--sub)' }}
-        >
-          <Icone nom="schedule" taille="0.75rem" />
-          {heureCourte(message.date)}
-        </span>
-      </div>
-
-      <div className="px-4 pt-3">
-        <div
-          className="mb-1.5 flex items-center gap-1.5 text-[0.6562rem] font-semibold tracking-wide uppercase"
-          style={{ color: 'var(--accent-fg)' }}
-        >
-          <Icone nom="auto_awesome" taille="0.75rem" rempli />
-          Résumé IA
         </div>
-        <AVenir texte="Le résumé de cette newsletter est une fonctionnalité à venir." />
-        {/* L'extrait de Gmail, à défaut du résumé : ce n'en est pas un, mais
-            c'est ce que le message dit de lui-même, et c'est mieux que rien. */}
-        <p
-          className="mt-2 line-clamp-3 text-[0.7812rem] leading-relaxed"
-          style={{ color: 'var(--sub)' }}
-        >
-          {message.extrait}
-        </p>
-      </div>
 
-      <div className="mt-auto flex items-center gap-2 px-4 py-3.5">
-        <Bouton icone="open_in_full" onClick={onVoir}>
-          Voir le mail
-        </Bouton>
-        <Bouton
-          variante="principal"
-          icone="archive"
-          onClick={() => setAConfirmer('archiver')}
-          titre="Le message quitte la boîte de réception. Rien n'est supprimé."
-        >
-          Garder &amp; archiver
-        </Bouton>
-        <Bouton
-          variante="danger"
-          icone="delete"
-          onClick={() => setAConfirmer('supprimer')}
-          titre="Mettre à la corbeille — récupérable 30 jours"
-        >
-          Supprimer
-        </Bouton>
+        {/* `key` sur l'identifiant : changer de numéro remonte ce bloc, ce qui
+            relance le fondu. Sans lui, React réutiliserait les mêmes nœuds et
+            le texte se remplacerait d'un coup, sans qu'on voie qu'il a
+            changé — le clic paraîtrait alors n'avoir rien fait. */}
+        <div key={courant.id} className="apparait px-4 pt-3">
+          <p className="text-[0.8125rem] leading-relaxed font-medium">
+            {ligneLocale(courant)}
+          </p>
+          <p
+            className="mt-1 line-clamp-2 text-[0.7812rem] leading-relaxed"
+            style={{ color: 'var(--sub)' }}
+          >
+            {courant.extrait}
+          </p>
+
+          {decompte && (
+            <button
+              type="button"
+              onClick={() => setDeplie(!deplie)}
+              aria-expanded={deplie}
+              className="survolable mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[0.6875rem] font-semibold"
+              style={{ color: 'var(--accent-fg)', background: 'var(--accent-soft)' }}
+            >
+              {/* La même flèche retournée, comme au panneau des destinataires :
+                  le jeu d'icônes est engendré à partir des noms employés dans
+                  le code, et n'en porte donc qu'une seule. */}
+              <Icone
+                nom="expand_more"
+                taille="0.875rem"
+                style={{
+                  transform: deplie ? 'rotate(180deg)' : undefined,
+                  transition: 'transform 160ms ease',
+                }}
+              />
+              {deplie ? 'Replier' : decompte}
+            </button>
+          )}
+        </div>
+
+        {deplie && (
+          <ul className="mt-3 flex flex-col border-t" style={{ borderColor: 'var(--line)' }}>
+            {groupe.messages.map((m) => (
+              <li
+                key={m.id}
+                className="flex items-center gap-2 border-b px-4 py-2 last:border-b-0"
+                style={{ borderColor: 'var(--line)' }}
+              >
+                {/* Le clic fait passer ce numéro en tête de la carte plutôt que
+                    d'ouvrir la fenêtre de lecture : la pile se feuillette sur
+                    place, et « Voir le mail » reste le geste qui sort du
+                    résumé. Ouvrir à chaque coup d'œil obligeait à refermer
+                    pour en regarder un autre. */}
+                <button
+                  type="button"
+                  onClick={() => setVisible(m.id)}
+                  aria-current={m.id === courant.id}
+                  className="survolable min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 text-left text-[0.75rem]"
+                  title={m.sujet || '(sans objet)'}
+                >
+                  {resserrerSujet(m.sujet) || '(sans objet)'}
+                </button>
+                <span
+                  className="flex-none font-mono text-[0.6562rem]"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  {m.date ? heureCourte(m.date) : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onArchiver(m.id)}
+                  title="Archiver ce numéro"
+                  aria-label="Archiver ce numéro"
+                  className="bouton bouton-icone flex-none rounded-md p-1"
+                >
+                  <Icone nom="archive" taille="0.875rem" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSupprimer(m.id)}
+                  title="Mettre ce numéro à la corbeille"
+                  aria-label="Mettre ce numéro à la corbeille"
+                  className="bouton bouton-icone flex-none rounded-md p-1"
+                >
+                  <Icone nom="delete" taille="0.875rem" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-auto flex items-center gap-2 px-4 py-3.5">
+          <Bouton icone="open_in_full" onClick={() => onVoir(courant)}>
+            Voir le mail
+          </Bouton>
+          <Bouton
+            variante="principal"
+            icone="archive"
+            onClick={() => setAConfirmer('archiver')}
+            titre={
+              nombre > 1
+                ? `Les ${nombre} numéros quittent la boîte de réception. Rien n'est supprimé.`
+                : "Le message quitte la boîte de réception. Rien n'est supprimé."
+            }
+          >
+            Garder &amp; archiver
+          </Bouton>
+          <Bouton
+            variante="danger"
+            icone="delete"
+            onClick={() => setAConfirmer('supprimer')}
+            titre="Mettre à la corbeille — récupérable 30 jours"
+          >
+            Supprimer
+          </Bouton>
+        </div>
       </div>
 
       {aConfirmer && (
         <Confirmation
           titre={
             aConfirmer === 'supprimer'
-              ? 'Mettre cette newsletter à la corbeille ?'
-              : 'Archiver cette newsletter ?'
+              ? nombre > 1
+                ? `Mettre les ${nombre} numéros à la corbeille ?`
+                : 'Mettre cette newsletter à la corbeille ?'
+              : nombre > 1
+                ? `Archiver les ${nombre} numéros ?`
+                : 'Archiver cette newsletter ?'
           }
           sous={
             aConfirmer === 'supprimer'
-              ? `De ${message.nom} — « ${message.sujet || 'sans objet'} ». Gmail la garde trente jours, puis l'efface.`
-              : `De ${message.nom} — « ${message.sujet || 'sans objet'} ». Elle quitte la boîte de réception ; rien n'est supprimé.`
+              ? `De ${groupe.nom}. Gmail les garde trente jours, puis les efface.`
+              : `De ${groupe.nom}. Ils quittent la boîte de réception ; rien n'est supprimé.`
           }
           libelle={aConfirmer === 'supprimer' ? 'Supprimer' : 'Archiver'}
           variante={aConfirmer === 'supprimer' ? 'danger' : 'principal'}
@@ -330,33 +451,11 @@ function Carte({
           onConfirmer={() => {
             const geste = aConfirmer
             setAConfirmer(null)
-            if (geste === 'supprimer') onSupprimer()
-            else onArchiver()
+            agirSurToute(geste)
           }}
           onAnnuler={() => setAConfirmer(null)}
         />
       )}
-    </div>
-  )
-}
-
-/**
- * Bloc « à venir ».
- *
- * Il dit franchement qu'une fonctionnalité manque, à l'endroit exact où elle
- * apparaîtra. Un espace vide se lit comme une panne ; un faux résumé serait
- * pire encore.
- */
-function AVenir({ texte, centre = false }: { texte: string; centre?: boolean }) {
-  return (
-    <div
-      className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[0.75rem] ${
-        centre ? 'mx-4 my-3.5' : ''
-      }`}
-      style={{ background: 'var(--sunk)', color: 'var(--sub)' }}
-    >
-      <Icone nom="hourglass_empty" taille="0.875rem" />
-      <span>{texte}</span>
     </div>
   )
 }
@@ -419,6 +518,15 @@ function LecteurEnGrand({
         style={charge?.html ? { background: '#FFFFFF' } : undefined}
       >
         <CorpsIsole corps={charge} extrait={message.extrait} />
+        {/* Les fichiers joints appartiennent à la lettre, et manquaient ici :
+            la fenêtre montrait le texte du message mais taisait le planning
+            attaché, si bien que « Voir le mail » n'en montrait pas la
+            moitié. Ils tiennent sur la même feuille blanche qu'ailleurs. */}
+        <PiecesJointes
+          message={message.id}
+          pieces={charge?.pieces ?? []}
+          surPapier={Boolean(charge?.html)}
+        />
       </div>
     </Modale>
   )

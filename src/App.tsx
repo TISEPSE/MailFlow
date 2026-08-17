@@ -1003,6 +1003,8 @@ export default function App() {
             <Newsletters
               messages={parCategorie.newsletter}
               chargement={premierReleve}
+              vise={messageVise}
+              onVise={() => setMessageVise(null)}
               logos={logos}
               vide={VIDES.newsletter}
               onOuvrir={(id) => void marquerLu(id)}
