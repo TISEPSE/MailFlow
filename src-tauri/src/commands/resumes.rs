@@ -27,10 +27,10 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
-use crate::error::Resultat;
+use crate::error::{AppError, Resultat};
 use crate::gmail::corps;
 use crate::llm::gemini::Gemini;
 use crate::llm::{LlmProvider, Resume};
@@ -102,13 +102,28 @@ pub async fn llm_cle_effacer() -> Resultat<()> {
 ///
 /// Lus sur le disque, sans aucun appel : c'est ce qui s'affiche à l'ouverture
 /// de la page, avant même que la phase ait commencé.
+///
+/// # La publication d'abord, le numéro ensuite
+///
+/// Ce que rend cette commande alimente les **cartes**, et une carte parle d'une
+/// publication entière : c'est donc le résumé de publication qui prime, rangé
+/// sous l'identifiant du numéro le plus récent — celui-là même que la carte
+/// affiche.
+///
+/// Le résumé d'un numéro isolé sert de repli. Il n'existe que si l'utilisateur
+/// l'a demandé explicitement, et il se lit là où il a été demandé : dans la
+/// fenêtre de lecture de ce numéro.
 #[tauri::command]
 pub async fn resumes_connus(app: AppHandle, ids: Vec<String>) -> Resultat<HashMap<String, Resume>> {
     let dossier = corps::dossier_cache_dans(&app);
 
     Ok(ids
         .into_iter()
-        .filter_map(|id| corps::lire_resume(&dossier, &id).map(|r| (id, r)))
+        .filter_map(|id| {
+            corps::lire_resume_de(&dossier, &id, corps::Portee::Publication)
+                .or_else(|| corps::lire_resume(&dossier, &id))
+                .map(|r| (id, r))
+        })
         .collect())
 }
 
@@ -123,22 +138,71 @@ pub async fn resumes_arreter(etat: State<'_, EtatResumes>) -> Resultat<()> {
     Ok(())
 }
 
-/// Produit les résumés manquants, un par un, en signalant l'avancement.
+/// Une publication et ses numéros, du plus récent au plus ancien.
 ///
-/// Rend le nombre de résumés désormais disponibles — ceux d'avant compris,
-/// pour que la barre parte d'où il faut plutôt que de zéro.
+/// Le regroupement par émetteur est fait par l'interface (`lib/newsletters.ts`),
+/// où il est déjà éprouvé. Le refaire ici donnerait deux règles de regroupement
+/// qui divergeraient au premier cas tordu — et c'est l'interface qui perdrait,
+/// puisque c'est elle qui dessine les cartes.
+#[derive(Debug, Deserialize)]
+pub struct GroupeAResumer {
+    /// Identité de l'émetteur. Sert au journal, jamais de clé de rangement.
+    pub cle: String,
+    pub ids: Vec<String>,
+}
+
+/// Ce qu'un passage de résumés a réellement produit.
 ///
-/// Sans clé configurée, la commande ne fait rien et le dit par un zéro : ce
-/// n'est pas une panne, c'est le cas de tout utilisateur qui n'a pas voulu de
-/// l'IA. Aucune erreur ne remonte, aucune notification ne s'affiche.
+/// Un simple nombre ne suffisait pas : l'interface le comparait à celui d'avant
+/// pour deviner ce qui s'était passé, et concluait « aucun résumé n'a pu être
+/// produit » devant vingt-huit résumés en place et deux publications muettes.
+/// Un compte rendu qui distingue « rien à envoyer » d'un refus du moteur permet
+/// de ne montrer du rouge que lorsqu'il y a une panne.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RapportResumes {
+    /// Résumés en main à la fin, ceux d'avant compris.
+    pub disponibles: usize,
+    pub total: usize,
+    /// Produits pendant ce passage.
+    pub produits: usize,
+    /// Publications dont aucun numéro n'avait de texte à envoyer.
+    pub sans_texte: usize,
+    /// Publications que le moteur a réellement refusées.
+    pub echecs: usize,
+}
+
+/// Produit les résumés manquants, **une publication à la fois**.
+///
+/// # Un appel par publication, pas par numéro
+///
+/// C'est le point qui décide du coût. Trente newsletters faisaient trente
+/// appels, et le palier gratuit s'épuisait avant la fin de la page — le journal
+/// finissait en « quota atteint, reprise dans 59 s ». Or la question qu'on se
+/// pose devant cette page n'est pas « que dit ce numéro » mais « est-ce que je
+/// lis cette publication » : une réponse par émetteur suffit, et elle coûte
+/// huit appels au lieu de trente.
+///
+/// Le volume ne compense pas le gain : l'assemblage d'une publication tient
+/// dans le même plafond de caractères qu'un message seul. Voir
+/// [`crate::llm::gemini::assembler`].
+///
+/// Sans clé configurée, la commande ne fait rien et le dit par un rapport vide :
+/// ce n'est pas une panne, c'est le cas de tout utilisateur qui n'a pas voulu
+/// de l'IA. Aucune erreur ne remonte, aucune notification ne s'affiche.
 #[tauri::command]
 pub async fn resumes_produire(
     app: AppHandle,
     etat: State<'_, EtatResumes>,
-    ids: Vec<String>,
-) -> Resultat<usize> {
+    groupes: Vec<GroupeAResumer>,
+) -> Resultat<RapportResumes> {
+    let total = groupes.len();
+
     let Some(cle) = cle_enregistree() else {
-        return Ok(0);
+        return Ok(RapportResumes {
+            total,
+            ..Default::default()
+        });
     };
 
     // Une nouvelle production efface l'ordre d'arrêt de la précédente.
@@ -146,56 +210,137 @@ pub async fn resumes_produire(
 
     let dossier = corps::dossier_cache_dans(&app);
     let adresse_utilisateur = super::compte_actif(&app);
-    let total = ids.len();
 
     // Ce qui manque, et lui seul : relancer l'application ne refait rien.
-    let (a_faire, deja): (Vec<String>, Vec<String>) = ids
+    let (a_faire, deja): (Vec<GroupeAResumer>, Vec<GroupeAResumer>) = groupes
         .into_iter()
-        .partition(|id| corps::lire_resume(&dossier, id).is_none());
+        .filter(|g| !g.ids.is_empty())
+        .partition(|g| resume_du_groupe(&dossier, g).is_none());
 
-    let mut faits = deja.len();
-    let _ = app.emit(EVENEMENT_RESUMES, Avancement { faits, total });
+    let mut rapport = RapportResumes {
+        disponibles: deja.len(),
+        total,
+        ..Default::default()
+    };
+
+    let _ = app.emit(
+        EVENEMENT_RESUMES,
+        Avancement {
+            faits: rapport.disponibles,
+            total,
+        },
+    );
 
     if a_faire.is_empty() {
-        return Ok(faits);
+        return Ok(rapport);
     }
 
     let fournisseur = Gemini::nouveau(cle)?;
 
-    for id in a_faire {
-        // Lu entre deux messages : c'est le seul endroit où l'arrêt peut être
-        // à la fois honoré vite et sans rien gaspiller.
+    for groupe in a_faire {
+        // Lu entre deux publications : c'est le seul endroit où l'arrêt peut
+        // être à la fois honoré vite et sans rien gaspiller.
         if etat.arret.load(Ordering::Relaxed) {
-            log::info!("résumés arrêtés à la demande, {faits} sur {total}");
+            log::info!(
+                "résumés arrêtés à la demande, {} sur {total}",
+                rapport.disponibles
+            );
             break;
         }
 
-        let Some(corps_message) = corps::lire(&dossier, &id) else {
-            // Le corps n'a pas été préchargé : le message sera résumé au
-            // prochain relevé, quand il le sera.
-            continue;
-        };
-
-        let texte = corps::texte_lisible(&corps_message);
+        // Les corps déjà préchargés, dans l'ordre reçu — du plus récent au plus
+        // ancien. Un numéro sans corps est sauté sans faire échouer les autres.
+        let numeros: Vec<String> = groupe
+            .ids
+            .iter()
+            .filter_map(|id| corps::lire(&dossier, id))
+            .map(|c| corps::texte_lisible(&c))
+            .collect();
 
         match fournisseur
-            .resumer_newsletter(&texte, &adresse_utilisateur)
+            .resumer_groupe(&numeros, &adresse_utilisateur)
             .await
         {
             Ok(resume) => {
-                corps::ranger_resume(&dossier, &id, &resume);
-                faits += 1;
+                if let Some(recent) = groupe.ids.first() {
+                    corps::ranger_resume_de(&dossier, recent, corps::Portee::Publication, &resume);
+                }
+                rapport.produits += 1;
+                rapport.disponibles += 1;
             }
+
+            // Aucun numéro n'avait de texte : ce n'est pas une panne, et cela
+            // ne doit pas s'afficher en rouge. La carte garde sa ligne composée
+            // localement, qui dit déjà l'essentiel.
+            Err(AppError::Resume(motif)) if motif == crate::llm::gemini::MOTIF_SANS_TEXTE => {
+                rapport.sans_texte += 1;
+                log::info!("publication sans texte à résumer : {}", groupe.cle);
+            }
+
             Err(e) => {
-                // Un résumé manquant n'est pas une panne : la carte garde sa
-                // ligne composée localement. On note et on passe au suivant.
+                rapport.echecs += 1;
                 log::info!("résumé non produit : {e}");
             }
         }
 
-        let _ = app.emit(EVENEMENT_RESUMES, Avancement { faits, total });
+        let _ = app.emit(
+            EVENEMENT_RESUMES,
+            Avancement {
+                faits: rapport.disponibles,
+                total,
+            },
+        );
     }
 
-    log::info!("{faits} résumé(s) disponibles sur {total} newsletter(s)");
-    Ok(faits)
+    log::info!(
+        "{} résumé(s) disponibles sur {total} publication(s) — {} produit(s), {} sans texte, {} échec(s)",
+        rapport.disponibles,
+        rapport.produits,
+        rapport.sans_texte,
+        rapport.echecs
+    );
+    Ok(rapport)
+}
+
+/// Le résumé d'une publication, s'il existe déjà.
+///
+/// Rangé sous l'identifiant du numéro le plus récent : c'est ce qui lui donne
+/// sa date de péremption sans qu'on ait à en inventer une. Un numéro plus
+/// récent arrive, la clé change, le résumé est refait — et il le doit, puisque
+/// désormais il devrait couvrir ce numéro-là aussi.
+fn resume_du_groupe(dossier: &std::path::Path, groupe: &GroupeAResumer) -> Option<Resume> {
+    let recent = groupe.ids.first()?;
+    corps::lire_resume_de(dossier, recent, corps::Portee::Publication)
+}
+
+/// Résume **un numéro précis**, à la demande de l'utilisateur.
+///
+/// L'exception au résumé par publication : quand un titre intrigue, on paie un
+/// appel pour celui-là seul. C'est un geste explicite, donc son échec se dit —
+/// contrairement à la production de masse, qui se tait et laisse les cartes
+/// avec leur ligne composée localement.
+#[tauri::command]
+pub async fn resume_du_message(app: AppHandle, id: String) -> Resultat<Resume> {
+    let dossier = corps::dossier_cache_dans(&app);
+
+    // Déjà payé une fois : rouvrir le même numéro ne le repaie pas.
+    if let Some(deja) = corps::lire_resume(&dossier, &id) {
+        return Ok(deja);
+    }
+
+    let cle = cle_enregistree()
+        .ok_or_else(|| AppError::Resume("aucune clé de résumé configurée".into()))?;
+
+    let corps_message = corps::lire(&dossier, &id)
+        .ok_or_else(|| AppError::Resume("le message n'est pas encore chargé".into()))?;
+
+    let resume = Gemini::nouveau(cle)?
+        .resumer_newsletter(
+            &corps::texte_lisible(&corps_message),
+            &super::compte_actif(&app),
+        )
+        .await?;
+
+    corps::ranger_resume(&dossier, &id, &resume);
+    Ok(resume)
 }

@@ -502,23 +502,60 @@ pub fn chemin_resume(dossier: &Path, id: &str) -> PathBuf {
     dossier.join(format!("{}.resume", assaini(id)))
 }
 
+/// De quoi le résumé parle : d'un numéro, ou de la publication entière.
+///
+/// Les deux se rangent sous le **même identifiant** — celui du numéro le plus
+/// récent — et ne se distinguent que par leur extension. Sans cette
+/// distinction, résumer une publication écraserait le résumé de son dernier
+/// numéro, et le lecteur qui a payé un appel pour ce numéro précis le
+/// retrouverait remplacé par une phrase qui parle d'autre chose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Portee {
+    Numero,
+    Publication,
+}
+
+impl Portee {
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Numero => "resume",
+            Self::Publication => "resume-groupe",
+        }
+    }
+}
+
+/// Chemin d'un résumé, selon ce dont il parle.
+pub fn chemin_resume_de(dossier: &Path, id: &str, portee: Portee) -> PathBuf {
+    dossier.join(format!("{}.{}", assaini(id), portee.extension()))
+}
+
 /// Lit un résumé déjà produit, ou `None`.
 ///
 /// Un résumé illisible vaut un résumé absent : il sera simplement refait. On
 /// ne remonte pas d'erreur pour ça — la page a sa ligne composée localement.
 pub fn lire_resume(dossier: &Path, id: &str) -> Option<crate::llm::Resume> {
-    let texte = std::fs::read_to_string(chemin_resume(dossier, id)).ok()?;
+    lire_resume_de(dossier, id, Portee::Numero)
+}
+
+/// Même lecture, pour une portée choisie.
+pub fn lire_resume_de(dossier: &Path, id: &str, portee: Portee) -> Option<crate::llm::Resume> {
+    let texte = std::fs::read_to_string(chemin_resume_de(dossier, id, portee)).ok()?;
     serde_json::from_str(&texte).ok()
 }
 
 /// Range un résumé. Un échec d'écriture ne fait rien échouer : le résumé sera
 /// refait au prochain relevé, ce qui coûte un appel et rien d'autre.
 pub fn ranger_resume(dossier: &Path, id: &str, resume: &crate::llm::Resume) {
+    ranger_resume_de(dossier, id, Portee::Numero, resume);
+}
+
+/// Même rangement, pour une portée choisie.
+pub fn ranger_resume_de(dossier: &Path, id: &str, portee: Portee, resume: &crate::llm::Resume) {
     let _ = std::fs::create_dir_all(dossier);
     let Ok(json) = serde_json::to_string(resume) else {
         return;
     };
-    if let Err(e) = crate::cache::ecrire_prive(&chemin_resume(dossier, id), &json) {
+    if let Err(e) = crate::cache::ecrire_prive(&chemin_resume_de(dossier, id, portee), &json) {
         log::info!("résumé non mis en cache : {e}");
     }
 }
@@ -580,7 +617,13 @@ pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<S
             Some("json") => !gardes.contains(&chemin),
             // Un résumé n'a pas de sens sans le message qu'il résume, et il a
             // coûté un appel à un service tiers : il part avec lui.
-            Some("resume") => !chemin
+            //
+            // Le résumé d'une publication entière suit la même règle, parce
+            // qu'il est rangé sous l'identifiant de son numéro le plus récent.
+            // C'est ce qui lui donne sa date de péremption sans qu'on ait à en
+            // inventer une : un numéro plus récent arrive, la clé change, et le
+            // résumé d'hier s'en va avec le message qui le portait.
+            Some("resume") | Some("resume-groupe") => !chemin
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| prefixes_vivants.contains(n)),

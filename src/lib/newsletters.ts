@@ -18,7 +18,7 @@
  * parle au réseau, et c'est lui qui décide ce qui a le droit d'en sortir.
  */
 
-import type { MessageAffiche } from '../types/backend'
+import type { MessageAffiche, RapportResumes } from '../types/backend'
 
 /**
  * Fournisseurs de courrier grand public.
@@ -223,4 +223,48 @@ export function ligneLocale(message: MessageAffiche): string {
 export function decompteDuGroupe(groupe: GroupeNewsletters): string {
   const n = groupe.messages.length
   return n > 1 ? `${n} numéros` : ''
+}
+
+/**
+ * Ce que le bouton « Analyser » annonce, et s'il faut le dire en rouge.
+ *
+ * # Pourquoi cette fonction existe
+ *
+ * Le message était déduit d'une soustraction : « combien de résumés en plus
+ * qu'avant ». Vingt-huit publications déjà résumées et deux muettes donnaient
+ * zéro de plus — et l'application annonçait « aucun résumé n'a pu être
+ * produit » devant vingt-huit résumés en place. Le calcul ne pouvait pas
+ * distinguer « rien à faire » de « rien n'a marché ».
+ *
+ * Rust rend désormais le détail ; il n'y a plus rien à deviner, seulement à
+ * dire. Et une seule chose mérite du rouge : un refus du moteur. Une
+ * publication sans texte à envoyer n'est pas une panne.
+ */
+export function phraseDuRapport(r: RapportResumes): [texte: string, erreur: boolean] {
+  if (r.total === 0) return ['Aucune publication à analyser.', false]
+
+  const accord = (n: number, singulier: string, pluriel: string) =>
+    `${n} ${n > 1 ? pluriel : singulier}`
+
+  const morceaux: string[] = []
+  if (r.produits > 0) {
+    morceaux.push(accord(r.produits, 'publication résumée', 'publications résumées'))
+  }
+  if (r.sansTexte > 0) morceaux.push(`${r.sansTexte} sans texte à résumer`)
+  if (r.echecs > 0) morceaux.push(accord(r.echecs, 'échec', 'échecs'))
+
+  // Rien ne s'est passé, et c'est le cas ordinaire d'un second clic : tout
+  // était déjà fait. Le dire posément vaut mieux que de se taire — un bouton
+  // sans retour donne à croire qu'il est cassé.
+  if (morceaux.length === 0) {
+    return [
+      r.disponibles >= r.total
+        ? `${accord(r.total, 'publication est déjà résumée', 'publications sont déjà résumées')}.`
+        : 'Rien de neuf à résumer.',
+      false,
+    ]
+  }
+
+  const fin = r.echecs > 0 ? ' — le journal en dit la raison.' : '.'
+  return [morceaux.join(', ') + fin, r.echecs > 0]
 }

@@ -134,6 +134,7 @@ pub fn run() {
             commands::resumes::resumes_connus,
             commands::resumes::resumes_produire,
             commands::resumes::resumes_arreter,
+            commands::resumes::resume_du_message,
             commands::maj_verifier,
             commands::maj_ouvrir,
         ])

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import type { RapportResumes } from '../types/backend'
 import {
   decompteDuGroupe,
   grouperNewsletters,
   identiteExpediteur,
   ligneLocale,
   resserrerSujet,
+  phraseDuRapport,
 } from './newsletters'
 import type { GroupeNewsletters } from './newsletters'
 import type { MessageAffiche } from '../types/backend'
@@ -204,5 +206,61 @@ describe('ligneLocale et decompteDuGroupe', () => {
       message('a@x.fr', 'y', '2026-08-13T08:00:00Z'),
     ])
     expect(decompteDuGroupe(plusieurs)).toBe('2 numéros')
+  })
+})
+
+describe("ce que le bouton « Analyser » annonce", () => {
+  const rapport = (partiel: Partial<RapportResumes>): RapportResumes => ({
+    disponibles: 0,
+    total: 0,
+    produits: 0,
+    sansTexte: 0,
+    echecs: 0,
+    ...partiel,
+  })
+
+  it("ne crie pas au secours quand tout était déjà fait", () => {
+    // Le défaut rapporté : vingt-huit publications résumées, deux muettes,
+    // et l'application annonçait « aucun résumé n'a pu être produit » en
+    // rouge. Rien n'avait échoué.
+    const [texte, erreur] = phraseDuRapport(
+      rapport({ disponibles: 8, total: 8, produits: 0 }),
+    )
+
+    expect(erreur).toBe(false)
+    expect(texte).toContain('déjà résumées')
+  })
+
+  it("compte une publication muette sans en faire une panne", () => {
+    const [texte, erreur] = phraseDuRapport(
+      rapport({ disponibles: 6, total: 8, produits: 6, sansTexte: 2 }),
+    )
+
+    expect(erreur).toBe(false)
+    expect(texte).toContain('6 publications résumées')
+    expect(texte).toContain('2 sans texte à résumer')
+  })
+
+  it("ne montre du rouge que pour un vrai refus du moteur", () => {
+    const [texte, erreur] = phraseDuRapport(rapport({ total: 8, echecs: 2 }))
+
+    expect(erreur).toBe(true)
+    expect(texte).toContain('2 échecs')
+    expect(texte).toContain('le journal')
+  })
+
+  it("accorde le singulier, qui se lit vite", () => {
+    const [texte] = phraseDuRapport(rapport({ total: 1, produits: 1 }))
+    expect(texte).toBe('1 publication résumée.')
+  })
+
+  it("dit toujours quelque chose, même sans rien à faire", () => {
+    // Un bouton sur lequel on vient de cliquer et qui ne répond rien donne à
+    // croire qu'il est cassé — on le reclique, et on paie deux fois.
+    for (const r of [rapport({}), rapport({ total: 3, disponibles: 1 })]) {
+      const [texte, erreur] = phraseDuRapport(r)
+      expect(texte.length).toBeGreaterThan(0)
+      expect(erreur).toBe(false)
+    }
   })
 })

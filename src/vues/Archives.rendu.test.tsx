@@ -49,6 +49,7 @@ function rendre(
   archives: MessageAffiche[],
   libelles: LibelleGmail[] = [],
   tableau: Tableau = vide,
+  melange = false,
 ) {
   return renderToString(
     <Archives
@@ -57,6 +58,7 @@ function rendre(
       tableau={tableau}
       onTableau={() => undefined}
       sombre={false}
+      melange={melange}
       corpsConnus={new Map()}
       onCorpsCharge={() => undefined}
       gestes={gestes}
@@ -99,6 +101,15 @@ describe('la table se rend sans lever', () => {
     }
 
     expect(() => rendre([message('m1')], [], ancienne)).not.toThrow()
+  })
+
+  it("invite à choisir un compte sous la vue mélangée", () => {
+    // La table est cloisonnée par compte jusque dans son fichier de
+    // disposition : mélangée, la moitié de ses gestes échouerait en silence.
+    const html = rendre([message('m1')], [], vide, true)
+
+    expect(html).toContain('Choisissez un compte')
+    expect(html).not.toContain('Sujet m1')
   })
 
   it('offre de supprimer chaque tuile', () => {

@@ -40,7 +40,7 @@ import {
   resserrerSujet,
   type GroupeNewsletters,
 } from '../lib/newsletters'
-import type { Avancement } from '../lib/tauri'
+import { messageDErreur, resumeDuMessage, type Avancement } from '../lib/tauri'
 import type { CorpsMessage, MessageAffiche, Resume } from '../types/backend'
 import { LecteurEnGrand } from '../composants/LecteurEnGrand'
 
@@ -148,9 +148,70 @@ export function Newsletters({
           corps={corpsConnus.get(ouvert.id) ?? null}
           onCorpsCharge={onCorpsCharge}
           onFermer={() => setOuvert(null)}
+          actions={<ResumerCeNumero id={ouvert.id} />}
         />
       )}
     </div>
+  )
+}
+
+/**
+ * Le résumé d'un numéro précis, payé à la demande.
+ *
+ * # L'exception, et pourquoi elle est un bouton
+ *
+ * Les cartes portent un résumé de **publication** : un appel par émetteur au
+ * lieu d'un par numéro, ce qui divise la dépense par quatre. Ce résumé-là
+ * répond à « est-ce que je lis cette publication », et c'est la bonne question
+ * neuf fois sur dix.
+ *
+ * Reste la dixième : un titre intrigue, on veut savoir ce que dit **ce**
+ * numéro. Le faire pour tous par précaution reviendrait à repayer ce qu'on
+ * vient d'économiser ; le proposer ici le fait payer à qui le demande, une
+ * fois, et le résumé est ensuite gardé sur le disque.
+ *
+ * Son échec se dit, contrairement à la production de masse qui se tait : c'est
+ * un geste explicite, et un geste explicite sans retour passe pour une panne.
+ */
+function ResumerCeNumero({ id }: { id: string }) {
+  const [etat, setEtat] = useState<'repos' | 'en-cours'>('repos')
+  const [resume, setResume] = useState<Resume | null>(null)
+  const [echec, setEchec] = useState<string | null>(null)
+
+  if (resume) {
+    return (
+      <p
+        className="selectionnable min-w-0 flex-1 text-left text-[0.8125rem] leading-relaxed"
+        style={{ color: 'var(--fg)' }}
+      >
+        {resume.texte}
+      </p>
+    )
+  }
+
+  return (
+    <>
+      {echec && (
+        <span className="min-w-0 flex-1 text-left text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+          {echec}
+        </span>
+      )}
+      <Bouton
+        icone="auto_awesome"
+        enAttente={etat === 'en-cours'}
+        disabled={etat === 'en-cours'}
+        onClick={() => {
+          setEtat('en-cours')
+          setEchec(null)
+          resumeDuMessage(id)
+            .then(setResume)
+            .catch((e) => setEchec(messageDErreur(e)))
+            .finally(() => setEtat('repos'))
+        }}
+      >
+        Résumer ce numéro
+      </Bouton>
+    </>
   )
 }
 

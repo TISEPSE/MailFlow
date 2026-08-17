@@ -49,6 +49,29 @@ pub trait LlmProvider {
         adresse_utilisateur: &str,
     ) -> Resultat<Resume>;
 
+    /// Résume **une publication entière** — tous les numéros reçus d'un même
+    /// émetteur — en un seul appel.
+    ///
+    /// # Pourquoi c'est la voie normale, et le résumé isolé l'exception
+    ///
+    /// Un appel par numéro épuisait le palier gratuit avant la fin de la page :
+    /// trente newsletters, trente appels, et le journal finissait en
+    /// « quota atteint, reprise dans 59 s ». Or la question que l'on se pose
+    /// devant une page de newsletters n'est pas « que dit ce numéro » mais
+    /// « est-ce que je lis cette publication ». Une réponse par publication
+    /// suffit donc, et elle coûte huit appels au lieu de trente.
+    ///
+    /// Le résumé d'un numéro précis reste disponible — [`Self::resumer_newsletter`]
+    /// — mais à la demande, quand un titre intrigue.
+    ///
+    /// `numeros` est ordonné du plus récent au plus ancien : l'implémentation
+    /// garde les premiers si elle doit choisir.
+    async fn resumer_groupe(
+        &self,
+        numeros: &[String],
+        adresse_utilisateur: &str,
+    ) -> Resultat<Resume>;
+
     /// Synthese en trois points de l'ensemble des newsletters du jour.
     async fn synthese_du_jour(&self, contenus: &[String]) -> Resultat<Resume>;
 }

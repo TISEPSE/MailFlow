@@ -19,6 +19,7 @@ import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
 import { useLogos, usePreferences, useToasts } from './lib/crochets'
 import { autresQueMoi } from './lib/reponse'
+import { grouperNewsletters, phraseDuRapport } from './lib/newsletters'
 import {
   MINUTES,
   lirePreferences,
@@ -79,6 +80,7 @@ import type {
   ProfilCompte,
   Regle,
   ReglesDuCompte,
+  RapportResumes,
   Resume,
   Tableau,
 } from './types/backend'
@@ -356,6 +358,28 @@ export default function App() {
     [annoncer],
   )
 
+  /**
+   * Les archives du compte qu'on regarde, et d'aucun autre.
+   *
+   * Une ceinture par-dessus les bretelles : `basculerVers` vide déjà l'état au
+   * changement de compte, mais cette liste-là avait justement été oubliée
+   * pendant des semaines, et rien ne l'avait signalé. Un filtre au moment de
+   * l'affichage rend l'oubli sans conséquence — chaque message porte le compte
+   * qui l'a reçu, il suffit de le lire.
+   *
+   * Sous « Tous les comptes », rien ne passe : la table est cloisonnée par
+   * compte jusque dans son fichier de disposition, et les libellés de l'un
+   * n'existent pas chez l'autre. Une table mélangée serait une table dont la
+   * moitié des gestes échoue.
+   */
+  const archivesDuCompte = useMemo(
+    () =>
+      compteAffiche === TOUS_LES_COMPTES
+        ? []
+        : archives.filter((m) => m.compte === compteAffiche),
+    [archives, compteAffiche],
+  )
+
   /** Écrit la disposition, et la garde à l'écran sans attendre le disque.
    *
    *  L'écriture est volontairement non attendue : faire patienter la tuile
@@ -381,23 +405,41 @@ export default function App() {
    * une panne, et rien ne doit s'afficher. Les résumés déjà sur le disque sont
    * lus d'abord, pour que la page les montre avant même que la phase commence.
    */
-  const resumerLesNewsletters = useCallback(async (messages: MessageAffiche[]) => {
-    const ids = messages.filter((m) => m.categorie === 'newsletter').map((m) => m.id)
-    if (!ids.length) return
+  const resumerLesNewsletters = useCallback(
+    async (messages: MessageAffiche[]): Promise<RapportResumes | null> => {
+      const newsletters = messages.filter((m) => m.categorie === 'newsletter')
+      if (!newsletters.length) return null
 
-    setResumes(await resumesConnus(ids).catch(() => ({})))
+      // Le regroupement par émetteur est celui de la page — la même fonction
+      // que celle qui dessine les cartes. Un appel par publication au lieu d'un
+      // par numéro : trente newsletters coûtaient trente appels, et le palier
+      // gratuit s'épuisait avant la fin de la page.
+      const groupes = grouperNewsletters(newsletters).map((g) => ({
+        cle: g.cle,
+        // `grouperNewsletters` trie du plus récent au plus ancien, et Rust
+        // range le résumé sous le premier : c'est ce qui le périme tout seul
+        // quand un numéro plus récent arrive.
+        ids: g.messages.map((m) => m.id),
+      }))
 
-    try {
-      await resumesProduire(ids)
+      const ids = newsletters.map((m) => m.id)
       setResumes(await resumesConnus(ids).catch(() => ({})))
-    } catch (e) {
-      // Un moteur de résumés indisponible ne mérite pas de notification :
-      // chaque carte garde sa ligne composée localement.
-      console.warn('résumés non produits', messageDErreur(e))
-    } finally {
-      setAvancementResumes(null)
-    }
-  }, [])
+
+      try {
+        const rapport = await resumesProduire(groupes)
+        setResumes(await resumesConnus(ids).catch(() => ({})))
+        return rapport
+      } catch (e) {
+        // Un moteur de résumés indisponible ne mérite pas de notification :
+        // chaque carte garde sa ligne composée localement.
+        console.warn('résumés non produits', messageDErreur(e))
+        return null
+      } finally {
+        setAvancementResumes(null)
+      }
+    },
+    [],
+  )
 
   /**
    * L'analyse relancée à la main, depuis la page Newsletters.
@@ -435,23 +477,16 @@ export default function App() {
     }
 
     const ids = messages.map((m) => m.id)
-    const avant = Object.keys(await resumesConnus(ids).catch(() => ({}))).length
-
-    setAvancementResumes({ faits: avant, total: ids.length })
+    setAvancementResumes({ faits: 0, total: ids.length })
     await corpsPrecharger(ids).catch(() => null)
-    await resumerLesNewsletters(messages)
 
-    const apres = Object.keys(await resumesConnus(ids).catch(() => ({}))).length
-    const produits = apres - avant
+    const rapport = await resumerLesNewsletters(messages)
+    if (!rapport) {
+      annoncer("L'analyse n'a pas pu démarrer — le journal en dit la raison.", true)
+      return
+    }
 
-    annoncer(
-      produits > 0
-        ? `${produits} résumé${produits > 1 ? 's' : ''} produit${produits > 1 ? 's' : ''}.`
-        : avant === ids.length
-          ? 'Toutes les newsletters sont déjà résumées.'
-          : "Aucun résumé n'a pu être produit — le journal en dit la raison.",
-      produits === 0 && avant < ids.length,
-    )
+    annoncer(...phraseDuRapport(rapport))
   }, [boite, annoncer, resumerLesNewsletters])
 
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
@@ -707,9 +742,18 @@ export default function App() {
         setAvancement({ faits: 0, total: 0, etape: 'releve' })
         setCompteAffiche(adresse)
         await compteBasculer(adresse)
-        // La boîte affichée est celle du compte précédent : la vider avant le
-        // relevé évite de montrer les messages de l'un sous l'adresse de l'autre.
+        // Tout ce qui appartient au compte précédent est lâché ici, et la
+        // liste doit rester complète : montrer les messages de l'un sous
+        // l'adresse de l'autre n'est pas un défaut d'affichage, c'est une
+        // confusion de boîtes. Les archives et la disposition de leur table en
+        // font partie — les avoir oubliées faisait apparaître, sur un compte
+        // qui n'a jamais rien archivé, les quinze archives du compte d'à côté.
+        // Et glisser l'une de ces tuiles envoyait à Gmail l'identifiant d'un
+        // message que le compte connecté ne possède pas.
         setBoite([])
+        setArchives([])
+        setTableau({ tas: {}, messages: {} })
+        setResumes({})
         setPremierReleve(true)
         setCorpsConnus(creerCache())
         setProfil(await compteProfil().catch(() => null))
@@ -723,6 +767,9 @@ export default function App() {
     agir(async () => {
       await googleDeconnecter()
       setBoite([])
+      setArchives([])
+      setTableau({ tas: {}, messages: {} })
+      setResumes({})
       setCorpsConnus(creerCache())
       setProfil(null)
       setLibelles([])
@@ -1248,11 +1295,12 @@ export default function App() {
             />
           ) : vue === 'archives' ? (
             <Archives
-              archives={archives}
+              archives={archivesDuCompte}
               libelles={libelles}
               tableau={tableau}
               onTableau={poserSurLaTable}
               sombre={sombre}
+              melange={compteAffiche === TOUS_LES_COMPTES}
               corpsConnus={corpsConnus}
               onCorpsCharge={(id, corps) =>
                 setCorpsConnus((connus) => ranger(connus, id, corps))

@@ -17,6 +17,7 @@ import type {
   LibelleGmail,
   ProfilCompte,
   RapportExecution,
+  RapportResumes,
   Regle,
   ReglesDuCompte,
   Resume,
@@ -438,14 +439,35 @@ export function resumesConnus(ids: string[]): Promise<Record<string, Resume>> {
   return invoke<Record<string, Resume>>('resumes_connus', { ids })
 }
 
+/** Une publication et ses numeros, du plus recent au plus ancien. */
+export interface GroupeAResumer {
+  cle: string
+  ids: string[]
+}
+
 /**
- * Troisieme phase : produit les resumes manquants.
+ * Troisieme phase : produit les resumes manquants, **une publication a la fois**.
  *
- * Ne fait rien et rend zero sans cle configuree — ce n'est pas une panne,
- * c'est le cas de tout utilisateur qui n'a pas voulu de l'IA.
+ * Un appel par emetteur et non par numero : trente newsletters faisaient trente
+ * appels, et le palier gratuit s'epuisait avant la fin de la page. La question
+ * que l'on se pose devant cette page n'est pas « que dit ce numero » mais
+ * « est-ce que je lis cette publication ».
+ *
+ * Ne fait rien sans cle configuree — ce n'est pas une panne, c'est le cas de
+ * tout utilisateur qui n'a pas voulu de l'IA.
  */
-export function resumesProduire(ids: string[]): Promise<number> {
-  return invoke<number>('resumes_produire', { ids })
+export function resumesProduire(groupes: GroupeAResumer[]): Promise<RapportResumes> {
+  return invoke<RapportResumes>('resumes_produire', { groupes })
+}
+
+/**
+ * Resume **un numero precis**, a la demande.
+ *
+ * L'exception au resume par publication : quand un titre intrigue, on paie un
+ * appel pour celui-la seul. Deja produit, il est rendu sans rien repayer.
+ */
+export function resumeDuMessage(id: string): Promise<Resume> {
+  return invoke<Resume>('resume_du_message', { id })
 }
 
 /** Demande l'arret : lu entre deux messages, jamais en plein appel. */

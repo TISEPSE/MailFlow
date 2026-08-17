@@ -89,6 +89,7 @@ export function Archives({
   tableau,
   onTableau,
   sombre,
+  melange,
   corpsConnus,
   onCorpsCharge,
   gestes,
@@ -99,6 +100,8 @@ export function Archives({
   /** Appelée à chaque dépose : c'est elle qui écrit `tableau.json`. */
   onTableau: (tableau: Tableau) => void
   sombre: boolean
+  /** Vrai sous « Tous les comptes », où la table n'a pas de sens. */
+  melange: boolean
   corpsConnus: ReadonlyMap<string, CorpsMessage>
   onCorpsCharge: (id: string, corps: CorpsMessage) => void
   gestes: GestesDeLaTable
@@ -234,6 +237,20 @@ export function Archives({
   )
 
   const [accent] = ton('archive', sombre)
+
+  // La table est cloisonnée par compte jusque dans son fichier de disposition,
+  // et les libellés de l'un n'existent pas chez l'autre : une table mélangée
+  // serait une table dont la moitié des gestes échoue. Mieux vaut le dire que
+  // de laisser essayer.
+  if (melange) {
+    return (
+      <Vide
+        icone="archive"
+        titre="Choisissez un compte"
+        detail="Chaque compte a sa propre table : ses tas sont ses libellés Gmail, et la disposition des tuiles lui appartient. Sélectionnez un compte pour ouvrir la sienne."
+      />
+    )
+  }
 
   if (archives.length === 0) {
     return (
@@ -876,7 +893,7 @@ function NommerLeTas({
           }}
           placeholder="Factures, Voyages, Impôts…"
           aria-label="Nom du tas"
-          className="texte-optique-champ selectionnable w-full rounded-lg border bg-transparent px-3 text-[0.875rem] outline-none"
+          className="selectionnable w-full rounded-lg border bg-transparent px-3 text-[0.875rem] outline-none"
           style={{ borderColor: 'var(--line)', color: 'var(--fg)', height: '2.4rem' }}
         />
 
