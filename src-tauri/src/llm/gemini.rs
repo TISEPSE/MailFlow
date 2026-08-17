@@ -281,6 +281,34 @@ pub fn lire_reponse(json: &str) -> Resultat<Resume> {
     })
 }
 
+/// Ce que Google explique quand il refuse.
+///
+/// Le corps d'un refus a toujours la même forme :
+///
+/// ```json
+/// { "error": { "code": 400, "status": "INVALID_ARGUMENT",
+///              "message": "API key not valid. Please pass a valid API key." } }
+/// ```
+///
+/// Cette phrase est décisive — elle distingue une clé mal recopiée d'une API
+/// non activée sur le projet Google — et elle ne porte rien de l'utilisateur :
+/// c'est Google qui l'écrit, sur une requête que nous avons composée. Elle est
+/// donc lisible ici, et remontée **au seul moment où l'utilisateur pose sa
+/// clé** ; les résumés de tous les jours, eux, restent muets.
+pub fn motif_du_refus(corps: &str) -> Option<String> {
+    let json = serde_json::from_str::<Value>(corps).ok()?;
+    let erreur = json.get("error")?;
+
+    let message = erreur
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|m| !m.is_empty())?;
+
+    // Une phrase, pas un roman : certains refus joignent la requête entière.
+    Some(tronquer(message, 300))
+}
+
 /// Combien de secondes attendre après un refus pour quota, d'après le corps.
 ///
 /// Les chiffres du palier gratuit changent : ils ne sont **pas** codés en dur.
@@ -365,7 +393,11 @@ impl Gemini {
     /// Google indique lui-même. Les autres refus ne le sont pas : une clé
     /// invalide le restera, et réessayer ne ferait que retarder le message qui
     /// dit à l'utilisateur quoi corriger.
-    async fn appeler(&self, corps: &Value) -> Resultat<Resume> {
+    ///
+    /// Rend l'échec sous sa forme détaillée. C'est à l'appelant de décider ce
+    /// qu'il en montre : [`Self::resumer_newsletter`] n'en montre rien,
+    /// [`Self::verifier`] en montre tout. Voir [`EchecGemini`].
+    async fn appeler(&self, corps: &Value) -> Result<Resume, EchecGemini> {
         let url = adresse(&self.modele);
 
         for tentative in 0..=REPRISES {
@@ -375,13 +407,17 @@ impl Gemini {
                 .header("x-goog-api-key", &self.cle)
                 .json(corps)
                 .send()
-                .await?;
+                .await
+                .map_err(|e| EchecGemini::Reseau(AppError::from(e)))?;
 
             let statut = reponse.status().as_u16();
-            let texte = reponse.text().await?;
+            let texte = reponse
+                .text()
+                .await
+                .map_err(|e| EchecGemini::Reseau(AppError::from(e)))?;
 
             if statut == 200 {
-                return lire_reponse(&texte);
+                return lire_reponse(&texte).map_err(EchecGemini::Reponse);
             }
 
             if statut == 429 && tentative < REPRISES {
@@ -391,17 +427,20 @@ impl Gemini {
                 continue;
             }
 
-            // Le corps de l'erreur n'est pas remonté tel quel : il peut porter
-            // des fragments de la requête, donc du courrier de l'utilisateur.
-            log::warn!("Gemini a répondu {statut}");
-            return Err(AppError::Resume(match statut {
-                400 | 403 => "clé refusée".into(),
-                429 => "quota atteint".into(),
-                _ => format!("réponse inattendue ({statut})"),
-            }));
+            let motif = motif_du_refus(&texte);
+            // Le journal, lui, porte tout : il reste sur la machine, et c'est
+            // la seule trace qui permette de comprendre après coup.
+            log::warn!(
+                "Gemini a refusé ({statut}) : {}",
+                motif.as_deref().unwrap_or("sans motif")
+            );
+            return Err(EchecGemini::Refus { statut, motif });
         }
 
-        Err(AppError::Resume("quota atteint".into()))
+        Err(EchecGemini::Refus {
+            statut: 429,
+            motif: None,
+        })
     }
 
     /// Vérifie que la clé fonctionne, au moindre coût.
@@ -409,10 +448,109 @@ impl Gemini {
     /// Un vrai appel, et non une simple validation de forme : une clé bien
     /// formée mais révoquée passerait tous les tests de syntaxe, et
     /// l'utilisateur ne l'apprendrait qu'au premier relevé.
+    ///
+    /// L'échec est traduit en une phrase qui dit **quoi faire**, et non en
+    /// « ça n'a pas marché ». C'est le seul endroit du fournisseur où le motif
+    /// de Google remonte jusqu'à l'écran — voir [`AppError::CleLlm`].
     pub async fn verifier(&self) -> Resultat<()> {
-        self.appeler(&corps_de_requete("Bonjour."))
-            .await
-            .map(|_| ())
+        match self.appeler(&corps_de_requete("Bonjour.")).await {
+            Ok(_) => {
+                log::info!("clé de résumé vérifiée auprès de Gemini");
+                Ok(())
+            }
+            Err(echec) => Err(AppError::CleLlm(echec.explication(&self.modele))),
+        }
+    }
+}
+
+/// Ce qui a empêché Gemini de répondre.
+///
+/// Trois causes qui n'appellent pas la même conduite : le réseau se retente, un
+/// refus se corrige, une réponse hors format se subit. Les distinguer permet à
+/// la vérification de la clé de dire quoi faire, là où les résumés de tous les
+/// jours se contentent de passer au message suivant.
+#[derive(Debug)]
+pub enum EchecGemini {
+    /// Google n'a pas été joint.
+    Reseau(AppError),
+    /// Google a répondu, et il refuse.
+    Refus { statut: u16, motif: Option<String> },
+    /// Google a répondu 200, mais rien d'exploitable n'en sort.
+    Reponse(AppError),
+}
+
+impl EchecGemini {
+    /// Une phrase pour l'utilisateur, qui nomme le geste à faire.
+    ///
+    /// Les codes sont ceux de l'API Gemini, et chacun a une cause distincte
+    /// qu'un message unique noierait :
+    ///
+    /// - **400** : la clé est mal recopiée, ou tronquée à la fin ;
+    /// - **403** : la clé existe, mais l'API n'est pas activée sur son projet ;
+    /// - **404** : le modèle n'existe pas pour cette clé ;
+    /// - **429** : le quota gratuit est épuisé pour l'instant.
+    pub fn explication(&self, modele: &str) -> String {
+        match self {
+            Self::Reseau(_) => "Google est injoignable. Vérifiez votre connexion internet, \
+                 puis réessayez."
+                .to_string(),
+
+            Self::Reponse(_) => "Google a répondu, mais pas ce qui était attendu. \
+                 Réessayez dans quelques instants."
+                .to_string(),
+
+            Self::Refus { statut, motif } => {
+                let conseil = match statut {
+                    400 => {
+                        "Cette clé n'a pas été acceptée. Vérifiez qu'elle a été copiée \
+                            en entier, sans espace au début ni à la fin."
+                    }
+                    401 | 403 => {
+                        "Cette clé existe, mais elle n'a pas accès à l'API Gemini. \
+                                  Dans Google AI Studio, vérifiez que la clé est active et \
+                                  qu'elle est bien associée à un projet."
+                    }
+                    404 => "Le modèle demandé n'est pas disponible pour cette clé.",
+                    429 => {
+                        "Le quota gratuit est atteint pour le moment. \
+                            Réessayez dans quelques minutes."
+                    }
+                    500..=599 => {
+                        "Google rencontre un incident de son côté. \
+                                  Réessayez dans quelques instants."
+                    }
+                    _ => "Google a refusé la demande.",
+                };
+
+                // Le motif de Google est en anglais et technique. Il vient
+                // après le conseil, entre parenthèses : celui qui n'en a que
+                // faire a déjà lu ce qu'il devait faire, et celui qui cherche
+                // à comprendre a de quoi.
+                let mut phrase = conseil.to_string();
+                if *statut == 404 {
+                    phrase.push_str(&format!(" (modèle : {modele})"));
+                }
+                if let Some(motif) = motif {
+                    phrase.push_str(&format!(" — Google précise : « {motif} »"));
+                }
+                phrase
+            }
+        }
+    }
+}
+
+impl From<EchecGemini> for AppError {
+    /// Retour à l'erreur discrète, pour tout ce qui n'est pas la vérification
+    /// de la clé : un résumé manquant n'est pas une panne.
+    fn from(echec: EchecGemini) -> Self {
+        match echec {
+            EchecGemini::Reseau(e) | EchecGemini::Reponse(e) => e,
+            EchecGemini::Refus { statut, .. } => Self::Resume(match statut {
+                400 | 401 | 403 => "clé refusée".into(),
+                429 => "quota atteint".into(),
+                autre => format!("réponse inattendue ({autre})"),
+            }),
+        }
     }
 }
 
@@ -432,7 +570,9 @@ impl crate::llm::LlmProvider for Gemini {
         if propre.trim().is_empty() {
             return Err(AppError::Resume("rien à résumer".into()));
         }
-        self.appeler(&corps_de_requete(&propre)).await
+        self.appeler(&corps_de_requete(&propre))
+            .await
+            .map_err(AppError::from)
     }
 
     /// Synthèse de la journée, à partir des résumés déjà produits.
@@ -446,6 +586,7 @@ impl crate::llm::LlmProvider for Gemini {
         let assemble = contenus.join("\n");
         self.appeler(&corps_de_requete(&tronquer(&assemble, CARACTERES_MAX)))
             .await
+            .map_err(AppError::from)
     }
 }
 
@@ -671,5 +812,99 @@ mod tests {
     fn un_corps_sans_delai_retombe_sur_la_valeur_prudente() {
         assert_eq!(delai_apres_quota("{}", 60), 60);
         assert_eq!(delai_apres_quota("pas du json", 60), 60);
+    }
+
+    // -----------------------------------------------------------------------
+    // Ce que l'utilisateur lit quand sa clé est refusée
+    // -----------------------------------------------------------------------
+
+    fn refus(code: u16, message: &str) -> String {
+        json!({ "error": { "code": code, "status": "INVALID_ARGUMENT",
+                           "message": message } })
+        .to_string()
+    }
+
+    #[test]
+    fn le_motif_de_google_est_lu_dans_le_corps() {
+        let corps = refus(400, "API key not valid. Please pass a valid API key.");
+
+        assert_eq!(
+            motif_du_refus(&corps).as_deref(),
+            Some("API key not valid. Please pass a valid API key.")
+        );
+    }
+
+    #[test]
+    fn un_corps_sans_motif_n_en_invente_pas() {
+        assert_eq!(motif_du_refus("{}"), None);
+        assert_eq!(motif_du_refus("pas du json"), None);
+        assert_eq!(
+            motif_du_refus(&json!({"error": {"code": 400}}).to_string()),
+            None
+        );
+    }
+
+    #[test]
+    fn un_motif_interminable_est_borne() {
+        // Certains refus joignent la requête entière au message.
+        let corps = refus(400, &"x".repeat(5_000));
+
+        assert!(motif_du_refus(&corps).unwrap().len() <= 300);
+    }
+
+    #[test]
+    fn chaque_refus_dit_un_geste_different() {
+        // C'est tout l'objet du changement : « le résumé n'a pas abouti »
+        // couvrait ces quatre cas d'une seule phrase, et n'en aidait aucun.
+        let geste = |statut| {
+            EchecGemini::Refus {
+                statut,
+                motif: None,
+            }
+            .explication(MODELE)
+        };
+
+        assert!(geste(400).contains("copiée"));
+        assert!(geste(403).contains("accès"));
+        assert!(geste(404).contains(MODELE));
+        assert!(geste(429).contains("quota"));
+        assert!(geste(503).contains("incident"));
+    }
+
+    #[test]
+    fn le_motif_de_google_accompagne_le_conseil_sans_le_remplacer() {
+        let explication = EchecGemini::Refus {
+            statut: 400,
+            motif: Some("API key not valid".into()),
+        }
+        .explication(MODELE);
+
+        assert!(explication.contains("copiée"), "le conseil doit rester");
+        assert!(explication.contains("API key not valid"), "le motif aussi");
+    }
+
+    #[test]
+    fn une_panne_de_reseau_ne_se_dit_pas_comme_une_cle_refusee() {
+        // Accuser la clé alors que le câble est débranché envoie l'utilisateur
+        // en refaire une pour rien.
+        let explication =
+            EchecGemini::Reseau(AppError::Reseau("délai dépassé".into())).explication(MODELE);
+
+        assert!(explication.contains("connexion"));
+        assert!(!explication.contains("clé"));
+    }
+
+    #[test]
+    fn hors_verification_le_refus_redevient_discret() {
+        // Les résumés de tous les jours ne doivent rien afficher en rouge :
+        // la carte garde sa ligne composée localement.
+        let err: AppError = EchecGemini::Refus {
+            statut: 400,
+            motif: Some("API key not valid".into()),
+        }
+        .into();
+
+        assert_eq!(err.code(), "RESUME_INDISPONIBLE");
+        assert!(!err.message_utilisateur().contains("API key"));
     }
 }

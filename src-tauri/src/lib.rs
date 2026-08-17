@@ -22,6 +22,7 @@ pub mod llm;
 pub mod maj;
 pub mod rules;
 pub mod secrets;
+pub mod sortie;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,28 +30,53 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(liens_vers_le_navigateur())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                // Deux destinations. La sortie standard passe par la chaîne
-                // npm → cargo → tauri, qui la bufferise : quand le parcours
-                // OAuth échoue, la ligne qui l'explique peut ne jamais sortir du
-                // tuyau. Le fichier, lui, est écrit par le processus lui-même.
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .target(tauri_plugin_log::Target::new(
-                            tauri_plugin_log::TargetKind::Stdout,
-                        ))
-                        .target(tauri_plugin_log::Target::new(
-                            tauri_plugin_log::TargetKind::LogDir {
-                                file_name: Some("mailflow".into()),
-                            },
-                        ))
-                        .build(),
-                )?;
+            // Le journal est écrit **dans toutes les constructions**, pas
+            // seulement en développement.
+            //
+            // Il ne l'était qu'en `debug`, et cette économie coûtait cher : les
+            // versions que l'utilisateur essaie sont des versions de
+            // publication, et ce sont précisément celles-là qui n'expliquaient
+            // rien. Trois défauts signalés — un lien qui n'ouvre rien, un
+            // résumé qui n'aboutit pas, une pièce jointe que Gmail refuse — ont
+            // dû être cherchés à l'aveugle faute d'une seule ligne de trace.
+            //
+            // Ce que le journal contient est déjà borné par la discipline du
+            // reste du code : jamais un jeton, jamais une clé, jamais une
+            // adresse complète de lien — le schéma et l'hôte suffisent à
+            // comprendre, et le reste porte des identifiants de suivi.
+            let mut journal = tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                // Le fichier est écrit par le processus lui-même, donc il
+                // survit à une fermeture brutale.
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("mailflow".into()),
+                    },
+                ))
+                // Borné, et une seule archive gardée : un journal qui grossit
+                // sans fin sur la machine de l'utilisateur est un défaut, pas
+                // une fonctionnalité.
+                .max_file_size(2 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne);
 
-                if let Ok(dossier) = app.path().app_log_dir() {
-                    log::info!("journal écrit dans {}", dossier.display());
-                }
+            if cfg!(debug_assertions) {
+                // La sortie standard passe par la chaîne npm → cargo → tauri,
+                // qui la bufferise : quand le parcours OAuth échoue, la ligne
+                // qui l'explique peut ne jamais sortir du tuyau. Elle ne sert
+                // qu'au développement, où l'on regarde le terminal.
+                journal = journal.target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ));
+            }
+
+            app.handle().plugin(journal.build())?;
+
+            if let Ok(dossier) = app.path().app_log_dir() {
+                log::info!(
+                    "MailFlow {} démarre, journal écrit dans {}",
+                    app.package_info().version,
+                    dossier.display()
+                );
             }
 
             // Construit après l'initialisation des logs, pour que l'absence
@@ -134,7 +160,9 @@ fn liens_vers_le_navigateur<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R
             }
 
             log::info!("lien ouvert dans le navigateur du système");
-            let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+            if let Err(e) = sortie::ouvrir(url.as_str()) {
+                log::warn!("lien non ouvert : {e}");
+            }
 
             // `false` annule la navigation : l'application reste où elle est.
             false

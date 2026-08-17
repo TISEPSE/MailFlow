@@ -1187,9 +1187,10 @@ pub async fn lien_ouvrir(url: String) -> Resultat<()> {
         sortie.host_str().unwrap_or("-")
     );
 
-    tauri_plugin_opener::open_url(sortie.as_str(), None::<&str>)
-        .map_err(|e| AppError::Config(format!("navigateur injoignable : {e}")))?;
-    Ok(())
+    // Passe par `crate::sortie` et non par le greffon : depuis une AppImage,
+    // l'enfant hériterait des bibliothèques embarquées et mourrait au
+    // démarrage, sans un mot. Voir le module pour le détail.
+    crate::sortie::ouvrir(sortie.as_str())
 }
 
 /// Ouvre la page d'une publication dans le navigateur du système.
@@ -1213,9 +1214,7 @@ pub async fn maj_ouvrir(app: AppHandle) -> Resultat<()> {
         .filter(crate::sortie_autorisee)
         .ok_or_else(|| AppError::Reseau("adresse de publication inattendue".into()))?;
 
-    tauri_plugin_opener::open_url(sortie.as_str(), None::<&str>)
-        .map_err(|e| AppError::Config(format!("navigateur injoignable : {e}")))?;
-    Ok(())
+    crate::sortie::ouvrir(sortie.as_str())
 }
 
 /// Met un message à la corbeille.

@@ -295,12 +295,12 @@ export function majOuvrir(): Promise<void> {
 }
 
 /**
- * Ouvre dans le navigateur du systeme un lien cliqué dans un message.
+ * Ouvre dans le navigateur du système un lien cliqué dans un message.
  *
  * L'adresse vient d'un e-mail : elle n'est pas ouverte telle quelle, mais
- * confrontee cote Rust a une liste blanche de schemas. Un `file://` ou un
- * schema depose par une application installee est refuse — sans quoi un
- * expediteur choisirait quel programme demarre sur la machine.
+ * confrontée côté Rust à une liste blanche de schémas. Un `file://` ou un
+ * schéma déposé par une application installée est refusé — sans quoi un
+ * expéditeur choisirait quel programme démarre sur la machine.
  */
 export function lienOuvrir(url: string): Promise<void> {
   return invoke<void>('lien_ouvrir', { url })

@@ -775,9 +775,24 @@ textarea:focus-visible {
      porte un accent qui monte au-dessus des capitales ; la référence est la
      bande des capitales, du sommet des majuscules à la ligne de base ;
    - un fond clair vu à travers un coin arrondi se compte comme de l'encre si
-     l'on n'y prend garde, et décale la mesure de plusieurs pixels. */
+     l'on n'y prend garde, et décale la mesure de plusieurs pixels.
+
+   Troisième mesure, et celle qui manquait : les deux corrections avaient été
+   établies séparément, l'une contre la boîte du bouton et l'autre contre la
+   bande des capitales, sans qu'on les remette jamais côte à côte. Le texte
+   descend de 0,12 em (« .texte-optique », mesuré contre la boîte) et l'icône
+   remontait de 0,04 em (mesurée, elle, contre le texte *avant* qu'il ne
+   descende). Écart accumulé : 0,16 em, soit deux pixels dans un bouton de
+   12 px — visible, et visible surtout parce qu'il n'a aucune raison d'être.
+
+   L'icône reprend donc le déplacement du texte : 0,12 − 0,04 = 0,08 em. Les
+   deux corrections restent celles qui ont été mesurées, elles sont seulement
+   enfin exprimées dans le même repère. C'est l'icône qui bouge et non le
+   texte : remonter le texte l'aurait réaligné sur l'icône, mais en sortant du
+   même coup le groupe entier du centre optique du bouton, que 0,12 em avait
+   coûté trois campagnes de mesure à trouver. */
 .icone-bouton {
-  transform: translateY(-0.04em);
+  transform: translateY(0.08em);
 }
 
 /* La rotation a besoin du même canal, et doit l'emporter. */

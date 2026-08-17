@@ -24,6 +24,7 @@ import {
 } from '../lib/presentation'
 import { ApercuPieceJointe } from './ApercuPieceJointe'
 import { lienOuvrir, messageDErreur, pieceJointeVignette } from '../lib/tauri'
+import { signalerUneErreur } from '../lib/crochets'
 import { lirePreferences } from '../lib/preferences'
 import type {
   CompteConnu,
@@ -861,9 +862,11 @@ function CadreIsole({ html }: { html: string }) {
       const adresse = lien.getAttribute('href')?.trim()
       if (!adresse || adresse.startsWith('#')) return
 
-      void lienOuvrir(adresse).catch((e) =>
-        console.warn('lien non ouvert', messageDErreur(e)),
-      )
+      // L'échec se dit à l'écran. Il ne se disait qu'à la console, et un lien
+      // qui n'ouvrait rien restait donc indistinguable d'un lien mort : c'est
+      // ce silence qui a fait croire la fonctionnalité absente alors qu'elle
+      // était seulement empêchée.
+      void lienOuvrir(adresse).catch((e) => signalerUneErreur(messageDErreur(e)))
     }
 
     const mesurer = (document: Document) => {
