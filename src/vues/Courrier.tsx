@@ -6,7 +6,7 @@
  * d'un expéditeur. Le geste central du produit est là : depuis un message, poser
  * une règle qui vaudra pour tous les suivants.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Bouton,
   Confirmation,
@@ -113,6 +113,64 @@ export function Courrier({
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
+
+  /** Messages cochés pour un geste groupé. Vide la plupart du temps. */
+  const [coches, setCoches] = useState<ReadonlySet<string>>(() => new Set())
+
+  /** Geste groupé en attente de confirmation. */
+  const [groupeAConfirmer, setGroupeAConfirmer] = useState<
+    'archiver' | 'supprimer' | null
+  >(null)
+
+  const basculer = useCallback((id: string) => {
+    setCoches((avant) => {
+      const apres = new Set(avant)
+      if (!apres.delete(id)) apres.add(id)
+      return apres
+    })
+  }, [])
+
+  const viderLaSelection = useCallback(() => setCoches(new Set()), [])
+
+  // Une coche qui désigne un message disparu n'a plus de sens : après une
+  // suppression, la sélection est purgée de ce qui n'est plus là, sans quoi la
+  // barre annoncerait un nombre que rien ne justifie.
+  useEffect(() => {
+    setCoches((avant) => {
+      if (avant.size === 0) return avant
+      const presents = new Set(messages.map((m) => m.id))
+      const apres = new Set([...avant].filter((id) => presents.has(id)))
+      return apres.size === avant.size ? avant : apres
+    })
+  }, [messages])
+
+  // Ctrl+A coche tout, Échap vide la sélection.
+  useEffect(() => {
+    const auClavier = (e: KeyboardEvent) => {
+      // Jamais dans un champ de saisie : Ctrl+A y sélectionne le texte, et le
+      // détourner casserait la recherche et les formulaires de règles.
+      const cible = e.target
+      if (
+        cible instanceof HTMLElement &&
+        (cible.isContentEditable ||
+          cible instanceof HTMLInputElement ||
+          cible instanceof HTMLTextAreaElement)
+      ) {
+        return
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        setCoches(new Set(messages.map((m) => m.id)))
+        return
+      }
+
+      if (e.key === 'Escape') viderLaSelection()
+    }
+
+    document.addEventListener('keydown', auClavier)
+    return () => document.removeEventListener('keydown', auClavier)
+  }, [messages, viderLaSelection])
 
   /** Message dont la suppression attend confirmation.
    *
@@ -224,8 +282,20 @@ export function Courrier({
         }}
         logos={logos}
         comptes={comptes}
+        coches={coches}
+        onBasculer={basculer}
       />
-      <Lecture
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {coches.size > 0 && (
+          <BarreSelection
+            nombre={coches.size}
+            archivable={Boolean(onRanger)}
+            onArchiver={() => setGroupeAConfirmer('archiver')}
+            onSupprimer={() => setGroupeAConfirmer('supprimer')}
+            onAnnuler={viderLaSelection}
+          />
+        )}
+        <Lecture
         message={choisi}
         corps={corps}
         chargement={chargementCorps}
@@ -300,7 +370,91 @@ export function Courrier({
 
           </>
         }
-      />
+        />
+      </div>
+
+      {groupeAConfirmer && (
+        <Confirmation
+          titre={
+            groupeAConfirmer === 'supprimer'
+              ? `Mettre ${coches.size} message${coches.size > 1 ? 's' : ''} à la corbeille ?`
+              : `Archiver ${coches.size} message${coches.size > 1 ? 's' : ''} ?`
+          }
+          sous={
+            groupeAConfirmer === 'supprimer'
+              ? 'Gmail les garde trente jours, puis les efface.'
+              : "Ils quittent la boîte de réception ; rien n'est supprimé."
+          }
+          libelle={groupeAConfirmer === 'supprimer' ? 'Supprimer' : 'Archiver'}
+          variante={groupeAConfirmer === 'supprimer' ? 'danger' : 'principal'}
+          icone={groupeAConfirmer === 'supprimer' ? 'delete' : 'archive'}
+          onConfirmer={() => {
+            const geste = groupeAConfirmer
+            const vises = [...coches]
+            setGroupeAConfirmer(null)
+            viderLaSelection()
+            for (const id of vises) {
+              if (geste === 'supprimer') onSupprimer(id)
+              else onRanger?.(id)
+            }
+          }}
+          onAnnuler={() => setGroupeAConfirmer(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Barre du geste groupé, au-dessus de la lecture.
+ *
+ * Elle n'apparaît que lorsqu'au moins un message est coché, et se retire dès
+ * que la sélection est vidée : une barre permanente coûterait une bande de
+ * hauteur à tout le monde pour un geste que la plupart ne feront jamais.
+ *
+ * Elle rappelle le raccourci plutôt que de le laisser deviner — un Ctrl+clic
+ * qui n'annonce pas Ctrl+A ne se découvre pas.
+ */
+function BarreSelection({
+  nombre,
+  archivable,
+  onArchiver,
+  onSupprimer,
+  onAnnuler,
+}: {
+  nombre: number
+  archivable: boolean
+  onArchiver: () => void
+  onSupprimer: () => void
+  onAnnuler: () => void
+}) {
+  return (
+    <div
+      role="status"
+      className="flex flex-none items-center gap-2 border-b px-4 py-2"
+      style={{ background: 'var(--accent-soft)', borderColor: 'var(--line)' }}
+    >
+      <Icone nom="check_circle" taille="1rem" rempli style={{ color: 'var(--accent)' }} />
+      <span className="text-[0.8125rem] font-semibold">
+        {nombre} message{nombre > 1 ? 's' : ''} sélectionné{nombre > 1 ? 's' : ''}
+      </span>
+      <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+        Ctrl+clic pour en ajouter, Ctrl+A pour tout prendre
+      </span>
+
+      <span className="flex flex-1 items-center justify-end gap-2">
+        {archivable && (
+          <Bouton compact variante="principal" icone="archive" onClick={onArchiver}>
+            Archiver
+          </Bouton>
+        )}
+        <Bouton compact variante="danger" icone="delete" onClick={onSupprimer}>
+          Supprimer
+        </Bouton>
+        <Bouton compact icone="close" onClick={onAnnuler}>
+          Annuler
+        </Bouton>
+      </span>
     </div>
   )
 }
