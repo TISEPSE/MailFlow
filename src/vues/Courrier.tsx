@@ -328,6 +328,26 @@ export function Courrier({
               </Bouton>
             )}
 
+            {/* Archiver sans classer.
+                `BarreDeReponse` porte déjà ce geste sur les mails directs, avec
+                le choix d'un libellé. Ailleurs — le triage, les publicités —
+                elle n'a pas lieu d'être, et la page n'offrait alors que la
+                corbeille : jeter était le seul moyen de vider sa boîte. Or une
+                publicité qu'on veut garder sans la lire se range, elle ne se
+                jette pas. */}
+            {onRanger && !onRepondre && (
+              <Bouton
+                compact
+                variante="principal"
+                icone="archive"
+                onClick={() => onRanger(choisi.id)}
+                disabled={enCours}
+                titre="Le mail quitte la boîte de réception et rejoint la table des archives. Rien n'est supprimé."
+              >
+                Archiver
+              </Bouton>
+            )}
+
             {/* Partout, y compris sur les mails directs : le geste du bouton
                 Supprimer de Gmail, corbeille comprise. */}
             <Bouton

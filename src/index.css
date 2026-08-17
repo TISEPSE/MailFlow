@@ -825,32 +825,31 @@ textarea:focus-visible {
 }
 
 
-/* L'attente d'un résumé, à la place exacte où il paraîtra.
+/* L'attente d'un résumé : la carte respire.
 
-   Deux bandes qui respirent plutôt qu'un anneau qui tourne : l'anneau dit
-   « quelque chose travaille », les bandes disent *où* le résultat arrivera.
-   Sur une carte, la différence compte — le regard est déjà au bon endroit
-   quand le texte s'affiche, et la carte ne change pas de hauteur.
+   Elle a d'abord été signalée par deux bandes qui se remplissaient à la place
+   du texte. Une bande qui se remplit se lit comme une barre de progression —
+   elle promet un avancement mesuré qu'aucun appel réseau ne peut tenir, et
+   elle cachait le texte pendant ce temps.
 
-   Le dégradé balaie de gauche à droite, comme une lecture. */
+   Un halo qui va et vient ne promet rien d'autre que « ceci travaille », ce
+   qui est exactement ce qu'on sait. Il porte sur la bordure et une ombre
+   portée, jamais sur la géométrie : la carte ne bouge pas d'un pixel, et ses
+   voisines non plus. */
 @keyframes respiration-ia {
-  0% {
-    background-position: 200% 0;
-  }
+  0%,
   100% {
-    background-position: -200% 0;
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  50% {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
   }
 }
 
-.bande-ia {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--sub) 12%, transparent) 25%,
-    color-mix(in srgb, var(--accent) 26%, transparent) 50%,
-    color-mix(in srgb, var(--sub) 12%, transparent) 75%
-  );
-  background-size: 200% 100%;
-  animation: respiration-ia 1.4s ease-in-out infinite;
+.carte-en-resume {
+  animation: respiration-ia 1.6s ease-in-out infinite;
 }
 
 /* L'icône du bouton pendant l'appel : elle scintille au lieu de tourner.

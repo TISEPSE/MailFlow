@@ -38,6 +38,7 @@ const gestes: GestesDeLaTable = {
   onCreerLibelle: async () => [],
   onDefaireLeTas: async () => undefined,
   onSupprimer: async () => undefined,
+  onRetirer: async () => undefined,
   onLu: () => undefined,
   onRelever: () => undefined,
   onErreur: () => undefined,

@@ -477,9 +477,18 @@ function CarteGroupe({
         </span>
       )}
 
+      {/* L'attente se voit sur la carte elle-même : elle respire, du bord vers
+          l'intérieur. Deux bandes tenaient auparavant la place du texte, mais
+          une bande qui se remplit se lit comme une barre de progression — elle
+          promet un avancement mesuré qu'aucun appel réseau ne peut tenir. Ici
+          rien ne prétend mesurer : la carte dit seulement qu'elle travaille, et
+          son texte reste lisible pendant ce temps. */}
       <div
-        className="carte-survolable relative flex flex-col overflow-hidden rounded-2xl border"
+        className={`carte-survolable relative flex flex-col overflow-hidden rounded-2xl border ${
+          resumeEnCours ? 'carte-en-resume mouvement-utile' : ''
+        }`}
         style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+        aria-busy={resumeEnCours}
       >
         <div className="flex items-center gap-2.5 px-4 pt-4">
           <Pastille
@@ -550,15 +559,7 @@ function CarteGroupe({
               qui répétaient en moins bien ce que le résumé dit déjà, et qui
               occupaient la place où il pouvait s'étendre. La consigne du modèle
               a été allongée d'autant. */}
-          {resumeEnCours ? (
-            // Deux bandes qui respirent, à la place exacte du résumé à venir :
-            // l'attente se voit là où le résultat paraîtra, et la carte ne
-            // change pas de hauteur quand il arrive.
-            <div aria-live="polite" aria-label="Résumé en cours">
-              <span className="bande-ia mouvement-utile block h-[0.95rem] w-full rounded" />
-              <span className="bande-ia mouvement-utile mt-1.5 block h-[0.95rem] w-3/5 rounded" />
-            </div>
-          ) : resumes?.[courant.id] ? (
+          {resumes?.[courant.id] ? (
             // Ce que le modèle a écrit se distingue de ce que la machine a
             // composé seule. Sans marque, l'utilisateur ne sait pas s'il lit
             // une phrase produite par une IA — donc s'il doit la croire sur

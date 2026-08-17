@@ -274,6 +274,17 @@ export function archivesSynchroniser(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('archives_synchroniser')
 }
 
+/**
+ * Retire un message de la table, sans toucher a Gmail.
+ *
+ * Distinct de `messageCorbeille` : le message reste archive chez Gmail, ses
+ * libelles compris. Sans ce geste, la table n'avait qu'une sortie et c'etait la
+ * corbeille — impossible de dire « celui-la est classe » sans le jeter.
+ */
+export function archiveRetirer(id: string): Promise<void> {
+  return invoke<void>('archive_retirer', { id })
+}
+
 /** Disposition de la table des archives du compte actif. */
 export function tableauLire(): Promise<Tableau> {
   return invoke<Tableau>('tableau_lire')

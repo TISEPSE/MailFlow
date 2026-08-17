@@ -53,6 +53,7 @@ import {
   messageDErreur,
   archivesLister,
   archivesSynchroniser,
+  archiveRetirer,
   libelleCreer,
   libellePoser,
   libelleRetirer,
@@ -1360,6 +1361,11 @@ export default function App() {
                 onRelever: () => void chargerLesArchives(),
                 onErreur: (m) => annoncer(m, true),
                 onLu: (id) => void marquerLu(id),
+                onRetirer: async (id) => {
+                  await archiveRetirer(id)
+                  setArchives((liste) => liste.filter((m) => m.id !== id))
+                  annoncer('Retiré de la table. Le mail reste archivé chez Gmail.')
+                },
                 onSupprimer: async (id) => {
                   await messageCorbeille(id)
                   // Retirée de la table sans attendre un relevé : la tuile est
@@ -1486,15 +1492,17 @@ export default function App() {
                     }
                   : undefined
               }
-              onRanger={
-                vue === 'humain'
-                  ? (id, libelle) =>
-                      void agir(async () => {
-                        await messageRanger(id, libelle)
-                        retirerDeLaBoite(id)
-                        return 'Message archivé.'
-                      })
-                  : undefined
+              // Sur toutes les pages de courrier, et plus seulement les mails
+              // directs : jeter était sinon le seul moyen de vider la page des
+              // publicités, alors qu'une publicité qu'on veut garder sans la
+              // lire se range. Le choix d'un libellé, lui, reste propre aux
+              // mails directs — c'est là qu'on classe finement.
+              onRanger={(id, libelle) =>
+                void agir(async () => {
+                  await messageRanger(id, libelle)
+                  retirerDeLaBoite(id)
+                  return 'Mail archivé, il vous attend sur la table.'
+                })
               }
               onSupprimer={(id) =>
                 void agir(async () => {

@@ -76,6 +76,14 @@ export interface GestesDeLaTable {
   onDefaireLeTas: (libelle: string, messages: string[]) => Promise<void>
   /** Met un message à la corbeille Gmail. */
   onSupprimer: (message: string) => Promise<void>
+  /**
+   * Retire un message de la table, sans toucher à Gmail.
+   *
+   * Distinct de la corbeille : le message reste archivé, ses libellés compris.
+   * Sans lui, la table n'avait qu'une sortie et c'était la corbeille — on ne
+   * pouvait pas dire « celui-là est classé » sans le jeter.
+   */
+  onRetirer: (message: string) => Promise<void>
   /** Marque un message comme lu, à son ouverture. */
   onLu: (message: string) => void
   /** Relève à nouveau les archives chez Gmail. */
@@ -324,6 +332,9 @@ export function Archives({
                   void gestes.onSortir(message, id).catch((e) => gestes.onErreur(String(e)))
                 }
                 onSupprimer={setASupprimer}
+                onRetirer={(m) =>
+                  void gestes.onRetirer(m.id).catch((e) => gestes.onErreur(String(e)))
+                }
               />
             )
           })}
@@ -341,6 +352,9 @@ export function Archives({
               onSurvol={(p) => survoler(message.id, p)}
               onOuvrir={() => ouvrir(message)}
               onSupprimer={() => setASupprimer(message)}
+              onRetirer={() =>
+                void gestes.onRetirer(message.id).catch((e) => gestes.onErreur(String(e)))
+              }
             />
           ))}
         </div>
@@ -571,6 +585,7 @@ function TuilePosee({
   onSurvol,
   onOuvrir,
   onSupprimer,
+  onRetirer,
 }: {
   message: MessageAffiche
   position: Position
@@ -580,6 +595,7 @@ function TuilePosee({
   onSurvol: (position: Position) => void
   onOuvrir: () => void
   onSupprimer: () => void
+  onRetirer: () => void
 }) {
   const { noeud, attrape, aGlisse, poignee } = useGlissement(
     position,
@@ -634,21 +650,39 @@ function TuilePosee({
         {message.sujet || '(sans objet)'}
       </div>
 
-      {/* Caché tant que la tuile n'est pas survolée : une croix visible sur
-          deux cents tuiles ferait de la table un champ de mines. */}
-      <button
-        type="button"
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation()
-          onSupprimer()
-        }}
-        title="Mettre à la corbeille"
-        aria-label={`Supprimer « ${message.sujet || 'sans objet'} »`}
-        className="geste-de-tuile bouton bouton-icone absolute top-1.5 right-1.5 rounded-md p-1"
-      >
-        <Icone nom="delete" taille="0.8125rem" />
-      </button>
+      {/* Cachés tant que la tuile n'est pas survolée : deux icônes visibles sur
+          deux cents tuiles feraient de la table un champ de mines.
+
+          Retirer avant supprimer, et dans cet ordre : l'un range, l'autre
+          jette. Le geste sans conséquence précède toujours celui qui en a. */}
+      <span className="geste-de-tuile absolute top-1.5 right-1.5 flex items-center gap-0.5">
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRetirer()
+          }}
+          title="Retirer de la table — le mail reste archivé chez Gmail"
+          aria-label={`Retirer « ${message.sujet || 'sans objet'} » de la table`}
+          className="bouton bouton-icone rounded-md p-1"
+        >
+          <Icone nom="close" taille="0.8125rem" />
+        </button>
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            onSupprimer()
+          }}
+          title="Mettre à la corbeille"
+          aria-label={`Supprimer « ${message.sujet || 'sans objet'} »`}
+          className="bouton bouton-icone rounded-md p-1"
+        >
+          <Icone nom="delete" taille="0.8125rem" />
+        </button>
+      </span>
     </div>
   )
 }
@@ -688,6 +722,7 @@ function TasPose({
   onDefaire,
   onSortir,
   onSupprimer,
+  onRetirer,
 }: {
   nom: string
   messages: MessageAffiche[]
@@ -702,6 +737,7 @@ function TasPose({
   onDefaire: () => void
   onSortir: (message: string) => void
   onSupprimer: (message: MessageAffiche) => void
+  onRetirer: (message: MessageAffiche) => void
 }) {
   const { noeud, attrape, aGlisse, poignee } = useGlissement(position, TAS, onDeplacer)
 
@@ -816,6 +852,7 @@ function TasPose({
               onOuvrir={() => onOuvrirMessage(m)}
               onSortir={() => onSortir(m.id)}
               onSupprimer={() => onSupprimer(m)}
+              onRetirer={() => onRetirer(m)}
             />
           ))}
         </div>
@@ -830,11 +867,13 @@ function LigneDuTas({
   onOuvrir,
   onSortir,
   onSupprimer,
+  onRetirer,
 }: {
   message: MessageAffiche
   onOuvrir: () => void
   onSortir: () => void
   onSupprimer: () => void
+  onRetirer: () => void
 }) {
   const [fond, encre] = palette(rangDeLAdresse(message.adresse))
 
@@ -867,6 +906,16 @@ function LigneDuTas({
         className="bouton bouton-icone flex-none rounded-md p-1"
       >
         <Icone nom="close" taille="0.8125rem" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onRetirer}
+        title="Retirer de la table — le mail reste archivé chez Gmail"
+        aria-label={`Retirer « ${message.sujet || 'sans objet'} » de la table`}
+        className="bouton bouton-icone flex-none rounded-md p-1"
+      >
+        <Icone nom="archive" taille="0.8125rem" />
       </button>
 
       <button

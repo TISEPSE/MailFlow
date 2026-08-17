@@ -116,6 +116,7 @@ pub fn run() {
             commands::tas_defaire,
             commands::archives_lister,
             commands::archives_synchroniser,
+            commands::archive_retirer,
             commands::tableau_lire,
             commands::tableau_ecrire,
             commands::repondre_au_message,

@@ -804,6 +804,29 @@ pub async fn archives_synchroniser(
     Ok(archives)
 }
 
+/// Retire un message de la table, sans toucher à Gmail.
+///
+/// # La différence avec « Supprimer »
+///
+/// Supprimer met à la corbeille : le message quitte Gmail. Retirer ne fait que
+/// l'ôter du plan de travail — il reste archivé chez Gmail, ses libellés
+/// compris, et se retrouve dans « Tous les messages ».
+///
+/// Sans ce geste, la table n'avait qu'une sortie et c'était la corbeille. On
+/// n'avait donc aucun moyen de dire « celui-là est classé, je n'ai plus à m'en
+/// occuper » sans le jeter.
+#[tauri::command]
+pub async fn archive_retirer(app: AppHandle, id: String) -> Resultat<()> {
+    let config = dossier_config(&app)?;
+    let compte = compte_du_message(&app, &id).unwrap_or_else(|| compte_actif(&app));
+
+    let registre = crate::archives::retirer(crate::archives::charger(&config, &compte), &id);
+    crate::archives::enregistrer(&config, &compte, &registre)?;
+
+    log::info!("message retiré de la table, toujours archivé chez Gmail");
+    Ok(())
+}
+
 /// Disposition de la table des archives du compte actif.
 #[tauri::command]
 pub async fn tableau_lire(app: AppHandle) -> Resultat<crate::tableau::Tableau> {

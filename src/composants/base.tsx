@@ -319,7 +319,11 @@ export function Toasts({
             boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
           }}
         >
-          <div className="flex items-start gap-2.5 px-3.5 py-3">
+          {/* Trois pixels de plus en haut qu'en bas : la barre de décompte
+              occupe cette hauteur sous la rangée, si bien que le texte se
+              trouvait au centre de sa rangée mais au-dessus du centre de la
+              tuile. On rend au haut ce que la barre prend au bas. */}
+          <div className="flex items-start gap-2.5 px-3.5 pt-[0.9375rem] pb-3">
             <Icone
               nom={t.erreur ? 'error' : 'check_circle'}
               taille="1.0625rem"
