@@ -316,6 +316,139 @@ pub fn adresse(modele: &str) -> String {
     format!("{RACINE}/{modele}:generateContent")
 }
 
+/// Au-delà, on considère que Google ne répondra pas.
+const DELAI_REQUETE: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// Attente de repli quand la réponse de quota n'indique pas de délai.
+const DELAI_QUOTA_DEFAUT: u64 = 45;
+
+/// Une seule reprise : le quota gratuit se reconstitue lentement, et
+/// s'entêter le consomme sans rien produire. La newsletter garde alors sa
+/// ligne composée localement, et la suivante repart normalement.
+const REPRISES: u8 = 1;
+
+/// Fournisseur Gemini, prêt à résumer.
+///
+/// La clé n'est jamais consignée dans le journal ni recopiée dans une adresse :
+/// elle ne quitte cette structure que pour l'en-tête `x-goog-api-key`.
+pub struct Gemini {
+    http: reqwest::Client,
+    cle: String,
+    modele: String,
+}
+
+impl Gemini {
+    pub fn nouveau(cle: String) -> Resultat<Self> {
+        let http = reqwest::Client::builder()
+            .timeout(DELAI_REQUETE)
+            // Une redirection vers du clair emporterait la clé en clair.
+            .https_only(true)
+            .build()
+            .map_err(|e| AppError::Config(format!("client HTTP inutilisable : {e}")))?;
+
+        Ok(Self {
+            http,
+            cle,
+            modele: MODELE.to_string(),
+        })
+    }
+
+    /// Choisit un autre modèle que celui par défaut.
+    pub fn avec_modele(mut self, modele: impl Into<String>) -> Self {
+        self.modele = modele.into();
+        self
+    }
+
+    /// Envoie un corps déjà composé et lit ce qui revient.
+    ///
+    /// Un refus pour quota (429) est réessayé une fois, après l'attente que
+    /// Google indique lui-même. Les autres refus ne le sont pas : une clé
+    /// invalide le restera, et réessayer ne ferait que retarder le message qui
+    /// dit à l'utilisateur quoi corriger.
+    async fn appeler(&self, corps: &Value) -> Resultat<Resume> {
+        let url = adresse(&self.modele);
+
+        for tentative in 0..=REPRISES {
+            let reponse = self
+                .http
+                .post(&url)
+                .header("x-goog-api-key", &self.cle)
+                .json(corps)
+                .send()
+                .await?;
+
+            let statut = reponse.status().as_u16();
+            let texte = reponse.text().await?;
+
+            if statut == 200 {
+                return lire_reponse(&texte);
+            }
+
+            if statut == 429 && tentative < REPRISES {
+                let attente = delai_apres_quota(&texte, DELAI_QUOTA_DEFAUT);
+                log::info!("quota Gemini atteint, reprise dans {attente} s");
+                tokio::time::sleep(std::time::Duration::from_secs(attente)).await;
+                continue;
+            }
+
+            // Le corps de l'erreur n'est pas remonté tel quel : il peut porter
+            // des fragments de la requête, donc du courrier de l'utilisateur.
+            log::warn!("Gemini a répondu {statut}");
+            return Err(AppError::Resume(match statut {
+                400 | 403 => "clé refusée".into(),
+                429 => "quota atteint".into(),
+                _ => format!("réponse inattendue ({statut})"),
+            }));
+        }
+
+        Err(AppError::Resume("quota atteint".into()))
+    }
+
+    /// Vérifie que la clé fonctionne, au moindre coût.
+    ///
+    /// Un vrai appel, et non une simple validation de forme : une clé bien
+    /// formée mais révoquée passerait tous les tests de syntaxe, et
+    /// l'utilisateur ne l'apprendrait qu'au premier relevé.
+    pub async fn verifier(&self) -> Resultat<()> {
+        self.appeler(&corps_de_requete("Bonjour."))
+            .await
+            .map(|_| ())
+    }
+}
+
+impl crate::llm::LlmProvider for Gemini {
+    /// Résume une newsletter.
+    ///
+    /// L'expurgation a lieu **ici**, et non chez l'appelant : c'est ce qui
+    /// rend impossible d'envoyer par mégarde un texte encore porteur des liens
+    /// de désabonnement ou de l'adresse de l'utilisateur. Un fournisseur qui
+    /// oublierait cet appel enverrait tout — d'où sa place dans la signature.
+    async fn resumer_newsletter(
+        &self,
+        contenu: &str,
+        adresse_utilisateur: &str,
+    ) -> Resultat<Resume> {
+        let propre = expurger(contenu, adresse_utilisateur);
+        if propre.trim().is_empty() {
+            return Err(AppError::Resume("rien à résumer".into()));
+        }
+        self.appeler(&corps_de_requete(&propre)).await
+    }
+
+    /// Synthèse de la journée, à partir des résumés déjà produits.
+    ///
+    /// Les entrées sont nos propres résumés, déjà expurgés au moment où ils
+    /// ont été fabriqués : il n'y a rien de neuf à retirer.
+    async fn synthese_du_jour(&self, contenus: &[String]) -> Resultat<Resume> {
+        if contenus.is_empty() {
+            return Err(AppError::Resume("aucune newsletter à synthétiser".into()));
+        }
+        let assemble = contenus.join("\n");
+        self.appeler(&corps_de_requete(&tronquer(&assemble, CARACTERES_MAX)))
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -37,7 +37,17 @@ pub struct Resume {
 #[allow(async_fn_in_trait)]
 pub trait LlmProvider {
     /// Resume une newsletter isolée, pour sa carte dans la vue 3.
-    async fn resumer_newsletter(&self, contenu: &str) -> Resultat<Resume>;
+    ///
+    /// `adresse_utilisateur` n'est pas décorative : l'implémentation doit
+    /// l'effacer du texte avant de l'envoyer, en même temps que les liens.
+    /// Elle figure dans la signature pour que le nettoyage ait lieu *dans* le
+    /// fournisseur — un appelant peut oublier de nettoyer, un fournisseur qui
+    /// reçoit l'adresse ne le peut pas.
+    async fn resumer_newsletter(
+        &self,
+        contenu: &str,
+        adresse_utilisateur: &str,
+    ) -> Resultat<Resume>;
 
     /// Synthese en trois points de l'ensemble des newsletters du jour.
     async fn synthese_du_jour(&self, contenus: &[String]) -> Resultat<Resume>;
