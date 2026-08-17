@@ -65,6 +65,7 @@ export function Parametres({
   onOublierCompte,
   onRevoirLeGuide,
   onErreur,
+  onToutEffacer,
   melange,
   onMelanger,
   toucheRecherche,
@@ -93,6 +94,8 @@ export function Parametres({
   onRevoirLeGuide: () => void
   /** Annonce une panne réseau sans faire disparaître la page. */
   onErreur: (message: string) => void
+  /** Relance le chargement complet après l'effacement du disque. */
+  onToutEffacer: () => void
   /** Vrai quand la vue mélangée est celle qu'on regarde. */
   melange: boolean
   /** Ouvre la vue qui réunit les boîtes de tous les comptes. */
@@ -227,7 +230,7 @@ export function Parametres({
 
           <MiseAJour onErreur={onErreur} />
 
-          <CacheDisque onErreur={onErreur} />
+          <CacheDisque onErreur={onErreur} onEfface={onToutEffacer} />
         </Bloc>
 
         <Bloc titre="Synchronisation Gmail">
@@ -850,14 +853,31 @@ function MiseAJour({ onErreur }: { onErreur: (message: string) => void }) {
 }
 
 /**
- * Les messages gardés sur le disque.
+ * Ce que MailFlow pose sur le disque, et qu'il sait refaire seul.
  *
- * Ils y sont pour que l'ouverture soit immédiate : le relevé demande un appel
- * par message et dure une vingtaine de secondes. Les effacer ne perd rien —
- * tout est chez Gmail — mais rend la prochaine ouverture aussi lente que la
- * première.
+ * # « Effacer » veut dire effacer
+ *
+ * Le bouton ne couvrait que les relevés et les corps de messages. Il annonçait
+ * 33 Mo et en laissait 51 derrière lui — le cache du moteur d'affichage, qui
+ * grossit à chaque image de message ouverte et que rien ne nettoyait jamais.
+ * Le décompte et l'effacement portent désormais sur la même liste, tenue à un
+ * seul endroit côté Rust.
+ *
+ * # Et l'application se remplit à nouveau, sans redémarrer
+ *
+ * Effacer laissait une fenêtre pleine de messages qu'on venait de supprimer du
+ * disque : rien à l'écran ne disait que le geste avait eu lieu, et il fallait
+ * redémarrer pour retrouver un état cohérent. Le relevé repart maintenant dans
+ * la foulée, et l'on voit la boîte se reconstruire.
  */
-function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
+function CacheDisque({
+  onErreur,
+  onEfface,
+}: {
+  onErreur: (message: string) => void
+  /** Relance le chargement complet, pour que l'écran suive le disque. */
+  onEfface: () => void
+}) {
   const [octets, setOctets] = useState<number | null>(null)
   const [enCours, setEnCours] = useState(false)
 
@@ -871,7 +891,8 @@ function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
     setEnCours(true)
     try {
       await cacheVider()
-      setOctets(0)
+      setOctets(await cacheTaille().catch(() => 0))
+      onEfface()
     } catch (e) {
       onErreur(messageDErreur(e))
     } finally {
@@ -889,8 +910,8 @@ function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
   return (
     <Reglage
       icone="delete"
-      titre="Messages gardés sur cet ordinateur"
-      detail={`Ils rendent l'ouverture immédiate${taille}. Les effacer ne perd rien : tout est chez Gmail.`}
+      titre="Tout ce que MailFlow garde sur cet ordinateur"
+      detail={`Messages, images, journaux${taille}. Tout se retélécharge : vos comptes, vos règles et vos tas ne sont pas touchés.`}
     >
       <Bouton
         variante="danger"
@@ -899,7 +920,7 @@ function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
         disabled={enCours || octets === 0}
         onClick={() => void vider()}
       >
-        {enCours ? 'Effacement…' : 'Effacer'}
+        {enCours ? 'Effacement…' : 'Tout effacer'}
       </Bouton>
     </Reglage>
   )

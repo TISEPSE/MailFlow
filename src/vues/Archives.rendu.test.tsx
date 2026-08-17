@@ -57,7 +57,6 @@ function rendre(
       tableau={tableau}
       onTableau={() => undefined}
       sombre={false}
-      enCours={false}
       corpsConnus={new Map()}
       onCorpsCharge={() => undefined}
       gestes={gestes}

@@ -748,24 +748,16 @@ pub async fn archives_lister(
 ///
 /// # Le cache est un souvenir, pas une vérité
 ///
-/// Il a été écrit par la version qui l'a relevé, sous la définition d'archive
-/// qui avait cours ce jour-là. Celle-ci a changé : une archive est désormais un
-/// message **portant un libellé**, et un cache antérieur contient des centaines
-/// de messages qui n'en portent aucun. Les rendre tels quels remplirait la table
-/// de tuiles que l'utilisateur venait précisément de faire disparaître, et il
-/// lui faudrait deviner qu'un relevé manuel les enlèverait.
-///
-/// Le filtre applique donc la définition **du jour** à des données d'hier. Le
-/// relevé suivant écrasera le fichier, et la question ne se posera plus.
+/// Il a été écrit sous la définition d'archive qui avait cours ce jour-là, et
+/// celle-ci a changé. C'est le relevé qui le remet d'aplomb : la page en lance
+/// un à chaque ouverture, en fond, pendant que le cache tient l'écran. Filtrer
+/// ici reviendrait à réécrire la requête à deux endroits, et le second finirait
+/// par mentir sur le premier.
 #[tauri::command]
 pub async fn archives_en_cache(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     let racine = dossier_cache(&app)?;
     let compte = compte_actif(&app);
-    let mut archives: Vec<MessageAffiche> = cache::lire_archives(&racine, &compte)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|m| !m.libelles.is_empty())
-        .collect();
+    let mut archives = cache::lire_archives(&racine, &compte).unwrap_or_default();
 
     let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
     cache::reclasser(&mut archives, &regles);
@@ -874,24 +866,79 @@ pub async fn tas_defaire(
     Ok(())
 }
 
-/// Efface tout le cache, tous comptes confondus.
+/// Tout ce que MailFlow pose sur le disque et sait refaire seul.
+///
+/// # Pourquoi une liste, et pourquoi celle-ci
+///
+/// Le bouton d'effacement ne couvrait que deux dossiers sur cinq. Il annonçait
+/// 33 Mo et en laissait 51 derrière lui — le cache du moteur d'affichage, que
+/// personne ne voit et que rien ne nettoie, et qui grossit à chaque image de
+/// message ouverte. « Effacer » doit vouloir dire effacer.
+///
+/// La même liste sert à **compter** et à **effacer**. Deux listes séparées
+/// auraient fini par diverger, et le bouton aurait de nouveau menti sur ce
+/// qu'il libère.
+///
+/// # Ce qui n'y figure pas, et ne doit pas y figurer
+///
+/// Les comptes connus, les règles, la disposition des tables, la clé de résumé
+/// dans le trousseau. Ce ne sont pas des copies de ce qui est chez Gmail : ce
+/// sont les choix de l'utilisateur, quelques dizaines de kilooctets, et les
+/// effacer ne nettoierait aucun disque — cela déconnecterait le compte.
+fn dossiers_jetables(app: &AppHandle) -> Vec<PathBuf> {
+    use tauri::Manager;
+
+    let mut dossiers = Vec::new();
+
+    // Relevés, corps de messages, logos d'expéditeurs : tout se retélécharge.
+    if let Ok(cache) = app.path().app_cache_dir() {
+        dossiers.push(cache);
+    }
+
+    if let Ok(donnees) = app.path().app_local_data_dir() {
+        // Le cache de WebKitGTK — les images, les feuilles de style et les
+        // polices des messages ouverts. C'est de loin le plus gros, et il n'a
+        // jamais été compté ni effacé.
+        dossiers.push(donnees.join("WebKitCache"));
+        dossiers.push(donnees.join("CacheStorage"));
+        // Le journal se relit à chaque panne ; il se réécrit dès la ligne
+        // suivante, et l'utilisateur qui veut « tout » nettoyer le veut aussi.
+        dossiers.push(donnees.join("logs"));
+    }
+
+    dossiers
+}
+
+/// Efface tout ce qui est refaisable, tous comptes confondus.
+///
+/// Les échecs partiels ne sont pas remontés comme des pannes : un dossier
+/// verrouillé par le moteur d'affichage sera repris au prochain passage, et
+/// interrompre l'effacement au premier refus laisserait sur le disque tout ce
+/// qui venait après.
 #[tauri::command]
 pub async fn cache_vider(app: AppHandle) -> Resultat<()> {
-    let racine = dossier_cache(&app)?;
-    cache::vider(&racine)?;
-    // Les corps aussi : les garder après avoir effacé les relevés laisserait
-    // sur le disque exactement ce que l'utilisateur voulait voir partir.
-    let _ = std::fs::remove_dir_all(crate::gmail::corps::dossier_cache_dans(&app));
+    let mut libere = 0;
 
-    log::info!("cache effacé à la demande");
+    for dossier in dossiers_jetables(&app) {
+        libere += cache::taille(&dossier);
+        if let Err(e) = std::fs::remove_dir_all(&dossier)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            log::warn!("dossier non effacé ({}) : {e}", dossier.display());
+        }
+    }
+
+    log::info!("effacement demandé, {} Mo libérés", libere / 1_048_576);
     Ok(())
 }
 
-/// Taille du cache sur le disque, en octets.
+/// Taille sur le disque de ce que le bouton d'effacement va libérer, en octets.
 #[tauri::command]
 pub async fn cache_taille(app: AppHandle) -> Resultat<u64> {
-    let racine = dossier_cache(&app)?;
-    Ok(cache::taille(&racine) + cache::taille(&crate::gmail::corps::dossier_cache_dans(&app)))
+    Ok(dossiers_jetables(&app)
+        .iter()
+        .map(|d| cache::taille(d))
+        .sum())
 }
 
 /// Corps d'un message, prêt à être affiché en bac à sable.

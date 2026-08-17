@@ -177,7 +177,6 @@ export default function App() {
    *  offerte à personne. */
   const [archives, setArchives] = useState<MessageAffiche[]>([])
   const [tableau, setTableau] = useState<Tableau>({ tas: {}, messages: {} })
-  const [archivesDemandees, setArchivesDemandees] = useState(false)
 
   /** Corps déjà chargés, gardés le temps de la session.
    *
@@ -253,7 +252,7 @@ export default function App() {
   /** Fenêtre d'ajout d'un expéditeur aux rappels de formation. */
   const [ajoutFormation, setAjoutFormation] = useState(false)
   const boutonProfil = useRef<HTMLButtonElement>(null)
-  const { logos, chercher: chercherLesLogos } = useLogos()
+  const { logos, chercher: chercherLesLogos, oublier: oublierLesLogos } = useLogos()
 
   const { sombre, accent, barreRepliee: repliee } = prefs
 
@@ -510,6 +509,31 @@ export default function App() {
   }, [relever, afficherLeCache, resumerLesNewsletters])
 
   /**
+   * Après « Tout effacer » : l'écran suit le disque, sans redémarrage.
+   *
+   * L'effacement ne touchait que le disque. La fenêtre continuait d'afficher
+   * les messages, les corps et les résumés qu'elle tenait en mémoire — rien ne
+   * disait que le geste avait eu lieu, et il fallait redémarrer pour retrouver
+   * un état cohérent.
+   *
+   * Tout ce qui est une **copie** est donc lâché ici, puis le chargement repart
+   * du début. Ce qui n'est pas une copie — les comptes, les règles, la
+   * disposition des tables — n'a pas été effacé sur le disque et n'a aucune
+   * raison de disparaître de l'écran.
+   */
+  const toutEffacer = useCallback(() => {
+    setBoite([])
+    setArchives([])
+    setCorpsConnus(creerCache)
+    setResumes({})
+    oublierLesLogos()
+    setPremierReleve(true)
+    annoncer('Disque nettoyé. Les messages se rechargent.')
+    void chargerLaBoite()
+  }, [annoncer, chargerLaBoite, oublierLesLogos])
+
+
+  /**
    * Marque un message comme lu, d'abord à l'écran puis chez Gmail.
    *
    * L'affichage est mis à jour sans attendre le réseau : le message est sous
@@ -591,15 +615,22 @@ export default function App() {
     })
   }, [rafraichir, chargerLaBoite])
 
-  /** La table des archives se charge à sa première ouverture, et pas avant.
+  /**
+   * La table se charge à son ouverture, et se relève à chaque ouverture.
    *
-   *  Payer deux cents appels au démarrage pour une page qu'on n'ouvrira
-   *  peut-être pas serait de l'attente offerte à personne. */
+   * Pas au démarrage : payer deux cents appels pour une page qu'on n'ouvrira
+   * peut-être pas serait de l'attente offerte à personne.
+   *
+   * Mais **à chaque fois**, et non la première seule. La page n'a plus de bouton
+   * « Relever » — il occupait un en-tête qui répétait la barre latérale, pour un
+   * geste que l'application sait faire elle-même. Le cache tient l'écran sans
+   * délai pendant que le relevé se fait derrière : on ne voit donc pas
+   * l'attente, on voit la table se corriger.
+   */
   useEffect(() => {
-    if (vue !== 'archives' || archivesDemandees || !interrogeable(etat)) return
-    setArchivesDemandees(true)
-    void chargerLesArchives()
-  }, [vue, archivesDemandees, etat, chargerLesArchives])
+    if (vue !== 'archives' || !interrogeable(etat)) return
+    void chargerLesArchives(true)
+  }, [vue, etat, chargerLesArchives])
 
   /** Relevé périodique. La fréquence est un réglage, pas une constante : le
    *  minuteur se reconstruit quand elle change. */
@@ -1137,6 +1168,7 @@ export default function App() {
               frequence={prefs.frequence}
               onFrequence={(f: Frequence) => regler({ frequence: f })}
               onRevoirLeGuide={() => regler({ guideVu: false })}
+              onToutEffacer={toutEffacer}
               melange={compteAffiche === TOUS_LES_COMPTES}
               onMelanger={() => void afficherLaVueMelangee()}
               toucheRecherche={prefs.toucheRecherche}
@@ -1212,7 +1244,6 @@ export default function App() {
               tableau={tableau}
               onTableau={poserSurLaTable}
               sombre={sombre}
-              enCours={enRecherche}
               corpsConnus={corpsConnus}
               onCorpsCharge={(id, corps) =>
                 setCorpsConnus((connus) => ranger(connus, id, corps))

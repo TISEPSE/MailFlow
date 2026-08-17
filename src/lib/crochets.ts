@@ -132,5 +132,11 @@ export function useLogos() {
       .catch(() => undefined)
   }, [])
 
-  return { logos, chercher }
+  /** Lâche les logos tenus en mémoire.
+   *
+   *  Sert à l'effacement du disque : les fichiers partent, mais les images
+   *  restaient à l'écran, et rien ne disait que le geste avait eu lieu. */
+  const oublier = useCallback(() => setLogos({}), [])
+
+  return { logos, chercher, oublier }
 }

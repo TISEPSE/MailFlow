@@ -146,31 +146,35 @@ const BOITE_DE_RECEPTION: &str = "in:inbox";
 
 /// Requête Gmail de la table des archives.
 ///
-/// # Ce qu'est une archive, ici
+/// # Ce qui encombrait la table, et ce n'était pas ce que je croyais
 ///
-/// **Un message qui porte un libellé.** C'est la définition de l'utilisateur,
-/// et c'est `has:userlabels` qui la dit à Gmail : cet opérateur ne retient que
-/// les messages portant au moins un libellé **créé à la main**. Les marques du
-/// système — `INBOX`, `UNREAD`, `CATEGORY_PROMOTIONS`, `IMPORTANT` — ne
-/// comptent pas, ce qui est exactement ce qu'il faut : elles sont des états, pas
-/// des rangements.
+/// La table s'ouvrait sur cent cinquante-trois tuiles, dont l'écrasante
+/// majorité portait le nom de l'utilisateur lui-même : **son propre courrier
+/// envoyé**. Gmail le range hors de la boîte de réception, il satisfaisait donc
+/// la requête au même titre qu'une facture classée. `-in:sent` est la clause qui
+/// manquait, et c'est elle qui règle « il y a beaucoup trop d'archives ».
 ///
-/// C'est la clause qui porte tout le sens de cette page. Sans elle, la requête
-/// demandait « tout ce qui n'est nulle part ailleurs » : deux cents tuiles, le
-/// courrier envoyé compris, dont l'immense majorité n'avait jamais été posée sur
-/// la table par personne.
+/// J'ai d'abord cru qu'il fallait ne garder que les messages portant un libellé
+/// (`has:userlabels`). Le journal a dit non, sans appel : **zéro message relevé**.
+/// Ce compte n'a aucun message étiqueté, et la page devenait un cul-de-sac —
+/// puisqu'on crée un libellé en posant une tuile sur une autre, une table vide
+/// ne permet plus jamais d'en créer un.
 ///
-/// # Ce que les exclusions ajoutent
+/// # La définition retenue
 ///
-/// - `-in:inbox` : un message encore dans la boîte se lit dans les autres pages,
-///   il n'est pas rangé ;
-/// - `-in:sent` et `-in:chats` : du courrier qu'on n'a pas classé soi-même, même
-///   quand un libellé s'y est posé au passage d'un fil ;
+/// Est une archive ce qui a été **rangé** : sorti de la boîte de réception sans
+/// être jeté, et qu'on n'a pas écrit soi-même.
+///
+/// - `-in:inbox` : ce qui est encore dans la boîte se lit dans les autres pages ;
+/// - `-in:sent` : son propre courrier n'est pas un rangement ;
+/// - `-in:chats` : les discussions ne sont pas du courrier ;
 /// - `-in:trash` : ce qui est jeté n'est pas rangé ;
 /// - `-in:spam` : l'utilisateur ne l'a pas choisi ;
 /// - `-in:draft` : un brouillon n'appartient qu'à celui qui l'écrit.
-pub const ARCHIVES: &str =
-    "has:userlabels -in:inbox -in:sent -in:chats -in:trash -in:spam -in:draft";
+///
+/// Les libellés gardent tout leur rôle : ceux qui en portent forment les tas.
+/// Ils ne décident simplement plus de ce qui a le droit d'être sur la table.
+pub const ARCHIVES: &str = "-in:inbox -in:sent -in:chats -in:trash -in:spam -in:draft";
 
 /// Relève la boîte de réception et classe ce qu'elle contient.
 pub async fn charger_boite<T: Transport, J: SourceJeton>(
@@ -303,13 +307,25 @@ mod tests_archives {
     use super::*;
 
     #[test]
-    fn la_table_ne_porte_que_des_messages_libelles() {
-        // La clause qui porte tout le sens de la page : une archive est un
-        // message que l'utilisateur a rangé sous un libellé. La perdre
-        // ramènerait sur la table des milliers de messages jamais classés.
+    fn le_courrier_envoye_ne_monte_pas_sur_la_table() {
+        // La clause qui règle « il y a beaucoup trop d'archives » : sans elle,
+        // la table s'ouvrait sur cent cinquante-trois tuiles dont la plupart
+        // étaient les messages que l'utilisateur avait écrits lui-même.
         assert!(
-            ARCHIVES.contains("has:userlabels"),
-            "sans « has:userlabels », la table cesse d'être une table"
+            ARCHIVES.contains("-in:sent"),
+            "sans « -in:sent », la table se remplit de son propre courrier"
+        );
+    }
+
+    #[test]
+    fn la_table_n_exige_pas_de_libelle() {
+        // Éprouvé une fois, et c'est assez : exiger `has:userlabels` a rendu la
+        // page vide sur un compte sans libellé, et donc définitivement vide —
+        // on crée un libellé en posant une tuile sur une autre, ce qu'une table
+        // sans tuile ne permet plus jamais.
+        assert!(
+            !ARCHIVES.contains("has:userlabels"),
+            "une table vide ne permet plus de créer le moindre tas"
         );
     }
 

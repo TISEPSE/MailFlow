@@ -45,7 +45,6 @@ import {
   SURFACE,
   TAS,
   TUILE,
-  aligner,
   borner,
   cibleSousLaTuile,
   completer,
@@ -90,7 +89,6 @@ export function Archives({
   tableau,
   onTableau,
   sombre,
-  enCours,
   corpsConnus,
   onCorpsCharge,
   gestes,
@@ -101,7 +99,6 @@ export function Archives({
   /** Appelée à chaque dépose : c'est elle qui écrit `tableau.json`. */
   onTableau: (tableau: Tableau) => void
   sombre: boolean
-  enCours: boolean
   corpsConnus: ReadonlyMap<string, CorpsMessage>
   onCorpsCharge: (id: string, corps: CorpsMessage) => void
   gestes: GestesDeLaTable
@@ -240,39 +237,21 @@ export function Archives({
 
   if (archives.length === 0) {
     return (
-      <div className="flex flex-1 flex-col">
-        <BarreDeTable
-          tas={tasVivants.length}
-          seuls={0}
-          enCours={enCours}
-          onRelever={gestes.onRelever}
-          onAligner={() => undefined}
-        />
-        <Vide
-          icone="archive"
-          titre="Aucune archive"
-          detail="Cette table porte vos messages rangés sous un libellé Gmail. Rangez-en un depuis les autres pages, ou depuis Gmail, et il viendra se poser ici."
-        />
-      </div>
+      <Vide
+        icone="archive"
+        titre="Aucune archive"
+        detail="Les messages que vous rangez depuis les autres pages viennent se poser ici. Vous pourrez alors les grouper en tas, et chaque tas sera un libellé retrouvé dans Gmail."
+      />
     )
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <BarreDeTable
-        tas={tasVivants.length}
-        seuls={seuls.length}
-        enCours={enCours}
-        onRelever={gestes.onRelever}
-        onAligner={() =>
-          onTableau(
-            aligner(
-              tasVivants,
-              seuls.map((m) => m.id),
-            ),
-          )
-        }
-      />
+      {/* Pas d'en-tête. C'était un titre qui répétait la barre latérale, un
+          bouton de relevé que la page déclenche désormais toute seule à chaque
+          ouverture, et un « Tout ranger » qui défaisait d'un clic la
+          disposition que l'utilisateur venait de faire. La table est ce que la
+          page a à montrer : elle prend toute la place. */}
 
       {/* La surface défile dans les deux sens, et elle a une fin. */}
       <div className="min-h-0 flex-1 overflow-auto" style={{ background: 'var(--sunk)' }}>
@@ -413,53 +392,6 @@ export function Archives({
           }}
         />
       )}
-    </div>
-  )
-}
-
-/** L'en-tête de la page : ce qu'il y a sur la table, et les deux gestes globaux. */
-function BarreDeTable({
-  tas,
-  seuls,
-  enCours,
-  onRelever,
-  onAligner,
-}: {
-  tas: number
-  seuls: number
-  enCours: boolean
-  onRelever: () => void
-  onAligner: () => void
-}) {
-  return (
-    <div
-      className="flex flex-none items-center gap-3 border-b px-6 py-3"
-      style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="text-[0.9375rem] font-semibold tracking-tight">Archives</div>
-        <div className="pt-0.5 text-[0.75rem]" style={{ color: 'var(--sub)' }}>
-          {tas === 0 && seuls === 0
-            ? 'Rien sur la table'
-            : `${decompte(tas, 'tas', 'tas')} · ${decompte(seuls, 'message seul', 'messages seuls')}`}
-          {' — '}
-          un tas est un libellé Gmail ; recouvrez une tuile avec une autre pour
-          en faire un.
-        </div>
-      </div>
-
-      <Bouton onClick={onAligner} titre="Réaligner tout en grille">
-        Tout ranger
-      </Bouton>
-      <Bouton
-        icone="refresh"
-        variante="principal"
-        onClick={onRelever}
-        enAttente={enCours}
-        disabled={enCours}
-      >
-        Relever
-      </Bouton>
     </div>
   )
 }
