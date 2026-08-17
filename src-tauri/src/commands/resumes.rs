@@ -110,9 +110,9 @@ pub async fn llm_cle_effacer() -> Resultat<()> {
 /// sous l'identifiant du numéro le plus récent — celui-là même que la carte
 /// affiche.
 ///
-/// Le résumé d'un numéro isolé sert de repli. Il n'existe que si l'utilisateur
-/// l'a demandé explicitement, et il se lit là où il a été demandé : dans la
-/// fenêtre de lecture de ce numéro.
+/// La lecture du résumé de numéro reste en repli, pour les résumés produits
+/// avant que la page ne passe au regroupement : ils sont sur le disque, ils ont
+/// coûté un appel, et rien ne justifie de les jeter.
 #[tauri::command]
 pub async fn resumes_connus(app: AppHandle, ids: Vec<String>) -> Resultat<HashMap<String, Resume>> {
     let dossier = corps::dossier_cache_dans(&app);
@@ -311,36 +311,4 @@ pub async fn resumes_produire(
 fn resume_du_groupe(dossier: &std::path::Path, groupe: &GroupeAResumer) -> Option<Resume> {
     let recent = groupe.ids.first()?;
     corps::lire_resume_de(dossier, recent, corps::Portee::Publication)
-}
-
-/// Résume **un numéro précis**, à la demande de l'utilisateur.
-///
-/// L'exception au résumé par publication : quand un titre intrigue, on paie un
-/// appel pour celui-là seul. C'est un geste explicite, donc son échec se dit —
-/// contrairement à la production de masse, qui se tait et laisse les cartes
-/// avec leur ligne composée localement.
-#[tauri::command]
-pub async fn resume_du_message(app: AppHandle, id: String) -> Resultat<Resume> {
-    let dossier = corps::dossier_cache_dans(&app);
-
-    // Déjà payé une fois : rouvrir le même numéro ne le repaie pas.
-    if let Some(deja) = corps::lire_resume(&dossier, &id) {
-        return Ok(deja);
-    }
-
-    let cle = cle_enregistree()
-        .ok_or_else(|| AppError::Resume("aucune clé de résumé configurée".into()))?;
-
-    let corps_message = corps::lire(&dossier, &id)
-        .ok_or_else(|| AppError::Resume("le message n'est pas encore chargé".into()))?;
-
-    let resume = Gemini::nouveau(cle)?
-        .resumer_newsletter(
-            &corps::texte_lisible(&corps_message),
-            &super::compte_actif(&app),
-        )
-        .await?;
-
-    corps::ranger_resume(&dossier, &id, &resume);
-    Ok(resume)
 }

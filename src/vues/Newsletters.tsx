@@ -40,7 +40,7 @@ import {
   resserrerSujet,
   type GroupeNewsletters,
 } from '../lib/newsletters'
-import { messageDErreur, resumeDuMessage, type Avancement } from '../lib/tauri'
+import type { Avancement } from '../lib/tauri'
 import type { CorpsMessage, MessageAffiche, Resume } from '../types/backend'
 import { LecteurEnGrand } from '../composants/LecteurEnGrand'
 
@@ -60,6 +60,7 @@ export function Newsletters({
   avancementResumes,
   onArreterResumes,
   onAnalyser,
+  onResumerGroupe,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -81,8 +82,23 @@ export function Newsletters({
   onArreterResumes?: () => void
   /** Relance l'analyse à la main, sans attendre un redémarrage. */
   onAnalyser?: () => void
+  /** Résume une seule publication — un appel, décidé depuis sa carte. */
+  onResumerGroupe?: (groupe: GroupeNewsletters) => Promise<void>
 }) {
   const [ouvert, setOuvert] = useState<MessageAffiche | null>(null)
+
+  /** La publication dont le résumé est en vol, pour n'animer que sa carte. */
+  const [enCoursDeResume, setEnCoursDeResume] = useState<string | null>(null)
+
+  const resumerCeGroupe = async (groupe: GroupeNewsletters) => {
+    if (!onResumerGroupe || enCoursDeResume) return
+    setEnCoursDeResume(groupe.cle)
+    try {
+      await onResumerGroupe(groupe)
+    } finally {
+      setEnCoursDeResume(null)
+    }
+  }
 
   const groupes = useMemo(() => grouperNewsletters(messages), [messages])
 
@@ -136,6 +152,8 @@ export function Newsletters({
               }}
               onArchiver={onArchiver}
               onSupprimer={onSupprimer}
+              onResumer={onResumerGroupe && (() => void resumerCeGroupe(groupe))}
+              resumeEnCours={enCoursDeResume === groupe.cle}
               resumes={resumes}
             />
           ))}
@@ -148,70 +166,9 @@ export function Newsletters({
           corps={corpsConnus.get(ouvert.id) ?? null}
           onCorpsCharge={onCorpsCharge}
           onFermer={() => setOuvert(null)}
-          actions={<ResumerCeNumero id={ouvert.id} />}
         />
       )}
     </div>
-  )
-}
-
-/**
- * Le résumé d'un numéro précis, payé à la demande.
- *
- * # L'exception, et pourquoi elle est un bouton
- *
- * Les cartes portent un résumé de **publication** : un appel par émetteur au
- * lieu d'un par numéro, ce qui divise la dépense par quatre. Ce résumé-là
- * répond à « est-ce que je lis cette publication », et c'est la bonne question
- * neuf fois sur dix.
- *
- * Reste la dixième : un titre intrigue, on veut savoir ce que dit **ce**
- * numéro. Le faire pour tous par précaution reviendrait à repayer ce qu'on
- * vient d'économiser ; le proposer ici le fait payer à qui le demande, une
- * fois, et le résumé est ensuite gardé sur le disque.
- *
- * Son échec se dit, contrairement à la production de masse qui se tait : c'est
- * un geste explicite, et un geste explicite sans retour passe pour une panne.
- */
-function ResumerCeNumero({ id }: { id: string }) {
-  const [etat, setEtat] = useState<'repos' | 'en-cours'>('repos')
-  const [resume, setResume] = useState<Resume | null>(null)
-  const [echec, setEchec] = useState<string | null>(null)
-
-  if (resume) {
-    return (
-      <p
-        className="selectionnable min-w-0 flex-1 text-left text-[0.8125rem] leading-relaxed"
-        style={{ color: 'var(--fg)' }}
-      >
-        {resume.texte}
-      </p>
-    )
-  }
-
-  return (
-    <>
-      {echec && (
-        <span className="min-w-0 flex-1 text-left text-[0.75rem]" style={{ color: 'var(--sub)' }}>
-          {echec}
-        </span>
-      )}
-      <Bouton
-        icone="auto_awesome"
-        enAttente={etat === 'en-cours'}
-        disabled={etat === 'en-cours'}
-        onClick={() => {
-          setEtat('en-cours')
-          setEchec(null)
-          resumeDuMessage(id)
-            .then(setResume)
-            .catch((e) => setEchec(messageDErreur(e)))
-            .finally(() => setEtat('repos'))
-        }}
-      >
-        Résumer ce numéro
-      </Bouton>
-    </>
   )
 }
 
@@ -385,6 +342,8 @@ function CarteGroupe({
   onVoir,
   onArchiver,
   onSupprimer,
+  onResumer,
+  resumeEnCours = false,
   resumes,
 }: {
   groupe: GroupeNewsletters
@@ -393,6 +352,9 @@ function CarteGroupe({
   onVoir: (m: MessageAffiche) => void
   onArchiver: (id: string) => void
   onSupprimer: (id: string) => void
+  /** Résume cette publication seule — un appel, décidé ici. */
+  onResumer?: () => void
+  resumeEnCours?: boolean
   resumes?: Record<string, Resume>
 }) {
   const [fond, encre] = palette(rang)
@@ -538,14 +500,13 @@ function CarteGroupe({
               composée localement : même emplacement, même hauteur, même
               graisse. La page ne bouge pas d'un pixel selon qu'il est là ou
               non — c'est ce qui rend l'IA réellement optionnelle. */}
+          {/* Le résumé, et rien d'autre.
+              L'extrait de Gmail vivait juste en dessous, en gris : deux lignes
+              qui répétaient en moins bien ce que le résumé dit déjà, et qui
+              occupaient la place où il pouvait s'étendre. La consigne du modèle
+              a été allongée d'autant. */}
           <p className="text-[0.8125rem] leading-relaxed font-medium">
             {resumes?.[courant.id]?.texte ?? ligneLocale(courant)}
-          </p>
-          <p
-            className="mt-1 line-clamp-2 text-[0.7812rem] leading-relaxed"
-            style={{ color: 'var(--sub)' }}
-          >
-            {courant.extrait}
           </p>
 
           {decompte && (
@@ -644,6 +605,25 @@ function CarteGroupe({
         )}
 
         <div className="mt-auto flex items-center gap-2 px-4 py-3.5">
+          {/* Résumer se demande **ici**, sur la carte, et pas dans la fenêtre
+              de lecture : on décide de lire ou non *avant* d'ouvrir, et un
+              bouton logé derrière l'ouverture arrive après la question qu'il
+              devait aider à trancher. */}
+          {onResumer && !resumes?.[courant.id] && (
+            <Bouton
+              icone="auto_awesome"
+              onClick={onResumer}
+              enAttente={resumeEnCours}
+              disabled={resumeEnCours}
+              titre={
+                nombre > 1
+                  ? `Résume les ${nombre} numéros en une phrase, en un seul appel`
+                  : 'Résume ce numéro en une phrase'
+              }
+            >
+              Résumer
+            </Bouton>
+          )}
           <Bouton icone="open_in_full" onClick={() => onVoir(courant)}>
             Voir le mail
           </Bouton>

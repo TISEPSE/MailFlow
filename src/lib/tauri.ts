@@ -460,15 +460,6 @@ export function resumesProduire(groupes: GroupeAResumer[]): Promise<RapportResum
   return invoke<RapportResumes>('resumes_produire', { groupes })
 }
 
-/**
- * Resume **un numero precis**, a la demande.
- *
- * L'exception au resume par publication : quand un titre intrigue, on paie un
- * appel pour celui-la seul. Deja produit, il est rendu sans rien repayer.
- */
-export function resumeDuMessage(id: string): Promise<Resume> {
-  return invoke<Resume>('resume_du_message', { id })
-}
 
 /** Demande l'arret : lu entre deux messages, jamais en plein appel. */
 export function resumesArreter(): Promise<void> {

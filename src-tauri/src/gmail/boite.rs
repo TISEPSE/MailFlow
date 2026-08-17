@@ -122,6 +122,47 @@ pub fn libelles_de_l_utilisateur(tous: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// Ce que **Gmail** a posé sur un message, par opposition à l'utilisateur.
+///
+/// Sert au journal, et à une question précise : d'où viennent les messages
+/// qu'on trouve sur la table des archives sans se souvenir de les y avoir mis.
+/// La réponse est dans ces marques — `CATEGORY_PROMOTIONS` trahit un tri
+/// automatique de Gmail, `IMPORTANT` un classement par son modèle, et aucune
+/// marque du tout signifie que quelqu'un a archivé le message à la main, un
+/// jour, depuis n'importe quel client.
+fn marques_du_systeme(tous: &[String]) -> Vec<String> {
+    tous.iter()
+        .filter(|l| !l.starts_with("Label_") && *l != "UNREAD")
+        .cloned()
+        .collect()
+}
+
+/// Compte les marques de Gmail sur un relevé, pour le journal.
+///
+/// Rend « CATEGORY_PROMOTIONS×5, IMPORTANT×2, sans marque×6 » : de quoi
+/// répondre à « d'où sortent ces messages » sans rien journaliser du contenu,
+/// ni un sujet, ni une adresse.
+pub fn compter_les_marques(messages: &[(String, Vec<String>)]) -> String {
+    use std::collections::BTreeMap;
+
+    let mut comptes: BTreeMap<String, usize> = BTreeMap::new();
+    for (_, labels) in messages {
+        let marques = marques_du_systeme(labels);
+        if marques.is_empty() {
+            *comptes.entry("sans marque".into()).or_default() += 1;
+        }
+        for m in marques {
+            *comptes.entry(m).or_default() += 1;
+        }
+    }
+
+    comptes
+        .into_iter()
+        .map(|(nom, n)| format!("{nom}×{n}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 impl MessageAffiche {
     pub fn depuis(m: &MessageMetadata, regles: &RuleSet, compte: &str) -> Self {
         Self {
@@ -131,7 +172,10 @@ impl MessageAffiche {
             destinataires: Contact::liste(m.to()),
             copies: Contact::liste(m.cc()),
             sujet: m.sujet().to_string(),
-            extrait: m.snippet.clone(),
+            // Gmail échappe son `snippet` pour une page web : affiché tel
+            // quel, il montrait « Quelqu&#39;un de Ministère des Armées »,
+            // que personne n'a jamais écrit.
+            extrait: crate::html::desechapper(&m.snippet),
             date: m.date().map(|d| d.to_rfc3339()),
             non_lu: m.label_ids.iter().any(|l| l == libelles::UNREAD),
             categorie: classer(m, regles),
@@ -282,11 +326,15 @@ async fn relever<T: Transport, J: SourceJeton>(
         .buffered(PARALLELISME);
 
     let mut boite = Vec::with_capacity(total);
+    let mut marques: Vec<(String, Vec<String>)> = Vec::with_capacity(total);
     let mut faits = 0;
 
     while let Some((id, lu)) = lectures.next().await {
         match lu {
-            Ok(m) => boite.push(MessageAffiche::depuis(&m, regles, compte)),
+            Ok(m) => {
+                marques.push((m.id.clone(), m.label_ids.clone()));
+                boite.push(MessageAffiche::depuis(&m, regles, compte));
+            }
 
             // Le message a bougé entre la liste et la lecture : cas courant sur
             // une boîte vivante. Il manquera à l'affichage, ce n'est pas une
@@ -297,6 +345,17 @@ async fn relever<T: Transport, J: SourceJeton>(
         // attendre, et la barre ne doit pas rester en arrière.
         faits += 1;
         avance(faits, total);
+    }
+
+    // Ce que Gmail a posé sur ces messages, et rien de leur contenu. C'est la
+    // seule trace qui réponde à « d'où sortent ces messages » : un tri
+    // automatique de Gmail, un classement par son modèle, ou une main qui a
+    // archivé un jour depuis n'importe quel client.
+    if !boite.is_empty() {
+        log::info!(
+            "marques Gmail du relevé : {}",
+            compter_les_marques(&marques)
+        );
     }
 
     Ok(boite)

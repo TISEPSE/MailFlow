@@ -20,6 +20,7 @@ import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
 import { useLogos, usePreferences, useToasts } from './lib/crochets'
 import { autresQueMoi } from './lib/reponse'
 import { grouperNewsletters, phraseDuRapport } from './lib/newsletters'
+import type { GroupeNewsletters } from './lib/newsletters'
 import {
   MINUTES,
   lirePreferences,
@@ -489,6 +490,49 @@ export default function App() {
     annoncer(...phraseDuRapport(rapport))
   }, [boite, annoncer, resumerLesNewsletters])
 
+  /**
+   * Résume une seule publication, depuis sa carte.
+   *
+   * Le même chemin que l'analyse d'ensemble, avec un seul groupe : c'est déjà
+   * un appel par publication, il n'y a donc rien de neuf à écrire côté Rust.
+   *
+   * Ce qui change est le moment. On décide de lire ou non **avant** d'ouvrir :
+   * un bouton logé derrière l'ouverture arriverait après la question qu'il
+   * devait aider à trancher. Et c'est un appel payé sciemment, pour celle-là
+   * seule, plutôt que trente payés d'avance au démarrage.
+   */
+  const resumerUnGroupe = useCallback(
+    async (groupe: GroupeNewsletters) => {
+      const ids = groupe.messages.map((m) => m.id)
+
+      const etatLlm = await llmEtat().catch(() => null)
+      if (!etatLlm?.cleConfiguree) {
+        annoncer('Aucune clé configurée : posez-la dans les Paramètres.', true)
+        return
+      }
+
+      await corpsPrecharger(ids).catch(() => null)
+
+      try {
+        const rapport = await resumesProduire([{ cle: groupe.cle, ids }])
+
+        // Fusionné, et non remplacé : `resumesConnus` ne connaît que les
+        // identifiants qu'on lui donne, et les rendre seuls effacerait de
+        // l'écran les résumés de toutes les autres publications.
+        const siens = await resumesConnus(ids).catch(() => ({}))
+        setResumes((connus) => ({ ...connus, ...siens }))
+        if (rapport.echecs > 0 || rapport.sansTexte > 0) {
+          annoncer(...phraseDuRapport(rapport))
+        }
+      } catch (e) {
+        annoncer(messageDErreur(e), true)
+      } finally {
+        setAvancementResumes(null)
+      }
+    },
+    [annoncer],
+  )
+
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
   const afficherLaVueMelangee = useCallback(async () => {
     setCompteAffiche(TOUS_LES_COMPTES)
@@ -879,6 +923,13 @@ export default function App() {
    *  Afficher « 0 » pendant ce temps affirme une boîte vide ; un compteur qui
    *  tourne dit qu'on cherche encore. Les règles, elles, viennent du disque et
    *  sont connues tout de suite : leur compte reste. */
+  /** Vrai tant qu'un relevé tourne : chaque entrée de la barre montre alors un
+   *  anneau à la place de son décompte.
+   *
+   *  La page des règles en était exclue, au motif que ses règles ne viennent
+   *  pas du relevé. Mais l'anneau ne dit pas « cette page charge » : il dit
+   *  « l'application relève ». Une seule entrée qui garde son chiffre pendant
+   *  que les cinq autres tournent se lit comme une entrée figée. */
   const releveEnCours = premierReleve || enRecherche || avancement !== null
 
 
@@ -1003,7 +1054,7 @@ export default function App() {
                 // seule ne dit pas ce qu'elle range.
                 title={
                   repliee
-                    ? `${libelle}${v !== 'regles' && releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
+                    ? `${libelle}${releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
                     : undefined
                 }
                 className={`survolable flex items-center gap-3 rounded-lg py-2 ${
@@ -1022,7 +1073,7 @@ export default function App() {
                     style={{ color: actif ? '#FFFFFF' : solide }}
                   />
                   {repliee &&
-                    (v !== 'regles' && releveEnCours ? (
+                    (releveEnCours ? (
                       <span
                         className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
                         style={{ background: solide, color: '#FFFFFF' }}
@@ -1054,7 +1105,7 @@ export default function App() {
                       // l'anneau décalait le libellé au moment du relevé.
                       style={{ color: actif ? solide : 'var(--sub)', minWidth: 16 }}
                     >
-                      {v !== 'regles' && releveEnCours ? (
+                      {releveEnCours ? (
                         <Icone nom="progress_activity" taille="0.8125rem" tourne />
                       ) : (
                         compte(v)
@@ -1374,6 +1425,7 @@ export default function App() {
               avancementResumes={avancementResumes}
               onArreterResumes={() => void resumesArreter()}
               onAnalyser={() => void analyserLesNewsletters()}
+              onResumerGroupe={resumerUnGroupe}
               vise={messageVise}
               onVise={() => setMessageVise(null)}
               logos={logos}
