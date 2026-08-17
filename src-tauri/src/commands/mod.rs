@@ -29,6 +29,8 @@ use crate::gmail::transport::TransportHttp;
 use crate::rules::{self, Rule, RuleSet, RulesStore};
 use crate::secrets::KeyringStore;
 
+pub mod resumes;
+
 /// État d'authentification partagé, géré par Tauri.
 ///
 /// `client` vaut `None` tant que l'identifiant Google n'a pas été configuré :

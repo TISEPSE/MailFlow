@@ -439,6 +439,59 @@ pub fn ranger_vignette(dossier: &Path, message: &str, piece: &str, png: &str) {
     }
 }
 
+/// Texte d'un corps, tel qu'on le donne à résumer.
+///
+/// La partie `text/plain` quand l'expéditeur en a joint une — c'est la même
+/// lettre, sans le balisage. À défaut, le HTML dépouillé de ses balises :
+/// envoyer le balisage coûterait des jetons pour du bruit, et le quota gratuit
+/// se compte en jetons.
+pub fn texte_lisible(corps: &CorpsMessage) -> String {
+    if let Some(texte) = &corps.texte
+        && !texte.trim().is_empty()
+    {
+        return texte.clone();
+    }
+    corps.html.as_deref().map(sans_balises).unwrap_or_default()
+}
+
+/// Retire les balises et rend les entités les plus courantes.
+///
+/// Les entités comptent : un extrait qui dit « l&#39;examen » se résume mal,
+/// et le modèle reproduirait la graphie plutôt que de la corriger.
+fn sans_balises(html: &str) -> String {
+    let mut texte = String::with_capacity(html.len());
+    let mut dans_balise = false;
+
+    for c in html.chars() {
+        match c {
+            '<' => dans_balise = true,
+            // Une balise vaut une séparation : sans cet espace, « fin</p><p>début »
+            // donnerait « findébut ».
+            '>' => {
+                dans_balise = false;
+                texte.push(' ');
+            }
+            _ if !dans_balise => texte.push(c),
+            _ => {}
+        }
+    }
+
+    for (entite, remplacement) in [
+        ("&nbsp;", " "),
+        ("&#39;", "'"),
+        ("&apos;", "'"),
+        ("&quot;", "\""),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        // En dernier : sinon « &amp;#39; » deviendrait une apostrophe.
+        ("&amp;", "&"),
+    ] {
+        texte = texte.replace(entite, remplacement);
+    }
+
+    texte.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Chemin du résumé d'un message.
 ///
 /// Une extension à part, et non un `.json` de plus : le balayage reconnaît les

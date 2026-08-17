@@ -56,6 +56,7 @@ pub fn run() {
             // Construit après l'initialisation des logs, pour que l'absence
             // d'identifiant client soit visible dans la console.
             app.manage(commands::EtatAuth::nouveau());
+            app.manage(commands::resumes::EtatResumes::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -93,6 +94,12 @@ pub fn run() {
             commands::compte_oublier,
             commands::logos_expediteurs,
             commands::lien_ouvrir,
+            commands::resumes::llm_etat,
+            commands::resumes::llm_cle_enregistrer,
+            commands::resumes::llm_cle_effacer,
+            commands::resumes::resumes_connus,
+            commands::resumes::resumes_produire,
+            commands::resumes::resumes_arreter,
             commands::maj_verifier,
             commands::maj_ouvrir,
         ])
