@@ -36,6 +36,10 @@ import {
   compteOublier,
   compteProfil,
   corpsPrecharger,
+  resumesConnus,
+  resumesProduire,
+  resumesArreter,
+  EVENEMENT_RESUMES,
   EVENEMENT_PRECHARGEMENT,
   EVENEMENT_RELEVE,
   type Avancement,
@@ -66,6 +70,7 @@ import type {
   ProfilCompte,
   Regle,
   ReglesDuCompte,
+  Resume,
 } from './types/backend'
 
 type Vue = CategorieMessage | 'regles' | 'parametres'
@@ -209,6 +214,16 @@ export default function App() {
    *  ce qu'on a ouvert, tandis que celui-ci est un ordre venu d'ailleurs. */
   const [messageVise, setMessageVise] = useState<string | null>(null)
 
+  /** Résumés de newsletters déjà produits, par identifiant de message. */
+  const [resumes, setResumes] = useState<Record<string, Resume>>({})
+
+  /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas.
+   *
+   *  Séparé de `avancement` à dessein : celui-ci pose un écran qui bloque, et
+   *  les résumés ne doivent rien bloquer. Ils s'annoncent par une bande sur la
+   *  seule page qui les concerne. */
+  const [avancementResumes, setAvancementResumes] = useState<Avancement | null>(null)
+
   /** Fenêtre de recherche, ouverte au raccourci. */
   const [rechercheOuverte, setRechercheOuverte] = useState(false)
 
@@ -287,6 +302,35 @@ export default function App() {
     }
   }, [annoncer, chercherLesLogos])
 
+  /**
+   * Troisième phase : les résumés des newsletters relevées.
+   *
+   * Ne concerne que cette catégorie — c'est la garantie, tenue ici et vérifiée
+   * côté Rust, qu'aucun message humain ni aucun rappel de formation ne part
+   * vers un service tiers.
+   *
+   * Sans clé configurée la commande rend zéro sans rien tenter : ce n'est pas
+   * une panne, et rien ne doit s'afficher. Les résumés déjà sur le disque sont
+   * lus d'abord, pour que la page les montre avant même que la phase commence.
+   */
+  const resumerLesNewsletters = useCallback(async (messages: MessageAffiche[]) => {
+    const ids = messages.filter((m) => m.categorie === 'newsletter').map((m) => m.id)
+    if (!ids.length) return
+
+    setResumes(await resumesConnus(ids).catch(() => ({})))
+
+    try {
+      await resumesProduire(ids)
+      setResumes(await resumesConnus(ids).catch(() => ({})))
+    } catch (e) {
+      // Un moteur de résumés indisponible ne mérite pas de notification :
+      // chaque carte garde sa ligne composée localement.
+      console.warn('résumés non produits', messageDErreur(e))
+    } finally {
+      setAvancementResumes(null)
+    }
+  }, [])
+
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
   const afficherLaVueMelangee = useCallback(async () => {
     setCompteAffiche(TOUS_LES_COMPTES)
@@ -330,11 +374,17 @@ export default function App() {
 
       setAvancement({ faits: 0, total: messages.length, etape: 'corps' })
       await corpsPrecharger(messages.map((m) => m.id)).catch(() => null)
+
+      // Troisième phase, lancée sans être attendue : les résumés ont besoin
+      // des corps que la phase précédente vient de rapporter, mais rien ne
+      // justifie de retenir l'utilisateur devant un écran pendant qu'ils se
+      // font. La bande de la page Newsletters s'en charge.
+      void resumerLesNewsletters(messages)
     } finally {
       chargementComplet.current = false
       setAvancement(null)
     }
-  }, [relever, afficherLeCache])
+  }, [relever, afficherLeCache, resumerLesNewsletters])
 
   /**
    * Marque un message comme lu, d'abord à l'écran puis chez Gmail.
@@ -397,6 +447,7 @@ export default function App() {
       listen<Avancement>(EVENEMENT_PRECHARGEMENT, (e) =>
         setAvancement({ ...e.payload, etape: 'corps' }),
       ),
+      listen<Avancement>(EVENEMENT_RESUMES, (e) => setAvancementResumes(e.payload)),
     ]
     return () => {
       for (const arret of arrets) void arret.then((f) => f())
@@ -1003,6 +1054,9 @@ export default function App() {
             <Newsletters
               messages={parCategorie.newsletter}
               chargement={premierReleve}
+              resumes={resumes}
+              avancementResumes={avancementResumes}
+              onArreterResumes={() => void resumesArreter()}
               vise={messageVise}
               onVise={() => setMessageVise(null)}
               logos={logos}

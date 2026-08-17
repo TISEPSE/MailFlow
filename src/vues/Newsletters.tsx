@@ -41,8 +41,8 @@ import {
   resserrerSujet,
   type GroupeNewsletters,
 } from '../lib/newsletters'
-import { messageCorps } from '../lib/tauri'
-import type { CorpsMessage, MessageAffiche } from '../types/backend'
+import { messageCorps, type Avancement } from '../lib/tauri'
+import type { CorpsMessage, MessageAffiche, Resume } from '../types/backend'
 import { CorpsIsole, PiecesJointes } from '../composants/ListeMessages'
 
 export function Newsletters({
@@ -57,6 +57,9 @@ export function Newsletters({
   chargement,
   vise,
   onVise,
+  resumes,
+  avancementResumes,
+  onArreterResumes,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -71,6 +74,11 @@ export function Newsletters({
   vise?: string | null
   /** Prévient que la désignation a été honorée, pour qu'elle ne se répète pas. */
   onVise?: () => void
+  /** Résumés déjà produits, par identifiant de message. */
+  resumes?: Record<string, Resume>
+  /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas. */
+  avancementResumes?: Avancement | null
+  onArreterResumes?: () => void
 }) {
   const [ouvert, setOuvert] = useState<MessageAffiche | null>(null)
 
@@ -98,6 +106,13 @@ export function Newsletters({
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-6">
         <Synthese groupes={groupes} logos={logos} />
 
+        {avancementResumes && (
+          <BandeResumes
+            avancement={avancementResumes}
+            onArreter={onArreterResumes}
+          />
+        )}
+
         {/* Deux colonnes : une carte tient dans la moitié d'un écran, et deux
             de front font voir la journée d'un coup. Les cartes s'alignent en
             haut — une pile dépliée ne doit pas étirer sa voisine. */}
@@ -114,6 +129,7 @@ export function Newsletters({
               }}
               onArchiver={onArchiver}
               onSupprimer={onSupprimer}
+              resumes={resumes}
             />
           ))}
         </div>
@@ -196,6 +212,51 @@ function Synthese({
   )
 }
 
+/**
+ * Bande d'avancement des résumés.
+ *
+ * Elle informe sans retenir : la page reste utilisable pendant que la troisième
+ * phase tourne, et la bande disparaît d'elle-même quand elle a fini. Le bouton
+ * d'arrêt est réel — le drapeau est lu entre deux messages côté Rust — mais il
+ * ne coupe pas l'appel en vol, qui a déjà coûté son quota.
+ */
+function BandeResumes({
+  avancement,
+  onArreter,
+}: {
+  avancement: Avancement
+  onArreter?: () => void
+}) {
+  const part = avancement.total ? (avancement.faits / avancement.total) * 100 : 0
+
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-3 rounded-2xl border px-4 py-3"
+      style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+    >
+      <Icone nom="auto_awesome" taille="1rem" rempli style={{ color: 'var(--accent)' }} />
+      <span className="flex-none text-[0.8125rem] font-semibold">
+        Résumés — {avancement.faits} sur {avancement.total}
+      </span>
+      <span
+        className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full"
+        style={{ background: 'var(--sunk)' }}
+      >
+        <span
+          className="block h-full rounded-full transition-[width] duration-300 ease-out"
+          style={{ width: `${part}%`, background: 'var(--accent)' }}
+        />
+      </span>
+      {onArreter && (
+        <Bouton compact icone="close" onClick={onArreter}>
+          Arrêter
+        </Bouton>
+      )}
+    </div>
+  )
+}
+
 /** Feuilles décalées derrière une carte, quand la publication a plusieurs numéros.
  *
  *  Purement décoratif : le décompte est déjà écrit en toutes lettres sur la
@@ -232,6 +293,7 @@ function CarteGroupe({
   onVoir,
   onArchiver,
   onSupprimer,
+  resumes,
 }: {
   groupe: GroupeNewsletters
   rang: number
@@ -239,6 +301,7 @@ function CarteGroupe({
   onVoir: (m: MessageAffiche) => void
   onArchiver: (id: string) => void
   onSupprimer: (id: string) => void
+  resumes?: Record<string, Resume>
 }) {
   const [fond, encre] = palette(rang)
   const [deplie, setDeplie] = useState(false)
@@ -271,45 +334,49 @@ function CarteGroupe({
    *  restait à cliquer, et le clic ne faisait alors rien de visible. */
   const autres = groupe.messages.filter((m) => m.id !== courant.id)
 
-  const carte = useRef<HTMLDivElement>(null)
-  const pile = useRef<HTMLSpanElement>(null)
+  const contenu = useRef<HTMLDivElement>(null)
+
+  /** Vrai le temps qu'une feuille sorte, pour ignorer les clics pressés. */
+  const enTransit = useRef(false)
 
   /**
    * Fait passer un numéro en tête de la carte.
    *
-   * La feuille de devant s'enfonce dans la pile en s'effaçant à moitié — ce
-   * qui découvre les feuilles du dessous — puis revient au premier plan. Le
-   * mouvement porte sur la carte *et* sur la pile, qui recule d'un cheveu au
-   * moment de l'échange : sans elle, la carte semblait simplement clignoter.
+   * La feuille en place file vers la gauche en s'effaçant, puis la suivante
+   * arrive de la droite — le sens du mouvement dit « on avance dans la pile »
+   * sans un mot. Le cadre, lui, ne bouge pas : c'est le contenu qui défile,
+   * pas la carte, sinon toute la grille tressauterait.
+   *
+   * Les deux moitiés se **succèdent** au lieu de se superposer : sur une carte
+   * étroite, deux textes qui se croisent font illisible une fraction de
+   * seconde. D'où l'attente de la fin de la sortie avant de changer d'état.
    */
   const changerDeNumero = (id: string) => {
-    if (id === courant.id) return
-    setVisible(id)
+    if (id === courant.id || enTransit.current) return
 
+    const bloc = contenu.current
     // Le réglage système prime : une animation imposée à qui l'a désactivée
     // est une gêne, et parfois davantage.
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!bloc || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setVisible(id)
+      return
+    }
 
-    const duree = 340
-    const courbe = 'cubic-bezier(0.22, 0.75, 0.28, 1)'
-
-    carte.current?.animate(
+    enTransit.current = true
+    const sortie = bloc.animate(
       [
-        { transform: 'translateY(0) scale(1)', opacity: 1 },
-        { transform: 'translateY(10px) scale(0.962)', opacity: 0.45, offset: 0.42 },
-        { transform: 'translateY(0) scale(1)', opacity: 1 },
+        { transform: 'translateX(0)', opacity: 1 },
+        { transform: 'translateX(-2rem)', opacity: 0 },
       ],
-      { duration: duree, easing: courbe },
+      { duration: 150, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' },
     )
 
-    pile.current?.animate(
-      [
-        { transform: 'translate(0, 0)' },
-        { transform: 'translate(3px, 3px)', offset: 0.42 },
-        { transform: 'translate(0, 0)' },
-      ],
-      { duration: duree, easing: courbe },
-    )
+    void sortie.finished
+      .catch(() => undefined)
+      .finally(() => {
+        enTransit.current = false
+        setVisible(id)
+      })
   }
 
   const agirSurToute = (geste: 'archiver' | 'supprimer') => {
@@ -330,7 +397,6 @@ function CarteGroupe({
           son style en ligne lui donne. */}
       {nombre > 1 && (
         <span
-          ref={pile}
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{ zIndex: -1 }}
@@ -340,7 +406,6 @@ function CarteGroupe({
       )}
 
       <div
-        ref={carte}
         className="carte-survolable relative flex flex-col overflow-hidden rounded-2xl border"
         style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
       >
@@ -376,9 +441,13 @@ function CarteGroupe({
             relance le fondu. Sans lui, React réutiliserait les mêmes nœuds et
             le texte se remplacerait d'un coup, sans qu'on voie qu'il a
             changé — le clic paraîtrait alors n'avoir rien fait. */}
-        <div key={courant.id} className="apparait px-4 pt-3">
+        <div ref={contenu} key={courant.id} className="glisse-entre px-4 pt-3">
+          {/* Le résumé du modèle prend exactement la place de la ligne
+              composée localement : même emplacement, même hauteur, même
+              graisse. La page ne bouge pas d'un pixel selon qu'il est là ou
+              non — c'est ce qui rend l'IA réellement optionnelle. */}
           <p className="text-[0.8125rem] leading-relaxed font-medium">
-            {ligneLocale(courant)}
+            {resumes?.[courant.id]?.texte ?? ligneLocale(courant)}
           </p>
           <p
             className="mt-1 line-clamp-2 text-[0.7812rem] leading-relaxed"
@@ -413,15 +482,25 @@ function CarteGroupe({
           )}
         </div>
 
-        {deplie && autres.length > 0 && (
-          // Hauteur bornée : une publication qui a écrit trente fois étirait
-          // sa carte sur trois écrans et repoussait tout le reste de la
-          // grille. Au-delà d'une dizaine de numéros, la liste défile
-          // d'elle-même.
-          <ul
-            className="mt-3 flex max-h-[21rem] flex-col overflow-y-auto border-t"
-            style={{ borderColor: 'var(--line)' }}
+        {autres.length > 0 && (
+          // Le dépliage passe par une grille dont l'unique rangée va de `0fr`
+          // à `1fr` : la hauteur s'interpole d'elle-même, sans qu'on ait à la
+          // mesurer ni à la figer. Une hauteur mesurée en JavaScript se
+          // désaccorde dès qu'une ligne change de longueur ; celle-ci suit.
+          <div
+            className="grid transition-[grid-template-rows] duration-300 ease-out"
+            style={{ gridTemplateRows: deplie ? '1fr' : '0fr' }}
+            aria-hidden={!deplie}
           >
+            <div className="overflow-hidden">
+              {/* Hauteur bornée : une publication qui a écrit trente fois
+                  étirait sa carte sur trois écrans et repoussait tout le reste
+                  de la grille. Au-delà d'une dizaine de numéros, la liste
+                  défile d'elle-même. */}
+              <ul
+                className="mt-3 flex max-h-[21rem] flex-col overflow-y-auto border-t"
+                style={{ borderColor: 'var(--line)' }}
+              >
             {autres.map((m) => (
               <li
                 key={m.id}
@@ -466,8 +545,10 @@ function CarteGroupe({
                   <Icone nom="delete" taille="0.875rem" />
                 </button>
               </li>
-            ))}
-          </ul>
+                ))}
+              </ul>
+            </div>
+          </div>
         )}
 
         <div className="mt-auto flex items-center gap-2 px-4 py-3.5">

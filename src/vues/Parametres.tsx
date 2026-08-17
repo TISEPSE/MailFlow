@@ -21,6 +21,9 @@ import { initiales } from '../lib/presentation'
 import {
   cacheTaille,
   cacheVider,
+  llmCleEffacer,
+  llmCleEnregistrer,
+  llmEtat,
   majOuvrir,
   majVerifier,
   messageDErreur,
@@ -28,6 +31,7 @@ import {
 import type {
   CompteConnu,
   EtatApplication,
+  EtatLlm,
   ProfilCompte,
   VerificationMaj,
 } from '../types/backend'
@@ -212,6 +216,8 @@ export function Parametres({
               grand
             />
           </Reglage>
+
+          <ResumesIA onErreur={onErreur} />
 
           <MiseAJour onErreur={onErreur} />
 
@@ -889,6 +895,100 @@ function CacheDisque({ onErreur }: { onErreur: (message: string) => void }) {
       >
         {enCours ? 'Effacement…' : 'Effacer'}
       </Bouton>
+    </Reglage>
+  )
+}
+
+/**
+ * Réglage des résumés de newsletters.
+ *
+ * # Ce qui est dit franchement
+ *
+ * Le palier gratuit de Gemini n'est pas confidentiel : Google se réserve le
+ * droit d'utiliser ce qu'on lui envoie pour améliorer ses modèles. Ce n'est pas
+ * dissimulé dans des conditions d'utilisation — c'est écrit ici, avec ce qui
+ * l'atténue : seules les newsletters partent, et les liens de désabonnement,
+ * qui portent l'adresse de l'utilisateur, sont retirés avant l'envoi.
+ *
+ * # Pourquoi un bouton qui essaie vraiment
+ *
+ * Enregistrer une clé la vérifie par un véritable appel. Une clé bien formée
+ * mais révoquée passerait n'importe quel contrôle de syntaxe, et l'utilisateur
+ * ne l'apprendrait qu'au premier relevé — sans savoir pourquoi rien ne se
+ * résume.
+ */
+function ResumesIA({ onErreur }: { onErreur: (message: string) => void }) {
+  const [etat, setEtat] = useState<EtatLlm | null>(null)
+  const [cle, setCle] = useState('')
+  const [enCours, setEnCours] = useState(false)
+
+  useEffect(() => {
+    void llmEtat().then(setEtat).catch(() => undefined)
+  }, [])
+
+  const enregistrer = async () => {
+    setEnCours(true)
+    try {
+      await llmCleEnregistrer(cle)
+      setCle('')
+      setEtat(await llmEtat())
+    } catch (e) {
+      onErreur(messageDErreur(e))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  const effacer = async () => {
+    try {
+      await llmCleEffacer()
+      setEtat(await llmEtat())
+    } catch (e) {
+      onErreur(messageDErreur(e))
+    }
+  }
+
+  return (
+    <Reglage
+      icone="auto_awesome"
+      titre="Résumés automatiques des newsletters"
+      detail="Un modèle de Google lit vos newsletters et en écrit une phrase. Seules les newsletters sont envoyées — jamais vos mails directs, jamais vos rappels de formation — et les liens de désabonnement, qui portent votre adresse, sont retirés avant l'envoi. Le palier gratuit de Google n'est pas confidentiel : ce qui lui est envoyé peut servir à améliorer ses modèles."
+    >
+      {etat?.cleConfiguree ? (
+        <span className="flex items-center gap-2">
+          <span
+            className="inline-flex items-center gap-1.5 text-[0.75rem] font-semibold"
+            style={{ color: 'var(--accent-fg)' }}
+          >
+            <Icone nom="check_circle" taille="0.9375rem" rempli />
+            Clé enregistrée
+          </span>
+          <Bouton compact icone="delete" variante="danger" onClick={() => void effacer()}>
+            Retirer
+          </Bouton>
+        </span>
+      ) : (
+        <span className="flex items-center gap-2">
+          <input
+            type="password"
+            value={cle}
+            onChange={(e) => setCle(e.target.value)}
+            placeholder="Clé obtenue sur aistudio.google.com"
+            aria-label="Clé d'API pour les résumés"
+            className="texte-optique-champ selectionnable min-w-0 flex-1 rounded-lg border bg-transparent px-2.5 text-[0.8125rem] outline-none"
+            style={{ borderColor: 'var(--line)', color: 'var(--fg)', height: '2.2em' }}
+          />
+          <Bouton
+            compact
+            variante="principal"
+            icone="check_circle"
+            disabled={enCours || !cle.trim()}
+            onClick={() => void enregistrer()}
+          >
+            {enCours ? 'Vérification…' : 'Tester et enregistrer'}
+          </Bouton>
+        </span>
+      )}
     </Reglage>
   )
 }

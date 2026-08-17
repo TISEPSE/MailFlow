@@ -640,11 +640,12 @@ export function SqueletteLecture() {
 }
 
 /** Les attentes que l'écran de chargement annonce. */
-export type EtapeChargement = 'releve' | 'corps' | 'connexion'
+export type EtapeChargement = 'releve' | 'corps' | 'resumes' | 'connexion'
 
 const INTITULES: Record<EtapeChargement, string> = {
   releve: 'Relevé de vos messages…',
   corps: 'Préparation de votre boîte…',
+  resumes: 'Résumé de vos newsletters…',
   connexion: 'Autorisation en cours dans votre navigateur',
 }
 
@@ -654,6 +655,8 @@ const EXPLICATIONS: Record<EtapeChargement, string> = {
     'Les messages sont chargés une fois pour toutes. Ils resteront instantanés à la prochaine ouverture.',
   corps:
     'Les messages sont chargés une fois pour toutes. Ils resteront instantanés à la prochaine ouverture.',
+  resumes:
+    "Vous pouvez continuer à lire votre courrier pendant ce temps : cette étape ne bloque rien.",
   connexion:
     "Terminez la connexion dans l'onglet qui vient de s'ouvrir. MailFlow attend cinq minutes, puis abandonne — vous pourrez relancer.",
 }

@@ -182,6 +182,19 @@ export interface ErreurBackend {
   message: string
 }
 
+/** Résumé d'une newsletter, produit par un modèle de langage. */
+export interface Resume {
+  texte: string
+  /** Étiquettes thématiques, sans le croisillon. Trois au plus. */
+  hashtags: string[]
+}
+
+/** Ce que l'interface sait du moteur de résumés. La clé n'en sort jamais. */
+export interface EtatLlm {
+  cleConfiguree: boolean
+  modele: string
+}
+
 export type CodeErreur =
   | 'TROUSSEAU_INDISPONIBLE'
   | 'ERREUR_FICHIER'
@@ -191,3 +204,4 @@ export type CodeErreur =
   | 'ERREUR_GMAIL'
   | 'ERREUR_RESEAU'
   | 'CONFIG_INVALIDE'
+  | 'RESUME_INDISPONIBLE'

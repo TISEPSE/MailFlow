@@ -216,6 +216,23 @@ button:not(:disabled),
   top: 0.12em;
 }
 
+/* Le numéro qui arrive dans une carte de newsletter entre par la droite.
+
+   La feuille en place est d'abord poussée vers la gauche par une animation
+   posée sur son nœud ; quand elle a fini, React monte la suivante, qui joue
+   cette entrée-ci. Les deux moitiés se succèdent au lieu de se superposer :
+   sur une carte étroite, deux textes qui se croisent font illisible. */
+@keyframes glisse-entre {
+  from {
+    opacity: 0;
+    transform: translateX(2rem);
+  }
+}
+
+.glisse-entre {
+  animation: glisse-entre 190ms cubic-bezier(0, 0, 0.2, 1);
+}
+
 /* Pilule à fond accentué — le dépliant d'une pile de newsletters.
 
    Le fond vit ici et non en style en ligne : posé en ligne, il l'emportait sur
