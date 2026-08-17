@@ -41,6 +41,15 @@ pub enum AppError {
 
     #[error("configuration invalide : {0}")]
     Config(String),
+
+    /// Le modèle de langage n'a pas produit de résumé exploitable : clé
+    /// refusée, quota atteint, refus des filtres, ou réponse hors format.
+    ///
+    /// Une catégorie à part parce que la conduite à tenir l'est aussi : un
+    /// résumé manquant n'est pas une panne, c'est une ligne composée
+    /// localement à la place. Rien ne doit s'afficher en rouge.
+    #[error("résumé indisponible : {0}")]
+    Resume(String),
 }
 
 impl AppError {
@@ -64,6 +73,7 @@ impl AppError {
             Self::ApiGmail { .. } => "ERREUR_GMAIL",
             Self::Reseau(_) => "ERREUR_RESEAU",
             Self::Config(_) => "CONFIG_INVALIDE",
+            Self::Resume(_) => "RESUME_INDISPONIBLE",
         }
     }
 
@@ -93,6 +103,9 @@ impl AppError {
             }
             Self::Reseau(_) => "Connexion impossible. Vérifiez votre accès internet.".into(),
             Self::Config(_) => "La configuration de MailFlow est invalide.".into(),
+            Self::Resume(_) => {
+                "Le résumé automatique n'a pas abouti. Le message reste lisible tel quel.".into()
+            }
         }
     }
 }

@@ -22,6 +22,8 @@
 //! donnée à résumer, et la réponse ne doit jamais être traitée comme une commande :
 //! aucune action Gmail ne découle de ce que le modèle répond.
 
+pub mod gemini;
+
 use crate::error::Resultat;
 
 /// Resume produit pour une newsletter.
