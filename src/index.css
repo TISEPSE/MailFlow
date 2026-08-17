@@ -216,6 +216,21 @@ button:not(:disabled),
   top: 0.12em;
 }
 
+/* Pilule à fond accentué — le dépliant d'une pile de newsletters.
+
+   Le fond vit ici et non en style en ligne : posé en ligne, il l'emportait sur
+   la règle de survol de `.survolable`, si bien que la pilule ne réagissait pas
+   au passage de la souris. Rien ne disait alors qu'elle se cliquait. */
+.pilule-accent {
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+  transition: background-color 120ms ease;
+}
+
+.pilule-accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 76%, var(--accent) 24%);
+}
+
 /* Repère au clavier. Il vaut pour tous les thèmes, y compris sombre. */
 :focus-visible {
   outline: 2px solid var(--accent);

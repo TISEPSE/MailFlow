@@ -22,7 +22,7 @@
  * que la page ne bouge pas d'un pixel selon qu'il est là ou non. C'est ce qui
  * rend l'IA réellement optionnelle plutôt que promise.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bouton,
   Confirmation,
@@ -198,16 +198,16 @@ function Synthese({
 
 /** Feuilles décalées derrière une carte, quand la publication a plusieurs numéros.
  *
- *  Purement décoratif, et donc `aria-hidden` : le décompte est déjà écrit en
- *  toutes lettres sur la carte, un lecteur d'écran n'a que faire de l'illusion
- *  de papier. */
+ *  Purement décoratif : le décompte est déjà écrit en toutes lettres sur la
+ *  carte, un lecteur d'écran n'a que faire de l'illusion de papier. C'est
+ *  l'enveloppe qui porte `aria-hidden`, puisque c'est elle qui les groupe. */
 function Cascade({ nombre }: { nombre: number }) {
   // Deux feuilles suffisent à dire « il y en a d'autres ». Trois épaisseurs de
   // plus n'ajoutent que du bruit sous la carte.
   const feuilles = Math.min(nombre - 1, 2)
 
   return (
-    <span aria-hidden>
+    <>
       {Array.from({ length: feuilles }, (_, i) => (
         <span
           key={i}
@@ -216,12 +216,11 @@ function Cascade({ nombre }: { nombre: number }) {
             borderColor: 'var(--line)',
             background: 'var(--card)',
             transform: `translate(${(i + 1) * 5}px, ${(i + 1) * 5}px) rotate(${(i + 1) * 0.35}deg)`,
-            zIndex: -1 - i,
             opacity: 1 - (i + 1) * 0.25,
           }}
         />
       ))}
-    </span>
+    </>
   )
 }
 
@@ -266,6 +265,53 @@ function CarteGroupe({
   /** Le numéro effectivement à l'écran. */
   const courant = groupe.messages.find((m) => m.id === visible) ?? groupe.messages[0]
 
+  /** Les autres numéros — ceux que la liste dépliée propose encore.
+   *
+   *  Celui qui est à l'écran en est retiré : le laisser laissait croire qu'il
+   *  restait à cliquer, et le clic ne faisait alors rien de visible. */
+  const autres = groupe.messages.filter((m) => m.id !== courant.id)
+
+  const carte = useRef<HTMLDivElement>(null)
+  const pile = useRef<HTMLSpanElement>(null)
+
+  /**
+   * Fait passer un numéro en tête de la carte.
+   *
+   * La feuille de devant s'enfonce dans la pile en s'effaçant à moitié — ce
+   * qui découvre les feuilles du dessous — puis revient au premier plan. Le
+   * mouvement porte sur la carte *et* sur la pile, qui recule d'un cheveu au
+   * moment de l'échange : sans elle, la carte semblait simplement clignoter.
+   */
+  const changerDeNumero = (id: string) => {
+    if (id === courant.id) return
+    setVisible(id)
+
+    // Le réglage système prime : une animation imposée à qui l'a désactivée
+    // est une gêne, et parfois davantage.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const duree = 340
+    const courbe = 'cubic-bezier(0.22, 0.75, 0.28, 1)'
+
+    carte.current?.animate(
+      [
+        { transform: 'translateY(0) scale(1)', opacity: 1 },
+        { transform: 'translateY(10px) scale(0.962)', opacity: 0.45, offset: 0.42 },
+        { transform: 'translateY(0) scale(1)', opacity: 1 },
+      ],
+      { duration: duree, easing: courbe },
+    )
+
+    pile.current?.animate(
+      [
+        { transform: 'translate(0, 0)' },
+        { transform: 'translate(3px, 3px)', offset: 0.42 },
+        { transform: 'translate(0, 0)' },
+      ],
+      { duration: duree, easing: courbe },
+    )
+  }
+
   const agirSurToute = (geste: 'archiver' | 'supprimer') => {
     for (const m of groupe.messages) {
       if (geste === 'supprimer') onSupprimer(m.id)
@@ -278,9 +324,23 @@ function CarteGroupe({
     // `z-index` négatif passeraient derrière le fond de la page plutôt que
     // derrière leur seule carte.
     <div className="relative isolate">
-      {nombre > 1 && <Cascade nombre={nombre} />}
+      {/* Enveloppe positionnée et calquée sur la carte : les feuilles s'y
+          rangent sans changer de place, et son `transform` peut alors être
+          animé d'un bloc. Animer chaque feuille écraserait le décalage que
+          son style en ligne lui donne. */}
+      {nombre > 1 && (
+        <span
+          ref={pile}
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ zIndex: -1 }}
+        >
+          <Cascade nombre={nombre} />
+        </span>
+      )}
 
       <div
+        ref={carte}
         className="carte-survolable relative flex flex-col overflow-hidden rounded-2xl border"
         style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
       >
@@ -332,8 +392,7 @@ function CarteGroupe({
               type="button"
               onClick={() => setDeplie(!deplie)}
               aria-expanded={deplie}
-              className="survolable mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[0.6875rem] font-semibold"
-              style={{ color: 'var(--accent-fg)', background: 'var(--accent-soft)' }}
+              className="pilule-accent mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[0.6875rem] font-semibold"
             >
               {/* La même flèche retournée, comme au panneau des destinataires :
                   le jeu d'icônes est engendré à partir des noms employés dans
@@ -346,14 +405,24 @@ function CarteGroupe({
                   transition: 'transform 160ms ease',
                 }}
               />
-              {deplie ? 'Replier' : decompte}
+              {/* Le libellé descend d'un cheveu pour se poser sur l'axe de la
+                  flèche : même correction optique qu'aux boutons et aux
+                  pastilles, voir `.texte-optique`. */}
+              <span className="texte-optique">{deplie ? 'Replier' : decompte}</span>
             </button>
           )}
         </div>
 
-        {deplie && (
-          <ul className="mt-3 flex flex-col border-t" style={{ borderColor: 'var(--line)' }}>
-            {groupe.messages.map((m) => (
+        {deplie && autres.length > 0 && (
+          // Hauteur bornée : une publication qui a écrit trente fois étirait
+          // sa carte sur trois écrans et repoussait tout le reste de la
+          // grille. Au-delà d'une dizaine de numéros, la liste défile
+          // d'elle-même.
+          <ul
+            className="mt-3 flex max-h-[21rem] flex-col overflow-y-auto border-t"
+            style={{ borderColor: 'var(--line)' }}
+          >
+            {autres.map((m) => (
               <li
                 key={m.id}
                 className="flex items-center gap-2 border-b px-4 py-2 last:border-b-0"
@@ -366,8 +435,7 @@ function CarteGroupe({
                     pour en regarder un autre. */}
                 <button
                   type="button"
-                  onClick={() => setVisible(m.id)}
-                  aria-current={m.id === courant.id}
+                  onClick={() => changerDeNumero(m.id)}
                   className="survolable min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 text-left text-[0.75rem]"
                   title={m.sujet || '(sans objet)'}
                 >
