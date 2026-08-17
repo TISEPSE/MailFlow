@@ -299,6 +299,21 @@ pub async fn charger_boite_suivi<T: Transport, J: SourceJeton>(
 /// quantité changent, et rien d'autre ne devrait diverger entre les deux. Deux
 /// copies de cette boucle auraient fini par se répondre différemment sur un
 /// message illisible ou sur l'ordre du résultat.
+/// Relève une requête Gmail quelconque, sans compte rendu d'avancement.
+///
+/// Ouvert au reste du programme parce que la table des archives en a besoin :
+/// elle relit ce que l'utilisateur a classé depuis Gmail, ce qui n'est ni la
+/// boîte de réception ni un relevé complet.
+pub async fn relever_requete<T: Transport, J: SourceJeton>(
+    client: &ClientGmail<T, J>,
+    regles: &RuleSet,
+    compte: &str,
+    requete: &str,
+    plafond: usize,
+) -> Resultat<Vec<MessageAffiche>> {
+    relever(client, regles, compte, requete, plafond, |_, _| {}).await
+}
+
 async fn relever<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
     regles: &RuleSet,

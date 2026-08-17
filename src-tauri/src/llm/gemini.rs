@@ -519,6 +519,7 @@ pub fn lire_reponse(json: &str) -> Resultat<Resume> {
     }
 
     Ok(Resume {
+        generation: crate::llm::GENERATION_RESUME,
         texte: resume,
         // Le croisillon est retiré s'il traîne, et les étiquettes vides avec.
         hashtags: charge

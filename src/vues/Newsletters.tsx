@@ -44,6 +44,20 @@ import type { Avancement } from '../lib/tauri'
 import type { CorpsMessage, MessageAffiche, Resume } from '../types/backend'
 import { LecteurEnGrand } from '../composants/LecteurEnGrand'
 
+/**
+ * Durée minimale de l'attente affichée, en millisecondes.
+ *
+ * Gemini répond parfois en deux cents millisecondes. Les bandes apparaissaient
+ * alors et disparaissaient dans le même battement de cil : le résultat changeait
+ * sous les yeux sans que rien n'ait expliqué pourquoi, et l'on doutait d'avoir
+ * cliqué.
+ *
+ * Deux secondes ne sont pas une lenteur ajoutée : l'appel part immédiatement et
+ * rien ne l'attend. C'est l'**affichage** de l'attente qui a un plancher, le
+ * temps qu'un mouvement soit lisible.
+ */
+const ATTENTE_VISIBLE = 2000
+
 export function Newsletters({
   messages,
   vide,
@@ -93,9 +107,13 @@ export function Newsletters({
   const resumerCeGroupe = async (groupe: GroupeNewsletters) => {
     if (!onResumerGroupe || enCoursDeResume) return
     setEnCoursDeResume(groupe.cle)
+
+    const depart = Date.now()
     try {
       await onResumerGroupe(groupe)
     } finally {
+      const reste = ATTENTE_VISIBLE - (Date.now() - depart)
+      if (reste > 0) await new Promise((suite) => setTimeout(suite, reste))
       setEnCoursDeResume(null)
     }
   }
@@ -540,9 +558,25 @@ function CarteGroupe({
               <span className="bande-ia mouvement-utile block h-[0.95rem] w-full rounded" />
               <span className="bande-ia mouvement-utile mt-1.5 block h-[0.95rem] w-3/5 rounded" />
             </div>
+          ) : resumes?.[courant.id] ? (
+            // Ce que le modèle a écrit se distingue de ce que la machine a
+            // composé seule. Sans marque, l'utilisateur ne sait pas s'il lit
+            // une phrase produite par une IA — donc s'il doit la croire sur
+            // parole ou vérifier. L'étincelle est la même que sur le bouton qui
+            // l'a demandée : le geste et son résultat portent le même signe.
+            <p className="text-[0.8125rem] leading-relaxed font-medium">
+              <Icone
+                nom="auto_awesome"
+                taille="0.8125rem"
+                rempli
+                className="mr-1 inline-block align-[-0.1em]"
+                style={{ color: 'var(--accent)' }}
+              />
+              {resumes[courant.id]?.texte}
+            </p>
           ) : (
             <p className="text-[0.8125rem] leading-relaxed font-medium">
-              {resumes?.[courant.id]?.texte ?? ligneLocale(courant)}
+              {ligneLocale(courant)}
             </p>
           )}
 

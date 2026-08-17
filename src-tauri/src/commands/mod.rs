@@ -724,14 +724,83 @@ pub async fn boite_melangee(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
 #[tauri::command]
 pub async fn archives_lister(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
     let compte = compte_actif(&app);
-    let mut archives = crate::archives::charger(&dossier_config(&app)?, &compte);
+    let config = dossier_config(&app)?;
+    let mut archives = crate::archives::charger(&config, &compte);
 
     // Les règles peuvent avoir changé depuis l'archivage : la tuile doit porter
     // la même couleur que partout ailleurs.
-    let regles = RulesStore::pour_compte(&dossier_config(&app)?, &compte).charger()?;
+    let regles = RulesStore::pour_compte(&config, &compte).charger()?;
     cache::reclasser(&mut archives, &regles);
 
     log::info!("{} message(s) sur la table des archives", archives.len());
+    Ok(archives)
+}
+
+/// Requête des messages que l'utilisateur a **lui-même** classés chez Gmail.
+///
+/// `has:userlabels` ne retient que les libellés créés à la main : les marques du
+/// système — `INBOX`, `CATEGORY_PROMOTIONS`, `IMPORTANT` — n'en sont pas. Un
+/// message qui la satisfait a donc été rangé par quelqu'un, délibérément, et sa
+/// place est sur la table.
+///
+/// C'est tout l'écart avec l'ancienne requête de cette page, qui demandait « ce
+/// qui n'est pas dans la boîte » et ramenait tout ce qui en était sorti depuis
+/// toujours, filtres automatiques compris.
+const CLASSES_CHEZ_GMAIL: &str = "has:userlabels -in:trash -in:spam -in:draft";
+
+/// Combien on en rapporte. Au-delà, ce n'est plus une table de travail.
+const PLAFOND_CLASSES: usize = 100;
+
+/// Fait entrer sur la table ce qui a été classé **depuis Gmail**.
+///
+/// # Le sens qui manquait
+///
+/// Nommer un tas crée un libellé chez Gmail : ce sens-là fonctionnait déjà.
+/// L'autre non — un libellé posé depuis le téléphone ou depuis le web ne se
+/// voyait nulle part ici, et la table prétendait classer alors qu'elle ignorait
+/// la moitié du classement.
+///
+/// Les messages rapportés rejoignent le registre, libellés compris. Ceux qui
+/// s'y trouvaient déjà sont mis à jour plutôt que dupliqués — c'est le rôle de
+/// [`crate::archives::poser`] — si bien qu'un libellé retiré depuis Gmail
+/// disparaît aussi de la tuile.
+///
+/// Rend le nombre de messages sur la table après coup.
+#[tauri::command]
+pub async fn archives_synchroniser(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<Vec<MessageAffiche>> {
+    let compte = compte_actif(&app);
+    let config = dossier_config(&app)?;
+    let regles = RulesStore::pour_compte(&config, &compte).charger()?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+
+    let classes = crate::gmail::boite::relever_requete(
+        &client,
+        &regles,
+        &compte,
+        CLASSES_CHEZ_GMAIL,
+        PLAFOND_CLASSES,
+    )
+    .await
+    .inspect_err(|e| log::warn!("classement Gmail non relu : {e}"))?;
+
+    let mut registre = crate::archives::charger(&config, &compte);
+    for message in classes {
+        registre = crate::archives::poser(registre, message);
+    }
+
+    crate::archives::enregistrer(&config, &compte, &registre)?;
+
+    let mut archives = registre;
+    cache::reclasser(&mut archives, &regles);
+
+    log::info!(
+        "{} message(s) sur la table après relecture du classement Gmail",
+        archives.len()
+    );
     Ok(archives)
 }
 

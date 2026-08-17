@@ -540,7 +540,13 @@ pub fn lire_resume(dossier: &Path, id: &str) -> Option<crate::llm::Resume> {
 /// Même lecture, pour une portée choisie.
 pub fn lire_resume_de(dossier: &Path, id: &str, portee: Portee) -> Option<crate::llm::Resume> {
     let texte = std::fs::read_to_string(chemin_resume_de(dossier, id, portee)).ok()?;
-    serde_json::from_str(&texte).ok()
+    let resume: crate::llm::Resume = serde_json::from_str(&texte).ok()?;
+
+    // Un résumé produit sous une consigne antérieure est traité comme absent :
+    // il sera refait une fois, puis plus jamais. Sans cela, ceux d'hier
+    // restaient à l'écran avec le vocabulaire d'hier, et aucun geste de
+    // l'utilisateur ne pouvait les rafraîchir.
+    (resume.generation == crate::llm::GENERATION_RESUME).then_some(resume)
 }
 
 /// Range un résumé. Un échec d'écriture ne fait rien échouer : le résumé sera
@@ -985,7 +991,57 @@ mod tests {
             crate::llm::Resume {
                 texte: "Le prix du blé grimpe.".into(),
                 hashtags: vec!["agriculture".into()],
+                generation: crate::llm::GENERATION_RESUME,
             }
+        }
+
+        #[test]
+        fn un_resume_ecrit_sous_une_ancienne_consigne_est_refait() {
+            // La consigne du modèle change — d'une phrase à trois, de
+            // « numéros » à « mails ». Les résumés d'hier restaient sinon à
+            // l'écran avec le vocabulaire d'hier, et aucun geste de
+            // l'utilisateur ne pouvait les rafraîchir.
+            let dossier = tempfile::tempdir().unwrap();
+            let perime = crate::llm::Resume {
+                generation: crate::llm::GENERATION_RESUME - 1,
+                ..un_resume()
+            };
+            ranger_resume(dossier.path(), "m1", &perime);
+
+            assert!(lire_resume(dossier.path(), "m1").is_none());
+        }
+
+        #[test]
+        fn un_resume_de_la_generation_courante_est_garde() {
+            // L'autre moitié de la garantie : un résumé coûte un appel, et on
+            // ne le refait pas sans raison.
+            let dossier = tempfile::tempdir().unwrap();
+            ranger_resume(dossier.path(), "m1", &un_resume());
+
+            assert!(lire_resume(dossier.path(), "m1").is_some());
+        }
+
+        #[test]
+        fn un_resume_de_publication_ne_recouvre_pas_celui_d_un_numero() {
+            // Ils se rangent sous le même identifiant — celui du mail le plus
+            // récent — et ne se distinguent que par leur extension.
+            let dossier = tempfile::tempdir().unwrap();
+            let publication = crate::llm::Resume {
+                texte: "Trois offres à Rennes.".into(),
+                ..un_resume()
+            };
+
+            ranger_resume(dossier.path(), "m1", &un_resume());
+            ranger_resume_de(dossier.path(), "m1", Portee::Publication, &publication);
+
+            assert_eq!(
+                lire_resume(dossier.path(), "m1").map(|r| r.texte),
+                Some("Le prix du blé grimpe.".to_string())
+            );
+            assert_eq!(
+                lire_resume_de(dossier.path(), "m1", Portee::Publication).map(|r| r.texte),
+                Some("Trois offres à Rennes.".to_string())
+            );
         }
 
         #[test]

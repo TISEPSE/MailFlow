@@ -52,6 +52,7 @@ import {
   googleDeconnecter,
   messageDErreur,
   archivesLister,
+  archivesSynchroniser,
   libelleCreer,
   libellePoser,
   libelleRetirer,
@@ -336,9 +337,25 @@ export default function App() {
   const chargerLesArchives = useCallback(async () => {
     try {
       setTableau(await tableauLire().catch(() => ({ tas: {}, messages: {} })))
+
+      // Le registre d'abord : deux lectures de fichier, la table paraît sans
+      // attendre. Puis ce qui a été classé depuis Gmail — un libellé posé
+      // depuis le téléphone doit rejoindre la table, sans quoi elle prétendrait
+      // classer en ignorant la moitié du classement.
       setArchives(await archivesLister())
     } catch (e) {
       annoncer(messageDErreur(e), true)
+      return
+    }
+
+    // Le réseau, ensuite et à part : hors ligne, la table doit rester celle du
+    // registre plutôt que de disparaître derrière une erreur. Ce qui manque
+    // sera repris à la prochaine ouverture.
+    try {
+      setLibelles(await libellesLister())
+      setArchives(await archivesSynchroniser())
+    } catch (e) {
+      console.warn('classement Gmail non relu', messageDErreur(e))
     }
   }, [annoncer])
 

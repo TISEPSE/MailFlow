@@ -261,6 +261,19 @@ export function archivesLister(): Promise<MessageAffiche[]> {
   return invoke<MessageAffiche[]>('archives_lister')
 }
 
+/**
+ * Fait entrer sur la table ce qui a ete classe **depuis Gmail**.
+ *
+ * Nommer un tas cree un libelle chez Gmail : ce sens-la fonctionnait deja.
+ * L'autre non — un libelle pose depuis le telephone ne se voyait nulle part
+ * ici, et la table pretendait classer en ignorant la moitie du classement.
+ *
+ * Rend la table complete, registre et classement Gmail reunis.
+ */
+export function archivesSynchroniser(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('archives_synchroniser')
+}
+
 /** Disposition de la table des archives du compte actif. */
 export function tableauLire(): Promise<Tableau> {
   return invoke<Tableau>('tableau_lire')

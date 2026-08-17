@@ -26,12 +26,32 @@ pub mod gemini;
 
 use crate::error::Resultat;
 
+/// Ce que vaut un résumé rangé sur le disque.
+///
+/// # Pourquoi un numéro de génération
+///
+/// Un résumé coûte un appel : on ne le refait pas sans raison. Mais la consigne
+/// donnée au modèle change — elle est passée d'une phrase à trois, et elle a
+/// cessé de parler de « numéros » pour parler de « mails ». Les résumés
+/// produits avant restaient sur le disque et gardaient le vocabulaire de la
+/// veille, sans qu'aucun geste de l'utilisateur ne puisse les rafraîchir.
+///
+/// Ce numéro règle la question : un résumé d'une génération antérieure est lu
+/// comme absent, donc refait une fois, puis plus jamais. **À incrémenter à
+/// chaque changement de consigne**, et à cette seule condition.
+pub const GENERATION_RESUME: u8 = 2;
+
 /// Resume produit pour une newsletter.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Resume {
     pub texte: String,
     /// Etiquettes thématiques servant au filtrage de la vue 3 (`#IA`, `#Tech`...).
     pub hashtags: Vec<String>,
+
+    /// La consigne qui l'a produit. `default` à zéro : les résumés écrits avant
+    /// que ce champ n'existe se relisent, et sont de ce fait périmés.
+    #[serde(default)]
+    pub generation: u8,
 }
 
 #[allow(async_fn_in_trait)]

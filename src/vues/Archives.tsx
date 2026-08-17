@@ -136,9 +136,26 @@ export function Archives({
     [archives, nomsDesLibelles],
   )
 
-  // Seuls les libellés qui portent réellement une archive font un tas. Un
-  // libellé créé pour la boîte de réception n'a rien à faire sur cette table.
-  const tasVivants = useMemo(() => [...parTas.keys()], [parTas])
+  /**
+   * Un tas par libellé Gmail — y compris ceux qui ne portent encore rien.
+   *
+   * La table ne montrait que les libellés portant déjà une archive. Un libellé
+   * créé depuis Gmail, ou depuis le téléphone, n'apparaissait donc nulle part :
+   * la catégorie existait chez Google et restait invisible ici, alors que le
+   * sens inverse — nommer un tas, qui crée le libellé — fonctionnait. Un
+   * classement qui ne circule que dans un sens n'est pas un classement.
+   *
+   * Un tas vide n'est pas du vide : c'est une catégorie où déposer.
+   */
+  const tasVivants = useMemo(
+    () => [
+      ...libelles.map((l) => l.id),
+      // Un libellé que Gmail ne liste plus mais qu'une archive porte encore :
+      // il vaut mieux un tas de trop qu'une tuile disparue de la table.
+      ...[...parTas.keys()].filter((id) => !libelles.some((l) => l.id === id)),
+    ],
+    [libelles, parTas],
+  )
 
   // La disposition complétée : ce qui a une place la garde, ce qui vient
   // d'arriver en reçoit une. Sans cela, un message relevé depuis la dernière
