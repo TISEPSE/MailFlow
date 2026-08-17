@@ -192,7 +192,13 @@ export function repartir(
   for (const message of archives) {
     // Un libellé que Gmail ne liste plus — supprimé ailleurs entre deux
     // relevés — ne doit pas faire apparaître un tas sans nom.
-    const siens = message.libelles.filter((l) => libellesConnus.has(l))
+    //
+    // Le repli sur une liste vide n'est pas une politesse : le champ est
+    // arrivé après coup, et un relevé rangé par une version antérieure n'en a
+    // pas. Lire `.filter` sur `undefined` lève, et une exception levée pendant
+    // un rendu démonte l'arbre entier — la fenêtre devient blanche, sans un
+    // mot. Le type promet un tableau ; le disque, lui, ne promet rien.
+    const siens = (message.libelles ?? []).filter((l) => libellesConnus.has(l))
 
     if (siens.length === 0) {
       seuls.push(message)

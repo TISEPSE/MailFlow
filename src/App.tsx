@@ -1155,8 +1155,8 @@ export default function App() {
                   // tuile resterait immobile pendant tout ce temps.
                   setArchives((liste) =>
                     liste.map((m) =>
-                      m.id === message && !m.libelles.includes(libelle)
-                        ? { ...m, libelles: [...m.libelles, libelle] }
+                      m.id === message && !(m.libelles ?? []).includes(libelle)
+                        ? { ...m, libelles: [...(m.libelles ?? []), libelle] }
                         : m,
                     ),
                   )
@@ -1166,7 +1166,10 @@ export default function App() {
                   setArchives((liste) =>
                     liste.map((m) =>
                       m.id === message
-                        ? { ...m, libelles: m.libelles.filter((l) => l !== libelle) }
+                        ? {
+                            ...m,
+                            libelles: (m.libelles ?? []).filter((l) => l !== libelle),
+                          }
                         : m,
                     ),
                   )
