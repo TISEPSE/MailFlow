@@ -43,6 +43,7 @@ import {
   resumesConnus,
   resumesProduire,
   resumesArreter,
+  syntheseProduire,
   EVENEMENT_RESUMES,
   EVENEMENT_PRECHARGEMENT,
   EVENEMENT_RELEVE,
@@ -85,6 +86,7 @@ import type {
   ReglesDuCompte,
   RapportResumes,
   Resume,
+  SyntheseDuJour,
   Tableau,
 } from './types/backend'
 
@@ -243,6 +245,15 @@ export default function App() {
 
   /** Résumés de newsletters déjà produits, par identifiant de message. */
   const [resumes, setResumes] = useState<Record<string, Resume>>({})
+
+  /**
+   * Ce que la journée a apporté, en trois points — ou `null`.
+   *
+   * `null` n'est pas une panne : c'est l'état d'une machine sans clé, ou d'une
+   * page dont aucune publication n'est encore résumée. Le bandeau garde alors
+   * son décompte, et personne n'apprend qu'une IA aurait pu parler.
+   */
+  const [synthese, setSynthese] = useState<SyntheseDuJour | null>(null)
 
   /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas.
    *
@@ -418,6 +429,72 @@ export default function App() {
   )
 
   /**
+   * Réunit en trois points ce que les publications ont apporté.
+   *
+   * # Ce que cela coûte
+   *
+   * **Un appel, et seulement quand la liste des publications a changé.** Rien
+   * n'est relu : la commande part des résumés déjà rangés sur le disque, et
+   * rend le cache tant que les mêmes publications portent les mêmes derniers
+   * numéros. Ce qui monte vers Google est du texte que nous avons écrit
+   * nous-mêmes, déjà expurgé au moment du résumé.
+   *
+   * # Pourquoi elle ne se déclenche pas toute seule à chaque geste
+   *
+   * Archiver une newsletter change la liste, donc l'empreinte, donc le cache.
+   * Rappelée sur chaque changement, la synthèse serait refaite cinq fois pour
+   * cinq mails rangés. Elle est donc rappelée aux deux seuls moments où une
+   * dépense est déjà consentie — une passe de résumés — et à l'ouverture de la
+   * page quand rien n'est encore affiché.
+   *
+   * Un échec ne remplace pas ce qui est à l'écran : une synthèse d'il y a dix
+   * minutes vaut mieux qu'un bandeau qui se vide sans explication.
+   */
+  const rafraichirLaSynthese = useCallback(async (messages: MessageAffiche[]) => {
+    const newsletters = messages.filter((m) => m.categorie === 'newsletter')
+    if (!newsletters.length) {
+      setSynthese(null)
+      return
+    }
+
+    // Le même regroupement que celui de la page : les rangs envoyés au modèle
+    // sont ceux des cartes, et les clés rendues retrouvent donc leur pastille.
+    const publications = grouperNewsletters(newsletters)
+      .map((g) => ({ cle: g.cle, nom: g.nom, idRecent: g.messages[0]?.id ?? '' }))
+      .filter((p) => p.idRecent)
+
+    try {
+      setSynthese(await syntheseProduire(publications))
+    } catch (e) {
+      console.warn('synthèse du jour non produite', messageDErreur(e))
+    }
+  }, [])
+
+  /**
+   * Liste de newsletters pour laquelle une synthèse a déjà été demandée.
+   *
+   * Sans cette mémoire, une page ouverte sans clé — la commande rend alors
+   * `null` — redemanderait à chaque changement de la boîte, indéfiniment.
+   */
+  const syntheseDemandee = useRef<string | null>(null)
+
+  // À l'ouverture de la page, la synthèse déjà faite reparaît : la commande lit
+  // son cache et n'appelle personne tant que les mêmes publications portent les
+  // mêmes derniers numéros. On ne redemande que si rien n'est affiché.
+  useEffect(() => {
+    if (vue !== 'newsletter' || synthese) return
+
+    const liste = boite
+      .filter((m) => m.categorie === 'newsletter')
+      .map((m) => m.id)
+      .join(',')
+    if (!liste || syntheseDemandee.current === liste) return
+
+    syntheseDemandee.current = liste
+    void rafraichirLaSynthese(boite)
+  }, [vue, synthese, boite, rafraichirLaSynthese])
+
+  /**
    * Troisième phase : les résumés des newsletters relevées.
    *
    * Ne concerne que cette catégorie — c'est la garantie, tenue ici et vérifiée
@@ -451,6 +528,9 @@ export default function App() {
       try {
         const rapport = await resumesProduire(groupes)
         setResumes(await resumesConnus(ids).catch(() => ({})))
+        // Non attendue : le bandeau se complète quand elle arrive, et rien
+        // d'autre ne l'attend.
+        void rafraichirLaSynthese(newsletters)
         return rapport
       } catch (e) {
         // Un moteur de résumés indisponible ne mérite pas de notification :
@@ -461,7 +541,7 @@ export default function App() {
         setAvancementResumes(null)
       }
     },
-    [],
+    [rafraichirLaSynthese],
   )
 
   /**
@@ -543,6 +623,8 @@ export default function App() {
         // l'écran les résumés de toutes les autres publications.
         const siens = await resumesConnus(ids).catch(() => ({}))
         setResumes((connus) => ({ ...connus, ...siens }))
+        // Une publication de plus a un résumé : la synthèse peut s'en nourrir.
+        void rafraichirLaSynthese(boite)
         if (rapport.echecs > 0 || rapport.sansTexte > 0) {
           annoncer(...phraseDuRapport(rapport))
         }
@@ -552,7 +634,7 @@ export default function App() {
         setAvancementResumes(null)
       }
     },
-    [annoncer],
+    [annoncer, boite, rafraichirLaSynthese],
   )
 
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
@@ -628,6 +710,8 @@ export default function App() {
     setArchives([])
     setCorpsConnus(creerCache)
     setResumes({})
+    setSynthese(null)
+    syntheseDemandee.current = null
     oublierLesLogos()
     setPremierReleve(true)
     annoncer('Disque nettoyé. Les messages se rechargent.')
@@ -718,6 +802,15 @@ export default function App() {
       // Une seule lecture par session : la liste des libellés bouge rarement,
       // et la relire à chaque relevé dépenserait du quota pour rien.
       setLibelles(await libellesLister().catch(() => []))
+
+      // Le registre des archives, dès le démarrage : deux lectures de fichier
+      // et aucun appel réseau. Sans lui, le compteur de la barre affichait zéro
+      // tant qu'on n'avait pas ouvert la table — c'est-à-dire qu'il affirmait
+      // une table vide au lieu d'avouer qu'il ne l'avait pas regardée. Le
+      // relevé du classement Gmail, lui, reste à l'ouverture de la page : c'est
+      // celui-là qui coûte des appels.
+      setArchives(await archivesLister().catch(() => []))
+
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)
       }
@@ -799,6 +892,29 @@ export default function App() {
     setCorpsConnus((connus) => oublier(connus, id))
   }
 
+  /**
+   * Archive un message, et le fait apparaître sur la table dans la foulée.
+   *
+   * # Pourquoi relire le registre plutôt que d'ajouter la tuile à la main
+   *
+   * C'est Rust qui décide de ce qui entre au registre — le message est repris
+   * du relevé en cache, ses libellés reportés, son classement recalculé.
+   * Reconstituer ici la tuile qu'il vient d'écrire, c'est écrire une deuxième
+   * fois la même règle, et la voir diverger au premier cas tordu.
+   *
+   * La relecture n'est pas attendue : le message est déjà rangé chez Gmail, et
+   * retenir la notification derrière une lecture de fichier n'apprendrait rien
+   * à personne. C'est ce qui met à jour, du même coup, le compteur de la barre
+   * latérale et la table qu'on n'a pas encore ouverte.
+   */
+  const archiverLeMessage = async (id: string, libelle?: string) => {
+    await messageRanger(id, libelle)
+    retirerDeLaBoite(id)
+    void archivesLister()
+      .then(setArchives)
+      .catch((e) => console.warn('registre des archives non relu', messageDErreur(e)))
+  }
+
   /** Bascule de compte, partagée par la barre latérale et les Paramètres. */
   const basculerVers = (adresse: string) =>
     agir(
@@ -820,6 +936,8 @@ export default function App() {
         setArchives([])
         setTableau({ tas: {}, messages: {} })
         setResumes({})
+        setSynthese(null)
+        syntheseDemandee.current = null
         setPremierReleve(true)
         setCorpsConnus(creerCache())
         setProfil(await compteProfil().catch(() => null))
@@ -836,6 +954,8 @@ export default function App() {
       setArchives([])
       setTableau({ tas: {}, messages: {} })
       setResumes({})
+      setSynthese(null)
+      syntheseDemandee.current = null
       setCorpsConnus(creerCache())
       setProfil(null)
       setLibelles([])
@@ -1372,6 +1492,7 @@ export default function App() {
             <Archives
               archives={archivesVisibles}
               libelles={libelles}
+              compte={compteRegarde}
               tableau={tableau}
               onTableau={poserSurLaTable}
               sombre={sombre}
@@ -1396,6 +1517,16 @@ export default function App() {
                   // geste ferait croire que rien ne s'est passé.
                   setArchives((liste) => liste.filter((m) => m.id !== id))
                   annoncer('Message mis à la corbeille.')
+                },
+                onTasVide: async (libelle, nom) => {
+                  // Le même chemin que « Défaire le tas », sans messages à en
+                  // sortir : il n'en reste aucun, c'est précisément la raison
+                  // pour laquelle on est ici. Côté Rust, le retrait en lot rend
+                  // la main sans rien appeler sur une liste vide, et seul le
+                  // libellé part.
+                  await tasDefaire(libelle, [])
+                  setLibelles((connus) => connus.filter((l) => l.id !== libelle))
+                  annoncer(`Le tas « ${nom} » était vide : son libellé a été supprimé de Gmail.`)
                 },
                 onDefaireLeTas: async (libelle, messages) => {
                   await tasDefaire(libelle, messages)
@@ -1455,6 +1586,7 @@ export default function App() {
               onArreterResumes={() => void resumesArreter()}
               onAnalyser={() => void analyserLesNewsletters()}
               onResumerGroupe={resumerUnGroupe}
+              synthese={synthese}
               vise={messageVise}
               onVise={() => setMessageVise(null)}
               logos={logos}
@@ -1466,9 +1598,8 @@ export default function App() {
               }
               onArchiver={(id) =>
                 void agir(async () => {
-                  await messageRanger(id, undefined)
-                  retirerDeLaBoite(id)
-                  return 'Newsletter archivée.'
+                  await archiverLeMessage(id)
+                  return 'Newsletter archivée, elle vous attend sur la table.'
                 })
               }
               onSupprimer={(id) =>
@@ -1522,8 +1653,7 @@ export default function App() {
               // mails directs — c'est là qu'on classe finement.
               onRanger={(id, libelle) =>
                 void agir(async () => {
-                  await messageRanger(id, libelle)
-                  retirerDeLaBoite(id)
+                  await archiverLeMessage(id, libelle)
                   return 'Mail archivé, il vous attend sur la table.'
                 })
               }

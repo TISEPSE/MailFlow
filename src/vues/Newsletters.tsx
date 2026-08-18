@@ -22,7 +22,7 @@
  * que la page ne bouge pas d'un pixel selon qu'il est là ou non. C'est ce qui
  * rend l'IA réellement optionnelle plutôt que promise.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Bouton,
   Confirmation,
@@ -35,13 +35,20 @@ import type { NomIcone } from '../composants/glyphes'
 import { domaineDe, heureCourte, initiales, palette } from '../lib/presentation'
 import {
   decompteDuGroupe,
+  etiquettesUtiles,
+  filtrerParEtiquette,
   grouperNewsletters,
   ligneLocale,
   resserrerSujet,
   type GroupeNewsletters,
 } from '../lib/newsletters'
 import type { Avancement } from '../lib/tauri'
-import type { CorpsMessage, MessageAffiche, Resume } from '../types/backend'
+import type {
+  CorpsMessage,
+  MessageAffiche,
+  Resume,
+  SyntheseDuJour,
+} from '../types/backend'
 import { LecteurEnGrand } from '../composants/LecteurEnGrand'
 
 /**
@@ -75,6 +82,7 @@ export function Newsletters({
   onArreterResumes,
   onAnalyser,
   onResumerGroupe,
+  synthese,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -98,6 +106,14 @@ export function Newsletters({
   onAnalyser?: () => void
   /** Résume une seule publication — un appel, décidé depuis sa carte. */
   onResumerGroupe?: (groupe: GroupeNewsletters) => Promise<void>
+  /**
+   * Ce que la journée a apporté, en trois points au plus.
+   *
+   * Absente tant qu'aucune clé n'est posée : le bandeau garde alors exactement
+   * l'allure qu'il a toujours eue, décompte et pastilles, sans corps ni
+   * étiquettes. La page ne bouge pas d'un pixel selon que l'IA est là ou non.
+   */
+  synthese?: SyntheseDuJour | null
 }) {
   const [ouvert, setOuvert] = useState<MessageAffiche | null>(null)
 
@@ -119,6 +135,27 @@ export function Newsletters({
   }
 
   const groupes = useMemo(() => grouperNewsletters(messages), [messages])
+
+  /** Étiquette qui filtre la grille, ou `null` pour « Tous ». */
+  const [etiquette, setEtiquette] = useState<string | null>(null)
+
+  const etiquettes = useMemo(
+    () => etiquettesUtiles(synthese?.hashtags ?? [], groupes, resumes),
+    [synthese, groupes, resumes],
+  )
+
+  const affiches = useMemo(
+    () => filtrerParEtiquette(groupes, resumes, etiquette),
+    [groupes, resumes, etiquette],
+  )
+
+  // Une étiquette cesse d'être proposée dès que la dernière publication qui la
+  // portait est archivée. Sans cet oubli, le filtre resterait actif sur un mot
+  // devenu invisible et la page paraîtrait vide sans qu'aucune pastille
+  // n'explique pourquoi.
+  useEffect(() => {
+    if (etiquette && !etiquettes.includes(etiquette)) setEtiquette(null)
+  }, [etiquette, etiquettes])
 
   // La recherche désigne une newsletter : elle s'ouvre en grand, comme sur les
   // autres pages. Sans ce raccord, un résultat de recherche portant sur une
@@ -145,6 +182,10 @@ export function Newsletters({
           logos={logos}
           onAnalyser={onAnalyser}
           analyseEnCours={Boolean(avancementResumes)}
+          synthese={synthese ?? null}
+          etiquettes={etiquettes}
+          etiquette={etiquette}
+          onEtiquette={setEtiquette}
         />
 
         {avancementResumes && (
@@ -158,11 +199,15 @@ export function Newsletters({
             de front font voir la journée d'un coup. Les cartes s'alignent en
             haut — une pile dépliée ne doit pas étirer sa voisine. */}
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-          {groupes.map((groupe, i) => (
+          {affiches.map((groupe) => (
             <CarteGroupe
               key={groupe.cle}
               groupe={groupe}
-              rang={i}
+              // Le rang vient de la liste entière, et non de la liste filtrée :
+              // une carte doit garder sa couleur quand une étiquette en retire
+              // d'autres, sinon toute la grille change de teinte à chaque clic
+              // et l'on croit voir d'autres publications.
+              rang={groupes.indexOf(groupe)}
               logos={logos}
               onVoir={(m) => {
                 setOuvert(m)
@@ -194,24 +239,59 @@ export function Newsletters({
  * Bandeau de synthèse.
  *
  * Il compte les publications plutôt que les messages : quinze numéros de trois
- * journaux, ce sont trois choses à lire, pas quinze. Sa phrase est composée
- * localement ; le modèle la remplacera sans déplacer quoi que ce soit.
+ * journaux, ce sont trois choses à lire, pas quinze.
+ *
+ * # Ce que le modèle y ajoute, et ce qu'il n'y change pas
+ *
+ * Sans clé posée, le bandeau est exactement celui d'avant : l'en-tête, son
+ * décompte, ses pastilles. La synthèse ne fait qu'**allonger** la carte vers le
+ * bas — un rang par point, puis les étiquettes. Rien ne se déplace, rien ne
+ * disparaît ; c'est ce qui rend l'IA optionnelle plutôt que promise.
+ *
+ * # Les sources sont vérifiées avant d'arriver ici
+ *
+ * `point.sources` porte des **clés de publication**, traduites côté Rust à
+ * partir des rangs rendus par le modèle, tout rang hors bornes ayant été jeté.
+ * Une source inventée n'atteint donc jamais l'écran. La clé qui ne retrouve
+ * plus sa carte — le numéro vient d'être archivé — est simplement ignorée.
  */
 function Synthese({
   groupes,
   logos,
   onAnalyser,
   analyseEnCours,
+  synthese,
+  etiquettes,
+  etiquette,
+  onEtiquette,
 }: {
   groupes: GroupeNewsletters[]
   logos: Record<string, string>
   /** Relance l'analyse à la main. Absent quand la page ne sait pas la faire. */
   onAnalyser?: () => void
   analyseEnCours: boolean
+  synthese: SyntheseDuJour | null
+  /** Celles qui retiennent au moins une publication. Voir `etiquettesUtiles`. */
+  etiquettes: string[]
+  etiquette: string | null
+  onEtiquette: (e: string | null) => void
 }) {
   const sources = groupes.slice(0, 6)
   const numeros = groupes.reduce((n, g) => n + g.messages.length, 0)
   const derniere = groupes[0]?.messages[0]?.date
+
+  /** De quoi retrouver la carte d'une source : son nom, son rang, son logo. */
+  const parCle = useMemo(
+    () => new Map(groupes.map((g, i) => [g.cle, { groupe: g, rang: i } as const])),
+    [groupes],
+  )
+
+  const points = (synthese?.points ?? []).map((point) => ({
+    texte: point.texte,
+    citees: point.sources
+      .map((cle) => parCle.get(cle))
+      .filter((v): v is { groupe: GroupeNewsletters; rang: number } => Boolean(v)),
+  }))
 
   return (
     <div
@@ -230,11 +310,23 @@ function Synthese({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[0.875rem] font-semibold tracking-tight">
-            {groupes.length} publication{groupes.length > 1 ? 's' : ''}
-            {numeros > groupes.length ? `, ${numeros} mails` : ''}
+            {synthese ? (
+              'Synthèse du jour'
+            ) : (
+              <>
+                {groupes.length} publication{groupes.length > 1 ? 's' : ''}
+                {numeros > groupes.length ? `, ${numeros} mails` : ''}
+              </>
+            )}
           </span>
           <span className="block text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
-            {derniere ? `Dernier reçu à ${heureCourte(derniere)}` : 'En attente du relevé'}
+            {synthese
+              ? `${synthese.publications} publication${synthese.publications > 1 ? 's' : ''} lue${
+                  synthese.publications > 1 ? 's' : ''
+                } ${momentDit(synthese.produiteLe)}`
+              : derniere
+                ? `Dernier reçu à ${heureCourte(derniere)}`
+                : 'En attente du relevé'}
           </span>
         </span>
         <span className="flex flex-none items-center gap-1">
@@ -275,7 +367,114 @@ function Synthese({
           </span>
         )}
       </div>
+
+      {/* Un rang par point : d'abord les pastilles des publications d'où il
+          vient, puis la phrase, puis leurs noms en clair. Les pastilles disent
+          « d'où » d'un coup d'œil ; les noms sont là pour qui veut vérifier —
+          une phrase de modèle sans source vérifiable ne vaut pas grand-chose. */}
+      {points.length > 0 && (
+        <ul>
+          {points.map((point, i) => (
+            <li
+              key={i}
+              className="flex items-start gap-3 border-t px-4 py-3"
+              style={{ borderColor: 'var(--line)' }}
+            >
+              {point.citees.length > 0 && (
+                <span className="flex flex-none items-center gap-1 pt-px" aria-hidden>
+                  {point.citees.map(({ groupe, rang }) => {
+                    const [fond, encre] = palette(rang)
+                    return (
+                      <Pastille
+                        key={groupe.cle}
+                        texte={initiales(groupe.nom)}
+                        taille="1.375rem"
+                        fond={fond}
+                        couleur={encre}
+                        logo={logos[domaineDe(groupe.adresse)]}
+                      />
+                    )
+                  })}
+                </span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block text-[0.8125rem] leading-relaxed font-medium">
+                  {point.texte}
+                </span>
+                {point.citees.length > 0 && (
+                  <span
+                    className="mt-1 block truncate font-mono text-[0.6562rem]"
+                    style={{ color: 'var(--sub)' }}
+                  >
+                    {point.citees.map(({ groupe }) => groupe.nom).join(' · ')}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Les étiquettes filtrent la grille. « Tous » vient en premier et reste
+          toujours là : sans lui, on ne saurait pas comment revenir en arrière
+          une fois un filtre posé. */}
+      {etiquettes.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-1.5 border-t px-4 py-3"
+          style={{ borderColor: 'var(--line)' }}
+        >
+          <ChoixEtiquette actif={!etiquette} onClick={() => onEtiquette(null)}>
+            Tous
+          </ChoixEtiquette>
+          {etiquettes.map((e) => (
+            <ChoixEtiquette
+              key={e}
+              actif={etiquette === e}
+              onClick={() => onEtiquette(etiquette === e ? null : e)}
+            >
+              #{e}
+            </ChoixEtiquette>
+          ))}
+        </div>
+      )}
     </div>
+  )
+}
+
+/**
+ * Quand la synthèse a été faite, dit aussi court que possible.
+ *
+ * `heureCourte` rend « 07:10 » aujourd'hui et « hier » la veille : la
+ * préposition ne convient qu'au premier cas, d'où le test sur la forme.
+ */
+function momentDit(iso: string): string {
+  const quand = heureCourte(iso)
+  if (!quand) return 'aujourd’hui'
+  return /^\d{2}:\d{2}$/u.test(quand) ? `à ${quand}` : quand
+}
+
+/** Une pastille d'étiquette, allumée quand elle filtre. */
+function ChoixEtiquette({
+  actif,
+  onClick,
+  children,
+}: {
+  actif: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={actif}
+      className={`inline-flex h-7 items-center rounded-full px-2.5 text-[0.6875rem] font-semibold ${
+        actif ? '' : 'pilule-accent'
+      }`}
+      style={actif ? { background: 'var(--accent)', color: '#FFFFFF' } : undefined}
+    >
+      <span className="texte-optique">{children}</span>
+    </button>
   )
 }
 

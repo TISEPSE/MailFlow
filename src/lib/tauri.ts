@@ -21,6 +21,7 @@ import type {
   Regle,
   ReglesDuCompte,
   Resume,
+  SyntheseDuJour,
   EtatLlm,
   Tableau,
   VerificationMaj,
@@ -490,4 +491,29 @@ export function resumesProduire(groupes: GroupeAResumer[]): Promise<RapportResum
 /** Demande l'arret : lu entre deux messages, jamais en plein appel. */
 export function resumesArreter(): Promise<void> {
   return invoke<void>('resumes_arreter')
+}
+
+/** Une publication telle qu'on la presente a la synthese du jour. */
+export interface PublicationASynthetiser {
+  cle: string
+  nom: string
+  /** Le numero le plus recent : c'est sous lui qu'est range le resume. */
+  idRecent: string
+}
+
+/**
+ * Reunit en trois points ce que les publications du jour ont apporte.
+ *
+ * **Un appel, et seulement quand la liste des publications a change.** Elle ne
+ * relit aucun mail : elle part des resumes deja produits et deja ranges sur le
+ * disque. Appelee a chaque ouverture de la page, elle rend le cache sans rien
+ * demander a personne.
+ *
+ * Rend `null` sans cle configuree ou sans aucun resume en main — le bandeau
+ * garde alors ce qu'il affiche deja.
+ */
+export function syntheseProduire(
+  publications: PublicationASynthetiser[],
+): Promise<SyntheseDuJour | null> {
+  return invoke<SyntheseDuJour | null>('synthese_produire', { publications })
 }

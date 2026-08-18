@@ -18,7 +18,7 @@
  * parle au réseau, et c'est lui qui décide ce qui a le droit d'en sortir.
  */
 
-import type { MessageAffiche, RapportResumes } from '../types/backend'
+import type { MessageAffiche, RapportResumes, Resume } from '../types/backend'
 
 /**
  * Fournisseurs de courrier grand public.
@@ -227,6 +227,85 @@ export function ligneLocale(message: MessageAffiche): string {
 export function decompteDuGroupe(groupe: GroupeNewsletters): string {
   const n = groupe.messages.length
   return n > 1 ? `${n} mails` : ''
+}
+
+/**
+ * Deux étiquettes désignent-elles la même chose ?
+ *
+ * Le modèle écrit « Économie » un jour, « economie » le lendemain, « ÉCONOMIE »
+ * quand il est en verve. Comparées telles quelles, ces trois-là feraient trois
+ * pastilles pour un seul sujet, et cliquer sur l'une ne retiendrait pas les
+ * mails classés sous les autres.
+ *
+ * La normalisation retire les accents plutôt que de les traduire un à un :
+ * `normalize('NFD')` décompose « é » en « e » suivi d'un accent, qu'on efface.
+ */
+export function memeEtiquette(a: string, b: string): boolean {
+  return normaliserEtiquette(a) === normaliserEtiquette(b)
+}
+
+function normaliserEtiquette(e: string): string {
+  return e
+    .trim()
+    .replace(/^#/u, '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+}
+
+/** Les étiquettes portées par les résumés d'un groupe. */
+function etiquettesDuGroupe(
+  groupe: GroupeNewsletters,
+  resumes: Record<string, Resume> | undefined,
+): string[] {
+  if (!resumes) return []
+  return groupe.messages.flatMap((m) => resumes[m.id]?.hashtags ?? [])
+}
+
+/**
+ * Ne garde que les publications portant l'étiquette choisie.
+ *
+ * `null` ne filtre rien : c'est « Tous », et non « aucune étiquette ».
+ *
+ * Une publication est retenue dès que **l'un** de ses numéros porte
+ * l'étiquette. La carte montre la pile entière : la retirer parce que le numéro
+ * affiché n'a pas le bon mot cacherait un mail qui, lui, l'a.
+ */
+export function filtrerParEtiquette(
+  groupes: GroupeNewsletters[],
+  resumes: Record<string, Resume> | undefined,
+  etiquette: string | null,
+): GroupeNewsletters[] {
+  if (!etiquette) return groupes
+  return groupes.filter((g) =>
+    etiquettesDuGroupe(g, resumes).some((e) => memeEtiquette(e, etiquette)),
+  )
+}
+
+/**
+ * Les étiquettes qu'il vaut la peine de proposer.
+ *
+ * Celles que la synthèse a rendues, moins celles qui ne retiendraient rien. Une
+ * pastille qui vide la page quand on la touche se lit comme une panne : le
+ * modèle a très bien pu tirer « Climat » d'un mail qu'on vient d'archiver.
+ *
+ * Les doublons tombent au passage — voir [`memeEtiquette`] — et la première
+ * graphie rencontrée l'emporte, puisque c'est celle que la synthèse affiche.
+ */
+export function etiquettesUtiles(
+  proposees: readonly string[],
+  groupes: GroupeNewsletters[],
+  resumes: Record<string, Resume> | undefined,
+): string[] {
+  const retenues: string[] = []
+
+  for (const etiquette of proposees) {
+    if (retenues.some((deja) => memeEtiquette(deja, etiquette))) continue
+    if (!filtrerParEtiquette(groupes, resumes, etiquette).length) continue
+    retenues.push(etiquette.replace(/^#/u, '').trim())
+  }
+
+  return retenues
 }
 
 /**

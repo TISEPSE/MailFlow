@@ -41,6 +41,10 @@ use crate::error::Resultat;
 /// chaque changement de consigne**, et à cette seule condition.
 pub const GENERATION_RESUME: u8 = 2;
 
+/// Même rôle, pour la synthèse du jour. Elle a sa propre consigne, donc sa
+/// propre péremption : reformuler l'une n'a pas à faire repayer l'autre.
+pub const GENERATION_SYNTHESE: u8 = 1;
+
 /// Resume produit pour une newsletter.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Resume {
@@ -92,6 +96,45 @@ pub trait LlmProvider {
         adresse_utilisateur: &str,
     ) -> Resultat<Resume>;
 
-    /// Synthese en trois points de l'ensemble des newsletters du jour.
-    async fn synthese_du_jour(&self, contenus: &[String]) -> Resultat<Resume>;
+    /// Réunit en trois points ce que les publications du jour ont apporté.
+    ///
+    /// # Ce qu'elle prend, et ce qu'elle ne prend pas
+    ///
+    /// Des couples `(nom de la publication, résumé déjà produit)`, et rien
+    /// d'autre. Elle ne relit aucun mail : elle part de nos propres résumés,
+    /// déjà expurgés de leurs liens et de l'adresse de l'utilisateur au moment
+    /// où ils ont été fabriqués. Un passage d'analyse coûte donc **un appel de
+    /// plus**, pas un de plus par publication, et rien de neuf ne sort de la
+    /// machine.
+    ///
+    /// # Pourquoi des numéros et non des noms
+    ///
+    /// Les publications sont numérotées dans le texte envoyé, et le modèle rend
+    /// des **numéros**. C'est l'implémentation qui les retraduit, en jetant tout
+    /// numéro hors bornes. Un nom rendu en clair aurait été affiché tel quel :
+    /// une publication inventée par le modèle, ou soufflée par le contenu d'un
+    /// tiers, se serait retrouvée à l'écran sous couleur de source.
+    async fn synthetiser(&self, publications: &[(String, String)]) -> Resultat<Synthese>;
+}
+
+/// Un point de la synthèse : une phrase, et d'où elle vient.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PointDeSynthese {
+    pub texte: String,
+    /// Rangs des publications dont le point est tiré, **numérotés à partir de
+    /// 1** comme ils l'ont été dans l'invite. Toujours dans les bornes : c'est
+    /// la lecture de la réponse qui s'en porte garante.
+    pub sources: Vec<usize>,
+}
+
+/// Ce que la journée a apporté, en trois points au plus.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Synthese {
+    pub points: Vec<PointDeSynthese>,
+    /// Étiquettes thématiques de l'ensemble, sans le croisillon. Six au plus.
+    pub hashtags: Vec<String>,
+
+    /// La consigne qui l'a produite. Voir [`GENERATION_SYNTHESE`].
+    #[serde(default)]
+    pub generation: u8,
 }

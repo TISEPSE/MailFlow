@@ -217,6 +217,37 @@ export interface Resume {
   hashtags: string[]
 }
 
+/** Un point de la synthèse. Miroir de `commands::resumes::PointAffiche`. */
+export interface PointDeSynthese {
+  texte: string
+  /**
+   * Clés des publications d'où vient ce point.
+   *
+   * Des **clés**, et non des rangs : Rust a fait la traduction à partir de la
+   * liste réellement envoyée au modèle, en jetant tout rang hors bornes. Ce que
+   * reçoit l'interface est donc déjà vérifié — une source inventée par le modèle
+   * n'arrive jamais jusqu'ici.
+   */
+  sources: string[]
+}
+
+/**
+ * Ce que la journée a apporté, en trois points au plus.
+ *
+ * Miroir de `commands::resumes::SyntheseAffichee`. Coûte **un appel**, et
+ * seulement quand la liste des publications a changé : elle est faite des
+ * résumés déjà produits, pas des mails.
+ */
+export interface SyntheseDuJour {
+  points: PointDeSynthese[]
+  /** Étiquettes thématiques de l'ensemble, sans le croisillon. Six au plus. */
+  hashtags: string[]
+  /** Date et heure de production, au format RFC 3339. */
+  produiteLe: string
+  /** Combien de publications l'ont nourrie. */
+  publications: number
+}
+
 /**
  * Ce qu'un passage de résumés a réellement produit.
  *

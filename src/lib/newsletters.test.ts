@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest'
 import type { RapportResumes } from '../types/backend'
 import {
   decompteDuGroupe,
+  etiquettesUtiles,
+  filtrerParEtiquette,
   grouperNewsletters,
+  memeEtiquette,
   identiteExpediteur,
   ligneLocale,
   resserrerSujet,
   phraseDuRapport,
 } from './newsletters'
 import type { GroupeNewsletters } from './newsletters'
-import type { MessageAffiche } from '../types/backend'
+import type { MessageAffiche, Resume } from '../types/backend'
 
 function message(
   adresse: string,
@@ -262,5 +265,65 @@ describe("ce que le bouton « Analyser » annonce", () => {
       expect(texte.length).toBeGreaterThan(0)
       expect(erreur).toBe(false)
     }
+  })
+})
+
+describe('le filtre par étiquette', () => {
+  const groupes = () =>
+    grouperNewsletters([
+      message('news@lemonde.fr', 'Budget', '2026-08-14T08:00:00Z'),
+      message('news@lemonde.fr', 'Climat', '2026-08-13T08:00:00Z'),
+      message('bonjour@tech.io', 'Puces', '2026-08-12T08:00:00Z'),
+    ])
+
+  /** Les résumés du modèle, rangés sous l'identifiant de chaque numéro. */
+  const resumes = (): Record<string, Resume> => ({
+    [message('news@lemonde.fr', 'Budget', '2026-08-14T08:00:00Z').id]: {
+      texte: 'Le budget',
+      hashtags: ['Économie'],
+    },
+    [message('news@lemonde.fr', 'Climat', '2026-08-13T08:00:00Z').id]: {
+      texte: 'Le climat',
+      hashtags: ['Climat'],
+    },
+    [message('bonjour@tech.io', 'Puces', '2026-08-12T08:00:00Z').id]: {
+      texte: 'Les puces',
+      hashtags: ['IA', 'Tech'],
+    },
+  })
+
+  it('tient la même étiquette écrite de trois façons', () => {
+    expect(memeEtiquette('Économie', 'economie')).toBe(true)
+    expect(memeEtiquette('#ÉCONOMIE', ' économie ')).toBe(true)
+    expect(memeEtiquette('Économie', 'Écologie')).toBe(false)
+  })
+
+  it('ne filtre rien sans étiquette choisie', () => {
+    expect(filtrerParEtiquette(groupes(), resumes(), null)).toHaveLength(2)
+  })
+
+  it('retient une publication dès que l’un de ses numéros porte le mot', () => {
+    // « Climat » ne vit que sur le second numéro du Monde ; la carte montre la
+    // pile entière, elle doit donc rester.
+    const retenus = filtrerParEtiquette(groupes(), resumes(), 'climat')
+    expect(retenus.map((g) => g.nom)).toEqual(['news@lemonde.fr'])
+  })
+
+  it('ne propose pas une étiquette qui viderait la page', () => {
+    const utiles = etiquettesUtiles(
+      ['IA', 'Économie', 'Cyclisme'],
+      groupes(),
+      resumes(),
+    )
+
+    expect(utiles).toEqual(['IA', 'Économie'])
+  })
+
+  it('ne propose pas deux fois le même mot sous deux graphies', () => {
+    expect(etiquettesUtiles(['IA', '#ia', 'Ia'], groupes(), resumes())).toEqual(['IA'])
+  })
+
+  it('ne propose rien quand aucun résumé n’est encore là', () => {
+    expect(etiquettesUtiles(['IA'], groupes(), undefined)).toEqual([])
   })
 })

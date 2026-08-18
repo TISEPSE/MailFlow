@@ -513,6 +513,13 @@ pub fn chemin_resume(dossier: &Path, id: &str) -> PathBuf {
 pub enum Portee {
     Numero,
     Publication,
+    /// La journée entière, rangée sous une empreinte et non sous un message.
+    ///
+    /// Elle ne parle d'aucun message en particulier : sa péremption ne peut donc
+    /// pas venir de la disparition de l'un d'eux. Elle vient de l'empreinte —
+    /// la liste des publications qui l'ont produite — qui change dès qu'un
+    /// numéro nouveau arrive. Voir `commands::resumes`.
+    Synthese,
 }
 
 impl Portee {
@@ -520,6 +527,7 @@ impl Portee {
         match self {
             Self::Numero => "resume",
             Self::Publication => "resume-groupe",
+            Self::Synthese => "synthese",
         }
     }
 }
@@ -633,6 +641,12 @@ pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<S
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| prefixes_vivants.contains(n)),
+            // La synthèse du jour, elle, n'est rangée sous aucun message : son
+            // nom est une empreinte de la liste des publications, et c'est
+            // cette liste qui la périme. `commands::resumes` n'en garde jamais
+            // qu'une ; il n'y a rien à balayer ici, et la juger sur les
+            // identifiants vivants l'effacerait à chaque passage.
+            Some("synthese") => false,
             Some("png") => !chemin
                 .file_stem()
                 .and_then(|n| n.to_str())

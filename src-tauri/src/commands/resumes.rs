@@ -302,6 +302,251 @@ pub async fn resumes_produire(
     Ok(rapport)
 }
 
+// ---------------------------------------------------------------------------
+// La synthèse du jour
+// ---------------------------------------------------------------------------
+
+/// Une publication, telle que la page la présente à la synthèse.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicationASynthetiser {
+    /// Identité de l'émetteur. C'est elle que l'interface recevra en retour,
+    /// pour retrouver la carte et sa pastille.
+    pub cle: String,
+    pub nom: String,
+    /// Le numéro le plus récent : c'est sous lui qu'est rangé le résumé de la
+    /// publication, et c'est lui qui périme la synthèse quand il change.
+    pub id_recent: String,
+}
+
+/// Un point de la synthèse, tel que l'interface l'affiche.
+#[derive(Debug, Serialize)]
+pub struct PointAffiche {
+    pub texte: String,
+    /// Clés des publications d'où vient ce point. Des **clés**, et non des
+    /// rangs : la traduction a eu lieu ici, à partir de la liste réellement
+    /// envoyée, et l'interface n'a donc rien à vérifier.
+    pub sources: Vec<String>,
+}
+
+/// La synthèse telle qu'elle part vers l'interface.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyntheseAffichee {
+    pub points: Vec<PointAffiche>,
+    pub hashtags: Vec<String>,
+    /// Date et heure de production, au format RFC 3339. L'interface n'en montre
+    /// que l'heure — « lues à 07:10 » — mais la date lui permet de se taire
+    /// quand la synthèse est celle de la veille.
+    pub produite_le: String,
+    /// Combien de publications l'ont nourrie.
+    pub publications: usize,
+}
+
+/// Ce qu'on range sur le disque : la synthèse brute et l'heure de sa production.
+///
+/// La synthèse est gardée avec ses **rangs**, pas ses clés, parce que c'est
+/// ainsi que le modèle l'a rendue. L'empreinte du fichier garantit que la liste
+/// des publications n'a pas bougé, donc que les rangs désignent toujours les
+/// mêmes.
+#[derive(Debug, Serialize, Deserialize)]
+struct SyntheseEnCache {
+    synthese: crate::llm::Synthese,
+    produite_le: String,
+}
+
+/// Empreinte de la liste des publications qui nourrissent une synthèse.
+///
+/// # Pourquoi une empreinte plutôt qu'une durée
+///
+/// Une synthèse « du jour » périmée à minuit serait refaite alors que rien n'a
+/// changé, et resterait fausse tout l'après-midi où trois numéros sont arrivés.
+/// Ce qui la périme, c'est le contenu : dès qu'une publication entre, sort ou
+/// reçoit un numéro plus récent, l'empreinte change et la synthèse est refaite —
+/// une fois, puis plus jamais.
+///
+/// FNV-1a, écrit ici en cinq lignes : il ne s'agit pas de résister à un
+/// adversaire mais de nommer un fichier de cache, et un algorithme dont la
+/// valeur dépendrait de la version du compilateur ferait repayer un appel à
+/// chaque mise à jour.
+fn empreinte(publications: &[&PublicationASynthetiser]) -> String {
+    let mut valeur: u64 = 0xcbf2_9ce4_8422_2325;
+    for p in publications {
+        for octet in p
+            .cle
+            .as_bytes()
+            .iter()
+            .chain(b"\0")
+            .chain(p.id_recent.as_bytes())
+        {
+            valeur ^= u64::from(*octet);
+            valeur = valeur.wrapping_mul(0x100_0000_01b3);
+        }
+    }
+    format!("{valeur:016x}")
+}
+
+/// Réunit en trois points ce que les publications du jour ont apporté.
+///
+/// # Ce que cet appel coûte, et ce qu'il ne coûte pas
+///
+/// **Un appel, et seulement quand la liste des publications a changé.** Il ne
+/// relit aucun mail : il part des résumés de publication déjà produits et déjà
+/// rangés sur le disque — ceux qui font vivre les cartes. Une publication non
+/// encore résumée n'est simplement pas de la partie ; elle le sera au passage
+/// suivant, sans que rien d'autre soit refait.
+///
+/// Il n'y a donc rien de neuf à expurger : ces textes sont les nôtres, écrits à
+/// partir de contenus déjà nettoyés de leurs liens et de l'adresse de
+/// l'utilisateur ([`crate::llm::gemini::expurger`]).
+///
+/// Rend `None` — et non une erreur — sans clé configurée ou sans aucun résumé en
+/// main : le bandeau garde alors ce qu'il affiche déjà, et la page ne bouge pas
+/// d'un pixel selon que l'IA est là ou non.
+#[tauri::command]
+pub async fn synthese_produire(
+    app: AppHandle,
+    publications: Vec<PublicationASynthetiser>,
+) -> Resultat<Option<SyntheseAffichee>> {
+    let dossier = corps::dossier_cache_dans(&app);
+
+    // Seules celles qui ont déjà un résumé, dans l'ordre de la page. L'ordre
+    // compte : c'est lui qui fixe les rangs, et donc le sens des sources que le
+    // modèle rendra.
+    let nourries: Vec<(&PublicationASynthetiser, Resume)> = publications
+        .iter()
+        .filter_map(|p| resume_de_la_publication(&dossier, &p.id_recent).map(|r| (p, r)))
+        .take(crate::llm::gemini::PUBLICATIONS_PAR_SYNTHESE)
+        .collect();
+
+    if nourries.is_empty() {
+        return Ok(None);
+    }
+
+    let retenues: Vec<&PublicationASynthetiser> = nourries.iter().map(|(p, _)| *p).collect();
+    let empreinte = empreinte(&retenues);
+    let chemin = corps::chemin_resume_de(&dossier, &empreinte, corps::Portee::Synthese);
+
+    if let Some(cache) = lire_la_synthese_en_cache(&chemin) {
+        log::info!("synthèse du jour reprise du cache, aucun appel");
+        return Ok(Some(afficher(cache.synthese, &retenues, cache.produite_le)));
+    }
+
+    let Some(cle) = cle_enregistree() else {
+        return Ok(None);
+    };
+
+    let entrees: Vec<(String, String)> = nourries
+        .iter()
+        .map(|(p, r)| (p.nom.clone(), r.texte.clone()))
+        .collect();
+
+    let synthese = match Gemini::nouveau(cle)?.synthetiser(&entrees).await {
+        Ok(s) => s,
+        Err(e) => {
+            // Une synthèse manquante n'est pas une panne : le bandeau garde son
+            // décompte, et les cartes leurs résumés.
+            log::info!("synthèse du jour non produite : {e}");
+            return Ok(None);
+        }
+    };
+
+    let produite_le = chrono::Local::now().to_rfc3339();
+    ranger_la_synthese(&dossier, &chemin, &synthese, &produite_le);
+
+    log::info!(
+        "synthèse du jour produite en {} point(s) sur {} publication(s)",
+        synthese.points.len(),
+        retenues.len()
+    );
+    Ok(Some(afficher(synthese, &retenues, produite_le)))
+}
+
+/// Le résumé d'une publication : celui du groupe, à défaut celui du numéro.
+///
+/// Le même ordre de préférence que [`resumes_connus`], et pour la même raison :
+/// un résumé de publication parle de tout ce qu'elle a envoyé, celui d'un numéro
+/// d'un seul.
+fn resume_de_la_publication(dossier: &std::path::Path, id_recent: &str) -> Option<Resume> {
+    corps::lire_resume_de(dossier, id_recent, corps::Portee::Publication)
+        .or_else(|| corps::lire_resume(dossier, id_recent))
+        .filter(|r| !r.texte.trim().is_empty())
+}
+
+/// Traduit les rangs en clés de publication, et jette ce qui ne correspond à rien.
+///
+/// La lecture de la réponse a déjà écarté les rangs hors bornes
+/// ([`crate::llm::gemini`]) ; cette seconde vérification ne coûte rien et rend
+/// la fonction juste toute seule, sans dépendre de ce qui s'est passé avant.
+fn afficher(
+    synthese: crate::llm::Synthese,
+    retenues: &[&PublicationASynthetiser],
+    produite_le: String,
+) -> SyntheseAffichee {
+    SyntheseAffichee {
+        points: synthese
+            .points
+            .into_iter()
+            .map(|p| PointAffiche {
+                texte: p.texte,
+                sources: p
+                    .sources
+                    .into_iter()
+                    .filter_map(|rang| retenues.get(rang.checked_sub(1)?))
+                    .map(|p| p.cle.clone())
+                    .collect(),
+            })
+            .filter(|p| !p.sources.is_empty())
+            .collect(),
+        hashtags: synthese.hashtags,
+        produite_le,
+        publications: retenues.len(),
+    }
+}
+
+/// Relit une synthèse rangée, ou `None` si elle est illisible ou périmée.
+fn lire_la_synthese_en_cache(chemin: &std::path::Path) -> Option<SyntheseEnCache> {
+    let texte = std::fs::read_to_string(chemin).ok()?;
+    let cache: SyntheseEnCache = serde_json::from_str(&texte).ok()?;
+    (cache.synthese.generation == crate::llm::GENERATION_SYNTHESE).then_some(cache)
+}
+
+/// Range la synthèse, et efface celles qui ne valent plus.
+///
+/// Une seule survit à la fois : leur nom est une empreinte, et une empreinte
+/// périmée ne sera plus jamais demandée. Les laisser s'accumuler ferait grossir
+/// le dossier d'un fichier par jour, sans que rien ne les relise.
+fn ranger_la_synthese(
+    dossier: &std::path::Path,
+    chemin: &std::path::Path,
+    synthese: &crate::llm::Synthese,
+    produite_le: &str,
+) {
+    let _ = std::fs::create_dir_all(dossier);
+
+    let cache = SyntheseEnCache {
+        synthese: synthese.clone(),
+        produite_le: produite_le.to_string(),
+    };
+
+    let Ok(json) = serde_json::to_string(&cache) else {
+        return;
+    };
+    if let Err(e) = crate::cache::ecrire_prive(chemin, &json) {
+        log::info!("synthèse non mise en cache : {e}");
+        return;
+    }
+
+    if let Ok(entrees) = std::fs::read_dir(dossier) {
+        for entree in entrees.flatten() {
+            let autre = entree.path();
+            if autre != chemin && autre.extension().and_then(|e| e.to_str()) == Some("synthese") {
+                let _ = std::fs::remove_file(autre);
+            }
+        }
+    }
+}
+
 /// Le résumé d'une publication, s'il existe déjà.
 ///
 /// Rangé sous l'identifiant du numéro le plus récent : c'est ce qui lui donne

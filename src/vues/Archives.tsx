@@ -37,7 +37,7 @@
  * perd ses affaires : la surface est plus grande que l'écran, mais finie, et un
  * bouton réaligne tout en grille.
  */
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as PointerEventReact } from 'react'
 import { Bouton, Confirmation, Icone, Modale, Vide } from '../composants/base'
 import { LecteurEnGrand } from '../composants/LecteurEnGrand'
@@ -84,6 +84,16 @@ export interface GestesDeLaTable {
    * pouvait pas dire « celui-là est classé » sans le jeter.
    */
   onRetirer: (message: string) => Promise<void>
+  /**
+   * Un tas vient de perdre sa dernière tuile : son libellé disparaît de Gmail.
+   *
+   * Sans retour, comme « Défaire le tas », et sans confirmation cette fois —
+   * c'est le geste demandé. Ce qui le rend acceptable n'est pas une fenêtre de
+   * plus, c'est la condition : le tas doit être **tombé** à zéro sous la main
+   * de l'utilisateur. Un libellé qui n'a jamais rien porté sur la table ne
+   * passe jamais par ici, et peut donc contenir trois cents messages en paix.
+   */
+  onTasVide: (libelle: string, nom: string) => Promise<void>
   /** Marque un message comme lu, à son ouverture. */
   onLu: (message: string) => void
   /** Relève à nouveau les archives chez Gmail. */
@@ -94,6 +104,7 @@ export interface GestesDeLaTable {
 export function Archives({
   archives,
   libelles,
+  compte,
   tableau,
   onTableau,
   sombre,
@@ -104,6 +115,9 @@ export function Archives({
 }: {
   archives: MessageAffiche[]
   libelles: LibelleGmail[]
+  /** Adresse de la boîte regardée. Sert de repère, pas d'affichage : quand elle
+   *  change, tout ce que la page retenait du compte précédent est lâché. */
+  compte: string | null
   tableau: Tableau
   /** Appelée à chaque dépose : c'est elle qui écrit `tableau.json`. */
   onTableau: (tableau: Tableau) => void
@@ -145,25 +159,88 @@ export function Archives({
   )
 
   /**
-   * Un tas par libellé Gmail — y compris ceux qui ne portent encore rien.
+   * Un tas par libellé **qui porte au moins une tuile**.
    *
-   * La table ne montrait que les libellés portant déjà une archive. Un libellé
-   * créé depuis Gmail, ou depuis le téléphone, n'apparaissait donc nulle part :
-   * la catégorie existait chez Google et restait invisible ici, alors que le
-   * sens inverse — nommer un tas, qui crée le libellé — fonctionnait. Un
-   * classement qui ne circule que dans un sens n'est pas un classement.
+   * La table énumérait tous les libellés Gmail, portants ou non, au motif qu'un
+   * tas vide reste une catégorie où déposer. À l'usage c'est faux : sur une
+   * boîte ordinaire, la table s'ouvrait couverte de « 0 message » qu'on ne peut
+   * ni lire ni ranger, et le plan de travail n'était plus un plan de travail.
    *
-   * Un tas vide n'est pas du vide : c'est une catégorie où déposer.
+   * Les deux sens du classement continuent de circuler — un libellé posé depuis
+   * le téléphone arrive bien ici, mais **par ses messages** : `archives_synchroniser`
+   * relève `has:userlabels` et les fait entrer au registre, tuiles et tas d'un
+   * coup. Ce qu'on ne montre plus, ce sont les libellés qui n'avaient rien à
+   * montrer.
    */
-  const tasVivants = useMemo(
-    () => [
-      ...libelles.map((l) => l.id),
-      // Un libellé que Gmail ne liste plus mais qu'une archive porte encore :
-      // il vaut mieux un tas de trop qu'une tuile disparue de la table.
-      ...[...parTas.keys()].filter((id) => !libelles.some((l) => l.id === id)),
-    ],
-    [libelles, parTas],
-  )
+  const tasVivants = useMemo(() => [...parTas.keys()], [parTas])
+
+  /** Effectifs de chaque tas au passage précédent : c'est la chute qu'on guette. */
+  const effectifs = useRef(new Map<string, number>())
+
+  /** Tas dont on a déjà demandé la suppression. Un ordre suffit. */
+  const signales = useRef(new Set<string>())
+
+  /**
+   * Vrai quand la table vient d'être modifiée par un geste de l'utilisateur.
+   *
+   * C'est la garde qui distingue « j'ai sorti la dernière tuile » de « le
+   * relevé a rendu une liste différente ». Sans elle, une relecture du
+   * classement Gmail — ou un simple changement de compte — pourrait faire
+   * tomber un tas à zéro sans que personne n'ait rien demandé, et emporter un
+   * libellé qui contient trois cents messages ailleurs.
+   */
+  const apresUnGeste = useRef(false)
+
+  /** Le compte a changé : la mémoire des effectifs ne vaut plus rien.
+   *
+   *  Les identifiants de libellé d'une boîte ne désignent rien dans une autre.
+   *  Sans cette remise à zéro, basculer de compte ferait « tomber à zéro » tous
+   *  les tas du précédent — et les supprimerait dans le nouveau. */
+  useEffect(() => {
+    effectifs.current = new Map()
+    signales.current = new Set()
+  }, [compte])
+
+  /**
+   * Les gestes, tenus à part des dépendances de l'effet.
+   *
+   * La page les reçoit sous forme d'objet reconstruit à chaque rendu : les
+   * placer en dépendance ferait courir la détection à chaque rendu, y compris
+   * ceux où la table n'a pas bougé — et la garde du geste serait effacée avant
+   * d'avoir servi.
+   */
+  const gestesRecents = useRef(gestes)
+  useEffect(() => {
+    gestesRecents.current = gestes
+  })
+
+  useEffect(() => {
+    const avant = effectifs.current
+    const maintenant = new Map(tasVivants.map((id) => [id, parTas.get(id)?.length ?? 0]))
+    effectifs.current = maintenant
+
+    const geste = apresUnGeste.current
+    apresUnGeste.current = false
+    if (!geste) return
+
+    for (const [id, combien] of avant) {
+      if (combien === 0 || maintenant.has(id) || signales.current.has(id)) continue
+
+      // Un libellé que Gmail ne liste plus n'a plus rien à supprimer : le tas a
+      // disparu parce que le libellé avait déjà été effacé ailleurs.
+      const nom = nomsDesLibelles.get(id)
+      if (!nom) continue
+
+      signales.current.add(id)
+      const { onTasVide, onErreur } = gestesRecents.current
+      void onTasVide(id, nom).catch((e) => onErreur(String(e)))
+    }
+  }, [tasVivants, parTas, nomsDesLibelles])
+
+  /** Annonce qu'un geste de l'utilisateur va modifier ce que porte la table. */
+  const noterLeGeste = useCallback(() => {
+    apresUnGeste.current = true
+  }, [])
 
   // La disposition complétée : ce qui a une place la garde, ce qui vient
   // d'arriver en reçoit une. Sans cela, un message relevé depuis la dernière
@@ -328,13 +405,20 @@ export function Archives({
                 onDefaire={() =>
                   setADefaire({ id, nom, messages: messages.map((m) => m.id) })
                 }
-                onSortir={(message) =>
+                // Les trois sorties d'un tas passent par `noterLeGeste` : ce
+                // sont elles, et elles seules, qui peuvent le faire tomber à
+                // zéro sous la main de l'utilisateur.
+                onSortir={(message) => {
+                  noterLeGeste()
                   void gestes.onSortir(message, id).catch((e) => gestes.onErreur(String(e)))
-                }
+                }}
+                // La suppression, elle, note son geste au moment où elle est
+                // confirmée : une fenêtre ouverte puis annulée n'a rien changé.
                 onSupprimer={setASupprimer}
-                onRetirer={(m) =>
+                onRetirer={(m) => {
+                  noterLeGeste()
                   void gestes.onRetirer(m.id).catch((e) => gestes.onErreur(String(e)))
-                }
+                }}
               />
             )
           })}
@@ -412,6 +496,7 @@ export function Archives({
           onConfirmer={() => {
             const cible = aSupprimer
             setASupprimer(null)
+            noterLeGeste()
             void gestes.onSupprimer(cible.id).catch((e) => gestes.onErreur(String(e)))
           }}
         />
@@ -803,23 +888,27 @@ function TasPose({
       {/* Les feuilles derrière : c'est ce qui fait lire « plusieurs » avant
           même d'avoir lu le décompte. Elles ne réagissent pas au pointeur,
           sinon elles voleraient le geste à la carte de tête. */}
-      {!ouvert &&
-        messages.slice(1, 3).map((m, rang) => (
-          <div
-            key={m.id}
-            aria-hidden
-            className="absolute rounded-xl border"
-            style={{
-              inset: 0,
-              height: TAS.hauteur,
-              transform: `translate(${(rang + 1) * 5}px, ${(rang + 1) * 5}px) rotate(${(rang + 1) * 0.9}deg)`,
-              background: 'var(--card)',
-              borderColor: 'var(--line)',
-              opacity: 0.75 - rang * 0.25,
-              pointerEvents: 'none',
-            }}
-          />
-        ))}
+      {/* Elles s'effacent au lieu de disparaître : montées en permanence, leur
+          opacité suit l'ouverture. Retirées du document, elles s'évanouissaient
+          d'un coup à l'instant du clic, et le tas paraissait sauter avant même
+          que la liste ait commencé à sortir. */}
+      {messages.slice(1, 3).map((m, rang) => (
+        <div
+          key={m.id}
+          aria-hidden
+          className="absolute rounded-xl border"
+          style={{
+            inset: 0,
+            height: TAS.hauteur,
+            transform: `translate(${(rang + 1) * 5}px, ${(rang + 1) * 5}px) rotate(${(rang + 1) * 0.9}deg)`,
+            background: 'var(--card)',
+            borderColor: 'var(--line)',
+            opacity: ouvert ? 0 : 0.75 - rang * 0.25,
+            transition: 'opacity 200ms ease',
+            pointerEvents: 'none',
+          }}
+        />
+      ))}
 
       <div
         {...poignee}
@@ -884,28 +973,46 @@ function TasPose({
       </div>
 
       {/* Déplié en place, avec sa propre barre de défilement : une pile de
-          quarante messages ne doit pas couvrir la table entière. */}
-      {ouvert && (
-        <div
-          className="mt-1.5 flex max-h-64 flex-col gap-1 overflow-y-auto rounded-xl border p-1.5"
-          style={{
-            background: 'var(--card)',
-            borderColor: 'var(--line)',
-            boxShadow: '0 18px 40px rgb(0 0 0 / 20%)',
-          }}
-        >
-          {messages.map((m) => (
-            <LigneDuTas
-              key={m.id}
-              message={m}
-              onOuvrir={() => onOuvrirMessage(m)}
-              onSortir={() => onSortir(m.id)}
-              onSupprimer={() => onSupprimer(m)}
-              onRetirer={() => onRetirer(m)}
-            />
-          ))}
+          quarante messages ne doit pas couvrir la table entière.
+
+          La liste reste **montée** : c'est ce qui permet de l'animer dans les
+          deux sens. Montée et démontée au clic, elle apparaissait et
+          disparaissait d'un coup — il n'y a rien à faire glisser sur un nœud
+          qui n'existe pas encore. `.deplie` interpole `grid-template-rows` de
+          `0fr` à `1fr`, seule façon d'animer vers une hauteur automatique ;
+          voir `index.css`.
+
+          L'ombre et la bordure sont posées à l'intérieur : `.deplie > *` clôt
+          son enfant, et une ombre portée un cran plus haut se retrouverait
+          rognée à hauteur nulle — donc visible sur un tas fermé. La marge
+          haute suit, pour la même raison. */}
+      <div className="deplie" data-ouvert={ouvert} aria-hidden={!ouvert}>
+        <div>
+          <div
+            className="mt-1.5 flex max-h-64 flex-col gap-1 overflow-y-auto rounded-xl border p-1.5"
+            style={{
+              background: 'var(--card)',
+              borderColor: 'var(--line)',
+              boxShadow: '0 18px 40px rgb(0 0 0 / 20%)',
+            }}
+          >
+            {messages.map((m) => (
+              <LigneDuTas
+                key={m.id}
+                message={m}
+                // Rien n'est atteignable au clavier tant que le tas est fermé :
+                // sans cela, la tabulation traverserait quarante boutons
+                // invisibles avant d'atteindre la tuile suivante.
+                atteignable={ouvert}
+                onOuvrir={() => onOuvrirMessage(m)}
+                onSortir={() => onSortir(m.id)}
+                onSupprimer={() => onSupprimer(m)}
+                onRetirer={() => onRetirer(m)}
+              />
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -913,23 +1020,28 @@ function TasPose({
 /** Une archive dans un tas déplié. */
 function LigneDuTas({
   message,
+  atteignable,
   onOuvrir,
   onSortir,
   onSupprimer,
   onRetirer,
 }: {
   message: MessageAffiche
+  /** Faux quand le tas est replié : la ligne existe encore, mais hors d'atteinte. */
+  atteignable: boolean
   onOuvrir: () => void
   onSortir: () => void
   onSupprimer: () => void
   onRetirer: () => void
 }) {
   const [fond, encre] = palette(rangDeLAdresse(message.adresse))
+  const hors = atteignable ? undefined : -1
 
   return (
     <div className="ligne-de-tas flex items-center gap-2 rounded-lg px-2 py-1.5">
       <button
         type="button"
+        tabIndex={hors}
         onClick={onOuvrir}
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
@@ -949,6 +1061,7 @@ function LigneDuTas({
           de confirmation, où « Annuler » précède toujours l'action. */}
       <button
         type="button"
+        tabIndex={hors}
         onClick={onSortir}
         title="Sortir du tas"
         aria-label={`Sortir « ${message.sujet} » du tas`}
@@ -959,6 +1072,7 @@ function LigneDuTas({
 
       <button
         type="button"
+        tabIndex={hors}
         onClick={onRetirer}
         title="Retirer de la table — le mail reste archivé chez Gmail"
         aria-label={`Retirer « ${message.sujet || 'sans objet'} » de la table`}
@@ -969,6 +1083,7 @@ function LigneDuTas({
 
       <button
         type="button"
+        tabIndex={hors}
         onClick={onSupprimer}
         title="Mettre à la corbeille"
         aria-label={`Supprimer « ${message.sujet || 'sans objet'} »`}

@@ -37,6 +37,7 @@ const gestes: GestesDeLaTable = {
   onSortir: async () => undefined,
   onCreerLibelle: async () => [],
   onDefaireLeTas: async () => undefined,
+  onTasVide: async () => undefined,
   onSupprimer: async () => undefined,
   onRetirer: async () => undefined,
   onLu: () => undefined,
@@ -56,6 +57,7 @@ function rendre(
     <Archives
       archives={archives}
       libelles={libelles}
+      compte="moi@gmail.com"
       tableau={tableau}
       onTableau={() => undefined}
       sombre={false}
