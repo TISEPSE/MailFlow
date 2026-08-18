@@ -454,11 +454,23 @@ pub fn texte_lisible(corps: &CorpsMessage) -> String {
     corps.html.as_deref().map(sans_balises).unwrap_or_default()
 }
 
+/// Balises dont le **contenu** ne doit pas suivre les balises à la poubelle.
+///
+/// Retirer `<style>` sans retirer ce qu'il enferme laissait la feuille de style
+/// dans le texte : elle est écrite hors balises, elle survivait donc au
+/// dépouillement. Un mail de transporteur pouvait ainsi peser cinq mille
+/// caractères dont pas un seul de français — c'était de la mise en page, envoyée
+/// au modèle à la place de la lettre, jusqu'à épuiser le budget de caractères
+/// avant le premier mot utile.
+const BALISES_MUETTES: [&str; 3] = ["style", "script", "head"];
+
 /// Retire les balises et rend les entités les plus courantes.
 ///
 /// Les entités comptent : un extrait qui dit « l&#39;examen » se résume mal,
 /// et le modèle reproduirait la graphie plutôt que de la corriger.
 fn sans_balises(html: &str) -> String {
+    let html = sans_les_muettes(html);
+
     let mut texte = String::with_capacity(html.len());
     let mut dans_balise = false;
 
@@ -476,20 +488,167 @@ fn sans_balises(html: &str) -> String {
         }
     }
 
-    for (entite, remplacement) in [
+    let texte = sans_entites(&texte);
+
+    // Les caractères invisibles servent aux expéditeurs à étirer l'aperçu que
+    // montrent les clients mail : certains en alignent trois mille d'affilée en
+    // tête de message. Ils ne se voient pas, ne se lisent pas, et mangeaient
+    // pourtant tout le budget avant la première phrase.
+    texte
+        .split_whitespace()
+        .map(|mot| mot.trim_matches(invisible))
+        .filter(|mot| !mot.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Vrai pour un caractère qui n'occupe aucune place à l'écran.
+fn invisible(c: char) -> bool {
+    matches!(
+        c,
+        '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202f}' | '\u{feff}' | '\u{034f}' | '\u{00ad}'
+    )
+}
+
+/// Retire les éléments dont le contenu n'est pas du texte, et les commentaires.
+///
+/// Écrit à la main plutôt qu'en expression régulière : la dépendance n'existe
+/// pas dans ce projet, et le besoin tient en une passe. Une balise ouvrante sans
+/// fermante emporte le reste du document — c'est le comportement voulu, un
+/// `<style>` jamais refermé ne contient pas de lettre à lire.
+fn sans_les_muettes(html: &str) -> String {
+    let mut sortie = String::with_capacity(html.len());
+    let mut reste = html;
+
+    'suivant: while let Some(debut) = reste.find('<') {
+        let (avant, apres) = reste.split_at(debut);
+        sortie.push_str(avant);
+
+        if let Some(fin) = apres.strip_prefix("<!--") {
+            match fin.find("-->") {
+                Some(i) => {
+                    reste = &fin[i + 3..];
+                    sortie.push(' ');
+                }
+                None => return sortie,
+            }
+            continue;
+        }
+
+        // `<style`, `<style>` ou `<style type="…">`, sans se laisser prendre par
+        // une balise dont le nom commence pareil.
+        let nom = apres[1..]
+            .split(|c: char| c == '>' || c.is_whitespace())
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        if BALISES_MUETTES.contains(&nom.as_str()) {
+            let fermeture = format!("</{nom}");
+            match apres.to_ascii_lowercase().find(&fermeture) {
+                Some(i) => {
+                    // Sauter jusqu'au `>` de la fermeture, s'il existe.
+                    let apres_fermeture = &apres[i..];
+                    reste = match apres_fermeture.find('>') {
+                        Some(j) => &apres_fermeture[j + 1..],
+                        None => return sortie,
+                    };
+                    sortie.push(' ');
+                }
+                None => return sortie,
+            }
+            continue 'suivant;
+        }
+
+        // Une balise ordinaire : elle est recopiée telle quelle, le
+        // dépouillement s'en chargera.
+        sortie.push('<');
+        reste = &apres[1..];
+    }
+
+    sortie.push_str(reste);
+    sortie
+}
+
+/// Rend les entités HTML : les nommées les plus courantes, et toutes les
+/// numériques.
+///
+/// Les numériques comptent autant que les nommées, et pour la même raison : un
+/// mail écrit « r&eacute;servation » et « l&#39;examen » dans la même phrase.
+/// N'en traiter qu'une moitié laissait l'autre à l'écran, et dans le texte
+/// envoyé au modèle.
+fn sans_entites(texte: &str) -> String {
+    const NOMMEES: [(&str, &str); 21] = [
         ("&nbsp;", " "),
-        ("&#39;", "'"),
         ("&apos;", "'"),
         ("&quot;", "\""),
         ("&lt;", "<"),
         ("&gt;", ">"),
-        // En dernier : sinon « &amp;#39; » deviendrait une apostrophe.
-        ("&amp;", "&"),
-    ] {
-        texte = texte.replace(entite, remplacement);
+        ("&eacute;", "é"),
+        ("&egrave;", "è"),
+        ("&ecirc;", "ê"),
+        ("&euml;", "ë"),
+        ("&agrave;", "à"),
+        ("&acirc;", "â"),
+        ("&ccedil;", "ç"),
+        ("&ugrave;", "ù"),
+        ("&ucirc;", "û"),
+        ("&icirc;", "î"),
+        ("&iuml;", "ï"),
+        ("&ocirc;", "ô"),
+        ("&oelig;", "œ"),
+        ("&laquo;", "«"),
+        ("&raquo;", "»"),
+        ("&hellip;", "…"),
+    ];
+
+    let mut sortie = String::with_capacity(texte.len());
+    let mut reste = texte;
+
+    while let Some(i) = reste.find('&') {
+        sortie.push_str(&reste[..i]);
+        let depuis = &reste[i..];
+
+        // La forme numérique, décimale ou hexadécimale.
+        if let Some(fin) = depuis.find(';')
+            && fin <= 10
+            && let Some(chiffres) = depuis[1..fin].strip_prefix('#')
+        {
+            let point = match chiffres.strip_prefix(['x', 'X']) {
+                Some(hexa) => u32::from_str_radix(hexa, 16).ok(),
+                None => chiffres.parse::<u32>().ok(),
+            };
+            if let Some(c) = point.and_then(char::from_u32) {
+                sortie.push(c);
+                reste = &depuis[fin + 1..];
+                continue;
+            }
+        }
+
+        match NOMMEES
+            .iter()
+            .find(|(entite, _)| depuis.to_ascii_lowercase().starts_with(entite))
+        {
+            Some((entite, remplacement)) => {
+                sortie.push_str(remplacement);
+                reste = &depuis[entite.len()..];
+            }
+            // Ni l'une ni l'autre : c'est une esperluette ordinaire. En dernier,
+            // sinon « &amp;#39; » deviendrait une apostrophe.
+            None => {
+                if let Some(sans) = depuis.strip_prefix("&amp;") {
+                    sortie.push('&');
+                    reste = sans;
+                } else {
+                    sortie.push('&');
+                    reste = &depuis[1..];
+                }
+            }
+        }
     }
 
-    texte.split_whitespace().collect::<Vec<_>>().join(" ")
+    sortie.push_str(reste);
+    sortie
 }
 
 /// Chemin du résumé d'un message.
@@ -672,6 +831,109 @@ pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<S
 mod tests {
     use super::*;
     use crate::gmail::modele::{Charge, CorpsPartie};
+
+    mod dépouillement {
+        use super::*;
+
+        fn corps(html: &str) -> CorpsMessage {
+            CorpsMessage {
+                html: Some(html.into()),
+                texte: None,
+                pieces: Vec::new(),
+            }
+        }
+
+        /// Le cas qui a motivé tout ceci : un mail de transporteur dont le
+        /// texte lisible était, à quatre-vingt-quinze pour cent, sa feuille de
+        /// style. Le modèle recevait du CSS et rendait n'importe quoi.
+        #[test]
+        fn une_feuille_de_style_ne_passe_pas_pour_du_texte() {
+            let lu = texte_lisible(&corps(
+                "<html><head><style type=\"text/css\">\
+                 body { width: 100%; margin: 0px; } \
+                 @media only screen { th { display: block !important; } }\
+                 </style></head><body><p>Votre billet est confirmé.</p></body></html>",
+            ));
+
+            assert_eq!(lu, "Votre billet est confirmé.");
+        }
+
+        #[test]
+        fn un_script_ne_passe_pas_davantage() {
+            let lu = texte_lisible(&corps("<script>var a = 1 < 2;</script><p>Bonjour</p>"));
+            assert_eq!(lu, "Bonjour");
+        }
+
+        /// Une balise dont le nom commence comme une muette n'est pas muette.
+        #[test]
+        fn une_balise_au_nom_voisin_garde_son_contenu() {
+            assert_eq!(texte_lisible(&corps("<header>Bonjour</header>")), "Bonjour");
+        }
+
+        /// Un `<style>` jamais refermé emporte la suite : il n'y a pas de
+        /// lettre à lire dans une feuille de style inachevée.
+        #[test]
+        fn une_muette_jamais_refermee_ne_rend_rien() {
+            assert_eq!(texte_lisible(&corps("<p>Avant</p><style>body{}")), "Avant");
+        }
+
+        #[test]
+        fn les_commentaires_disparaissent() {
+            assert_eq!(
+                texte_lisible(&corps("<!-- caché --><p>Visible</p>")),
+                "Visible"
+            );
+        }
+
+        /// Les deux formes se croisent dans un même mail : n'en rendre qu'une
+        /// laissait l'autre à l'écran.
+        #[test]
+        fn les_entites_nommees_et_numeriques_sont_rendues() {
+            assert_eq!(
+                texte_lisible(&corps("<p>r&eacute;servation de l&#39;&hellip;</p>")),
+                "réservation de l'…"
+            );
+            assert_eq!(texte_lisible(&corps("<p>&#x27;&#233;</p>")), "'é");
+        }
+
+        /// Sans cet ordre, « &amp;#39; » — une esperluette écrite littéralement,
+        /// suivie de chiffres — deviendrait une apostrophe.
+        #[test]
+        fn une_esperluette_echappee_reste_une_esperluette() {
+            assert_eq!(texte_lisible(&corps("<p>&amp;#39;</p>")), "&#39;");
+        }
+
+        /// Certains expéditeurs alignent des milliers de caractères invisibles
+        /// en tête de message pour étirer l'aperçu des clients mail. Ils
+        /// mangeaient tout le budget avant la première phrase.
+        #[test]
+        fn les_caracteres_invisibles_ne_mangent_pas_le_budget() {
+            let bourrage = "\u{200c} ".repeat(500);
+            let lu = texte_lisible(&corps(&format!("<p>{bourrage}Le vrai texte</p>")));
+
+            assert_eq!(lu, "Le vrai texte");
+        }
+
+        /// La partie `text/plain` prime toujours : elle est écrite par
+        /// l'expéditeur pour être lue telle quelle.
+        #[test]
+        fn le_texte_brut_prime_sur_le_balisage() {
+            let lu = texte_lisible(&CorpsMessage {
+                html: Some("<style>body{}</style><p>balisage</p>".into()),
+                texte: Some("la lettre".into()),
+                pieces: Vec::new(),
+            });
+
+            assert_eq!(lu, "la lettre");
+        }
+
+        /// Un mail qui n'est que des images n'a rien à résumer, et c'est une
+        /// réponse et non une panne.
+        #[test]
+        fn un_mail_sans_un_mot_rend_le_vide() {
+            assert_eq!(texte_lisible(&corps("<style>body{}</style>")), "");
+        }
+    }
 
     fn encoder(texte: &str) -> String {
         use base64::Engine;

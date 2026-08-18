@@ -311,17 +311,39 @@ export default function App() {
   const afficherLeCache = useCallback(async () => {
     try {
       const messages = await boiteEnCache()
-      if (!messages.length) return false
+      if (!messages.length) return null
 
       setBoite(messages)
       setPremierReleve(false)
       chercherLesLogos(messages)
-      return true
+      // Les messages, et non un simple « oui » : l'appelant en a besoin pour
+      // aller chercher leurs résumés sur le disque.
+      return messages
     } catch {
       // Cache illisible ou absent : ce n'est pas une panne, on relèvera.
-      return false
+      return null
     }
   }, [chercherLesLogos])
+
+  /**
+   * Remet à l'écran les résumés déjà rangés sur le disque.
+   *
+   * **Aucun appel, aucune dépense** : deux lectures de fichier par publication,
+   * et rien de plus. C'est la moitié « lecture » de la troisième phase, séparée
+   * de la moitié « production » parce qu'elles n'ont ni le même coût ni le même
+   * moment.
+   *
+   * Elle manquait au chemin du cache — celui que prend tout démarrage après le
+   * premier. `chargerLaBoite` y rendait la main avant la troisième phase, si
+   * bien que les résumés déjà payés restaient sur le disque sans jamais
+   * remonter à l'écran : les cartes reprenaient leur ligne composée localement,
+   * et il fallait recliquer « Analyser » pour les revoir.
+   */
+  const relireLesResumes = useCallback(async (messages: MessageAffiche[]) => {
+    const ids = messages.filter((m) => m.categorie === 'newsletter').map((m) => m.id)
+    if (!ids.length) return
+    setResumes(await resumesConnus(ids).catch(() => ({})))
+  }, [])
 
   const relever = useCallback(async () => {
     setEnRecherche(true)
@@ -666,9 +688,15 @@ export default function App() {
     // attentes différentes pour un seul clic.
     // Le cache d'abord : s'il a quelque chose à montrer, l'écran de chargement
     // n'a plus lieu d'être et le relevé se fait en arrière-plan.
-    const dejaVu = await afficherLeCache()
-    if (dejaVu) {
-      void relever()
+    const enCache = await afficherLeCache()
+    if (enCache) {
+      // Les résumés d'abord, depuis le disque : ils sont là avant même que le
+      // relevé ne parte. Puis de nouveau après lui, car il peut avoir apporté
+      // un numéro qui en périme un.
+      void relireLesResumes(enCache)
+      void relever().then((messages) => {
+        if (messages?.length) void relireLesResumes(messages)
+      })
       return
     }
 
@@ -690,7 +718,7 @@ export default function App() {
       chargementComplet.current = false
       setAvancement(null)
     }
-  }, [relever, afficherLeCache, resumerLesNewsletters])
+  }, [relever, afficherLeCache, relireLesResumes, resumerLesNewsletters])
 
   /**
    * Après « Tout effacer » : l'écran suit le disque, sans redémarrage.

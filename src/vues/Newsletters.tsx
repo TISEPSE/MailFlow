@@ -72,6 +72,43 @@ import { LecteurEnGrand } from '../composants/LecteurEnGrand'
  */
 const ATTENTE_VISIBLE = 2000
 
+/**
+ * Délai avant qu'une analyse en cours se voie, en millisecondes.
+ *
+ * Un passage qui n'a rien à faire — tout est déjà résumé — revient en un
+ * demi-tour de boucle. L'en-tête basculait alors sur « Résumés — 0 sur 30 », le
+ * bouton devenait « Arrêter », et tout revenait en place dans le même
+ * battement : un scintillement, pour dire qu'il n'y avait rien à dire.
+ *
+ * Ce seuil n'ajoute aucune lenteur : le travail part immédiatement. Il décide
+ * seulement à partir de quand il vaut la peine d'être annoncé.
+ */
+const SEUIL_ATTENTE = 500
+
+/**
+ * L'avancement, mais seulement s'il dure.
+ *
+ * Rend `null` tant que l'analyse n'a pas dépassé [`SEUIL_ATTENTE`], puis
+ * l'avancement réel — et les progrès suivants passent sans relancer le
+ * compte à rebours, puisque seul le passage de « rien » à « en cours » le
+ * remet en marche.
+ */
+function useAttenteEtablie(avancement: Avancement | null | undefined): Avancement | null {
+  const enCours = Boolean(avancement)
+  const [etablie, setEtablie] = useState(false)
+
+  useEffect(() => {
+    if (!enCours) {
+      setEtablie(false)
+      return
+    }
+    const minuteur = setTimeout(() => setEtablie(true), SEUIL_ATTENTE)
+    return () => clearTimeout(minuteur)
+  }, [enCours])
+
+  return etablie && avancement ? avancement : null
+}
+
 export function Newsletters({
   messages,
   vide,
@@ -141,6 +178,9 @@ export function Newsletters({
     }
   }
 
+  /** Ce qui se voit de l'analyse : rien avant le seuil, l'avancement ensuite. */
+  const attente = useAttenteEtablie(avancementResumes)
+
   const groupes = useMemo(() => grouperNewsletters(messages), [messages])
 
   /** Étiquette qui filtre la grille, ou `null` pour « Tous ». */
@@ -188,7 +228,7 @@ export function Newsletters({
           groupes={groupes}
           logos={logos}
           onAnalyser={onAnalyser}
-          avancement={avancementResumes ?? null}
+          avancement={attente}
           onArreter={onArreterResumes}
           synthese={synthese ?? null}
           etiquettes={etiquettes}
@@ -232,7 +272,7 @@ export function Newsletters({
               // là où il se passe plutôt qu'au sommet de la page.
               resumeEnCours={
                 enCoursDeResume === groupe.cle ||
-                (Boolean(avancementResumes) && !resumes?.[groupe.messages[0]?.id ?? ''])
+                (Boolean(attente) && !resumes?.[groupe.messages[0]?.id ?? ''])
               }
               resumes={resumes}
             />
