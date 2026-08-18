@@ -319,9 +319,16 @@ export function etiquettesUtiles(
  * produit » devant vingt-huit résumés en place. Le calcul ne pouvait pas
  * distinguer « rien à faire » de « rien n'a marché ».
  *
- * Rust rend désormais le détail ; il n'y a plus rien à deviner, seulement à
- * dire. Et une seule chose mérite du rouge : un refus du moteur. Une
- * publication sans texte à envoyer n'est pas une panne.
+ * # Ce qu'elle dit depuis la file d'attente
+ *
+ * Elle ne raconte plus ce qui est fait, mais ce qui est **engagé** : au moment
+ * du clic, rien n'est encore parti. Les résumés arrivent ensuite, un à un, et
+ * c'est le bandeau qui suit leur avancée. La phrase doit donc promettre — et
+ * surtout dire que personne n'a rien à recliquer, ce qui était toute la
+ * demande.
+ *
+ * Rien ne mérite du rouge ici : un quota atteint n'est pas une panne, c'est une
+ * attente, et la file s'en charge.
  */
 export function phraseDuRapport(r: RapportResumes): [texte: string, erreur: boolean] {
   if (r.total === 0) return ['Aucune publication à analyser.', false]
@@ -329,25 +336,21 @@ export function phraseDuRapport(r: RapportResumes): [texte: string, erreur: bool
   const accord = (n: number, singulier: string, pluriel: string) =>
     `${n} ${n > 1 ? pluriel : singulier}`
 
-  const morceaux: string[] = []
-  if (r.produits > 0) {
-    morceaux.push(accord(r.produits, 'publication résumée', 'publications résumées'))
-  }
-  if (r.sansTexte > 0) morceaux.push(`${r.sansTexte} sans texte à résumer`)
-  if (r.echecs > 0) morceaux.push(accord(r.echecs, 'échec', 'échecs'))
-
-  // Rien ne s'est passé, et c'est le cas ordinaire d'un second clic : tout
-  // était déjà fait. Le dire posément vaut mieux que de se taire — un bouton
-  // sans retour donne à croire qu'il est cassé.
-  if (morceaux.length === 0) {
+  if (r.enFile > 0) {
     return [
-      r.disponibles >= r.total
-        ? `${accord(r.total, 'publication est déjà résumée', 'publications sont déjà résumées')}.`
-        : 'Rien de neuf à résumer.',
+      `${accord(r.enFile, 'publication mise en file', 'publications mises en file')} — ` +
+        'elles se résument toutes seules, même si le quota impose une pause.',
       false,
     ]
   }
 
-  const fin = r.echecs > 0 ? ' — le journal en dit la raison.' : '.'
-  return [morceaux.join(', ') + fin, r.echecs > 0]
+  // Rien n'est parti, et c'est le cas ordinaire d'un second clic : tout était
+  // déjà fait. Le dire posément vaut mieux que de se taire — un bouton sans
+  // retour donne à croire qu'il est cassé.
+  return [
+    r.disponibles >= r.total
+      ? `${accord(r.total, 'publication est déjà résumée', 'publications sont déjà résumées')}.`
+      : 'Rien de neuf à résumer.',
+    false,
+  ]
 }

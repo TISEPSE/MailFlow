@@ -24,11 +24,12 @@
 //! identifiants de cette catégorie, et le nettoyage du texte a lieu dans le
 //! fournisseur, où il ne peut pas être oublié. Voir [`crate::llm::gemini`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::error::{AppError, Resultat};
 use crate::gmail::corps;
@@ -36,15 +37,53 @@ use crate::llm::gemini::Gemini;
 use crate::llm::{LlmProvider, Resume};
 use crate::secrets::{CLE_API_LLM, KeyringStore, SecretStore};
 
-use super::Avancement;
-
 /// Nom de l'événement de progression des résumés.
 pub const EVENEMENT_RESUMES: &str = "resumes-produits";
 
-/// Drapeau d'arrêt, partagé entre la commande qui produit et celle qui stoppe.
+/// La file des publications à résumer, et de quoi l'arrêter.
+///
+/// # Pourquoi une file, et non une boucle
+///
+/// Le palier gratuit de Google se compte en requêtes par minute. Une boucle qui
+/// enchaîne trente publications l'épuise à la dixième, et les vingt suivantes
+/// partent vers un quota déjà vide qu'elles consomment encore : trente échecs
+/// pour dix résumés, et il fallait recliquer « Analyser » à la main.
+///
+/// La file change cela sur un point : ce qui se heurte au quota **retourne en
+/// tête** au lieu de compter un échec. L'ouvrier dort le temps que Google
+/// indique, puis reprend là où il en était. Personne n'a rien à recliquer.
+///
+/// # Le temps d'une session, et c'est assez
+///
+/// Rien n'est écrit sur le disque : chaque résumé produit l'est déjà, et le
+/// démarrage suivant reprend de toute façon ce qui manque. Un fichier de file
+/// n'ajouterait qu'un état à réconcilier.
 #[derive(Default)]
 pub struct EtatResumes {
     arret: AtomicBool,
+    /// Ce qui reste à faire, dans l'ordre où la page l'a demandé.
+    file: Mutex<VecDeque<GroupeAResumer>>,
+    /// Vrai tant qu'un ouvrier draine la file : deux clics n'en lancent qu'un.
+    ouvrier: AtomicBool,
+    /// Combien de publications ce passage comptait au départ, et combien sont
+    /// faites. Gardés ici plutôt que dans l'ouvrier : un second clic ajoute à
+    /// un passage en cours, et le décompte doit suivre.
+    total: Mutex<usize>,
+    faits: Mutex<usize>,
+}
+
+/// Avancement des résumés, tel que l'interface le reçoit.
+///
+/// Distinct de [`Avancement`], qui sert aussi au préchargement : lui n'a pas de
+/// quota à attendre, et n'a que faire d'une heure de reprise.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvancementResumes {
+    pub faits: usize,
+    pub total: usize,
+    /// Heure à laquelle la file repartira, au format `HH:MM`, quand le quota
+    /// est épuisé. `None` le reste du temps.
+    pub reprise_a: Option<String>,
 }
 
 /// Ce que l'interface a besoin de savoir pour dessiner les Paramètres.
@@ -114,27 +153,52 @@ pub async fn llm_cle_effacer() -> Resultat<()> {
 /// avant que la page ne passe au regroupement : ils sont sur le disque, ils ont
 /// coûté un appel, et rien ne justifie de les jeter.
 #[tauri::command]
-pub async fn resumes_connus(app: AppHandle, ids: Vec<String>) -> Resultat<HashMap<String, Resume>> {
+pub async fn resumes_connus(app: AppHandle, ids: Vec<String>) -> Resultat<ResumesConnus> {
     let dossier = corps::dossier_cache_dans(&app);
 
-    Ok(ids
-        .into_iter()
-        .filter_map(|id| {
-            corps::lire_resume_de(&dossier, &id, corps::Portee::Publication)
-                .or_else(|| corps::lire_resume(&dossier, &id))
-                .map(|r| (id, r))
-        })
-        .collect())
+    let mut connus = ResumesConnus::default();
+
+    for id in ids {
+        if let Some(resume) = corps::lire_resume_de(&dossier, &id, corps::Portee::Publication)
+            .or_else(|| corps::lire_resume(&dossier, &id))
+        {
+            connus.resumes.insert(id, resume);
+        } else if corps::est_sans_texte(&dossier, &id) {
+            connus.sans_texte.push(id);
+        }
+    }
+
+    Ok(connus)
 }
 
-/// Demande l'arrêt de la production en cours.
+/// Ce que le disque sait déjà des publications demandées.
+///
+/// Deux listes et non une : une publication sans résumé n'est pas
+/// nécessairement une publication à résumer. Certaines n'ont rien à envoyer —
+/// tout est en pièce jointe — et la carte doit pouvoir le dire au lieu
+/// d'offrir un bouton qui ne peut rien faire.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumesConnus {
+    pub resumes: HashMap<String, Resume>,
+    /// Identifiants dont on sait déjà qu'ils n'ont pas un mot à résumer.
+    pub sans_texte: Vec<String>,
+}
+
+/// Vide la file et demande l'arrêt.
 ///
 /// Ne coupe pas l'appel en vol : le message déjà parti va au bout et son résumé
-/// est rangé. Interrompre au milieu gaspillerait le quota déjà consommé.
+/// est rangé. Interrompre au milieu gaspillerait le quota déjà consommé. Ce qui
+/// n'était pas encore parti, en revanche, ne partira pas.
 #[tauri::command]
 pub async fn resumes_arreter(etat: State<'_, EtatResumes>) -> Resultat<()> {
     etat.arret.store(true, Ordering::Relaxed);
-    log::info!("arrêt des résumés demandé");
+
+    // La file part avec : le bouton arrêtait la boucle sans toucher à ce qui
+    // attendait derrière elle, si bien qu'« Arrêter » ne faisait qu'une pause
+    // d'une publication.
+    let restantes = vider_la_file(&etat);
+    log::info!("arrêt des résumés demandé, {restantes} publication(s) abandonnée(s)");
     Ok(())
 }
 
@@ -151,25 +215,27 @@ pub struct GroupeAResumer {
     pub ids: Vec<String>,
 }
 
-/// Ce qu'un passage de résumés a réellement produit.
+/// Ce qu'un passage de résumés a mis en route.
 ///
-/// Un simple nombre ne suffisait pas : l'interface le comparait à celui d'avant
-/// pour deviner ce qui s'était passé, et concluait « aucun résumé n'a pu être
-/// produit » devant vingt-huit résumés en place et deux publications muettes.
-/// Un compte rendu qui distingue « rien à envoyer » d'un refus du moteur permet
-/// de ne montrer du rouge que lorsqu'il y a une panne.
+/// L'interface déduisait autrefois par soustraction — « combien de résumés en
+/// plus qu'avant » — et concluait « aucun résumé n'a pu être produit » devant
+/// vingt-huit résumés en place. Elle ne déduit plus rien : elle sait ce qui
+/// était déjà réglé et ce qui vient d'entrer en file, et le reste lui arrive
+/// par événements à mesure que la file se vide.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RapportResumes {
-    /// Résumés en main à la fin, ceux d'avant compris.
+    /// Publications déjà réglées avant ce passage : celles qui ont un résumé,
+    /// et celles dont on sait déjà qu'elles n'ont rien à envoyer.
     pub disponibles: usize,
     pub total: usize,
-    /// Produits pendant ce passage.
-    pub produits: usize,
-    /// Publications dont aucun numéro n'avait de texte à envoyer.
-    pub sans_texte: usize,
-    /// Publications que le moteur a réellement refusées.
-    pub echecs: usize,
+    /// Publications mises en file par ce passage.
+    ///
+    /// La commande ne résume plus elle-même : elle empile et rend la main. Ce
+    /// nombre est donc ce qu'elle a **promis**, non ce qu'elle a fait — l'état
+    /// de ce qui se fait arrive par [`EVENEMENT_RESUMES`], et les résumés par
+    /// `resumes_connus`.
+    pub en_file: usize,
 }
 
 /// Produit les résumés manquants, **une publication à la fois**.
@@ -198,24 +264,25 @@ pub async fn resumes_produire(
 ) -> Resultat<RapportResumes> {
     let total = groupes.len();
 
-    let Some(cle) = cle_enregistree() else {
+    let Some(_) = cle_enregistree() else {
         return Ok(RapportResumes {
             total,
             ..Default::default()
         });
     };
 
-    // Une nouvelle production efface l'ordre d'arrêt de la précédente.
+    // Une nouvelle demande efface l'ordre d'arrêt de la précédente.
     etat.arret.store(false, Ordering::Relaxed);
 
     let dossier = corps::dossier_cache_dans(&app);
-    let adresse_utilisateur = super::compte_actif(&app);
 
-    // Ce qui manque, et lui seul : relancer l'application ne refait rien.
+    // Ce qui manque, et lui seul : relancer l'application ne refait rien. La
+    // marque « sans texte » compte comme un résumé fait — la publication n'a
+    // rien à envoyer, et le redécouvrir à chaque passage ne servirait personne.
     let (a_faire, deja): (Vec<GroupeAResumer>, Vec<GroupeAResumer>) = groupes
         .into_iter()
         .filter(|g| !g.ids.is_empty())
-        .partition(|g| resume_du_groupe(&dossier, g).is_none());
+        .partition(|g| resume_du_groupe(&dossier, g).is_none() && !groupe_sans_texte(&dossier, g));
 
     let mut rapport = RapportResumes {
         disponibles: deja.len(),
@@ -223,30 +290,122 @@ pub async fn resumes_produire(
         ..Default::default()
     };
 
-    let _ = app.emit(
-        EVENEMENT_RESUMES,
-        Avancement {
-            faits: rapport.disponibles,
-            total,
-        },
+    rapport.en_file = empiler(&etat, a_faire);
+
+    log::info!(
+        "{} publication(s) en file, {} déjà faite(s) sur {total}",
+        rapport.en_file,
+        rapport.disponibles
     );
 
-    if a_faire.is_empty() {
-        return Ok(rapport);
-    }
+    reveiller_l_ouvrier(&app);
+    Ok(rapport)
+}
 
-    let fournisseur = Gemini::nouveau(cle)?;
+/// Ajoute à la file ce qui n'y est pas déjà, et rend combien y est entré.
+///
+/// Sans doublon : cliquer deux fois « Analyser » pendant une pause de quota
+/// mettrait sinon deux fois les mêmes publications en file, et ferait payer
+/// deux fois le même appel.
+fn empiler(etat: &EtatResumes, a_faire: Vec<GroupeAResumer>) -> usize {
+    let mut file = etat.file.lock().unwrap_or_else(|e| e.into_inner());
+
+    // Mesuré **avant** d'empiler : c'est l'état d'avant qui dit si ce passage
+    // en commence un ou en prolonge un. L'ouvrier, lui, est réveillé après
+    // l'empilement, et son drapeau serait donc encore baissé.
+    let rien_en_cours = file.is_empty() && !etat.ouvrier.load(Ordering::Relaxed);
+    let mut entrees = 0;
 
     for groupe in a_faire {
-        // Lu entre deux publications : c'est le seul endroit où l'arrêt peut
-        // être à la fois honoré vite et sans rien gaspiller.
-        if etat.arret.load(Ordering::Relaxed) {
-            log::info!(
-                "résumés arrêtés à la demande, {} sur {total}",
-                rapport.disponibles
-            );
-            break;
+        if file.iter().any(|en_file| en_file.cle == groupe.cle) {
+            continue;
         }
+        file.push_back(groupe);
+        entrees += 1;
+    }
+
+    let mut total = etat.total.lock().unwrap_or_else(|e| e.into_inner());
+    let mut faits = etat.faits.lock().unwrap_or_else(|e| e.into_inner());
+
+    // Rien ne tournait : ce passage repart de zéro. Sinon on ajoute au sien —
+    // le décompte affiché doit couvrir les deux demandes, sinon la barre
+    // annoncerait « 3 sur 3 » avec trente publications qui attendent.
+    if rien_en_cours {
+        *total = 0;
+        *faits = 0;
+    }
+    *total += entrees;
+
+    entrees
+}
+
+/// Met un ouvrier au travail, s'il n'y en a pas déjà un.
+///
+/// `compare_exchange` et non un simple `load` puis `store` : deux clics rapides
+/// passeraient tous deux le test et lanceraient deux ouvriers, qui se
+/// partageraient la file en doublant la cadence des appels — exactement ce que
+/// la file existe pour éviter.
+fn reveiller_l_ouvrier(app: &AppHandle) {
+    let etat = app.state::<EtatResumes>();
+    if etat
+        .ouvrier
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        drainer_la_file(&app).await;
+        app.state::<EtatResumes>()
+            .ouvrier
+            .store(false, Ordering::SeqCst);
+    });
+}
+
+/// Vide la file, une publication à la fois.
+///
+/// # Ce qui distingue les trois issues
+///
+/// - un **succès** range le résumé et avance le décompte ;
+/// - un **quota** ne compte pas : la publication retourne en tête, l'ouvrier
+///   dort le temps que Google indique, et reprend. C'est le cœur de la file ;
+/// - un **échec** compte une fois, et la publication est laissée : un mail
+///   tordu ne doit pas retenir les vingt-neuf autres.
+///
+/// L'arrêt est lu entre deux publications, et vide la file : le bouton
+/// « Arrêter » arrêtait la boucle sans toucher à ce qui attendait derrière.
+async fn drainer_la_file(app: &AppHandle) {
+    let dossier = corps::dossier_cache_dans(app);
+    let adresse_utilisateur = super::compte_actif(app);
+
+    let Some(cle) = cle_enregistree() else {
+        return;
+    };
+    let Ok(fournisseur) = Gemini::nouveau(cle) else {
+        return;
+    };
+
+    loop {
+        let etat = app.state::<EtatResumes>();
+
+        if etat.arret.load(Ordering::Relaxed) {
+            let restantes = vider_la_file(&etat);
+            log::info!("résumés arrêtés à la demande, {restantes} publication(s) abandonnée(s)");
+            annoncer(app, None);
+            return;
+        }
+
+        let Some(groupe) = etat
+            .file
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pop_front()
+        else {
+            annoncer(app, None);
+            return;
+        };
 
         // Les corps déjà préchargés, dans l'ordre reçu — du plus récent au plus
         // ancien. Un numéro sans corps est sauté sans faire échouer les autres.
@@ -265,41 +424,82 @@ pub async fn resumes_produire(
                 if let Some(recent) = groupe.ids.first() {
                     corps::ranger_resume_de(&dossier, recent, corps::Portee::Publication, &resume);
                 }
-                rapport.produits += 1;
-                rapport.disponibles += 1;
+                avancer(&etat);
+            }
+
+            // Le quota : la seule issue qui ne consomme pas la publication.
+            Err(AppError::QuotaLlm { secondes }) => {
+                let etat = app.state::<EtatResumes>();
+                etat.file
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push_front(groupe);
+
+                log::info!("quota atteint, la file reprend dans {secondes} s");
+                annoncer(app, Some(heure_dans(secondes)));
+                tokio::time::sleep(std::time::Duration::from_secs(secondes)).await;
+                continue;
             }
 
             // Aucun numéro n'avait de texte : ce n'est pas une panne, et cela
-            // ne doit pas s'afficher en rouge. La carte garde sa ligne composée
-            // localement, qui dit déjà l'essentiel.
+            // ne doit pas s'afficher en rouge. La marque évite de reposer la
+            // question à chaque démarrage, et à la carte de proposer un bouton
+            // qui ne peut rien faire.
             Err(AppError::Resume(motif)) if motif == crate::llm::gemini::MOTIF_SANS_TEXTE => {
-                rapport.sans_texte += 1;
+                if let Some(recent) = groupe.ids.first() {
+                    corps::marquer_sans_texte(&dossier, recent);
+                }
                 log::info!("publication sans texte à résumer : {}", groupe.cle);
+                avancer(&etat);
             }
 
             Err(e) => {
-                rapport.echecs += 1;
-                log::info!("résumé non produit : {e}");
+                log::info!("résumé non produit ({}) : {e}", groupe.cle);
+                avancer(&etat);
             }
         }
 
-        let _ = app.emit(
-            EVENEMENT_RESUMES,
-            Avancement {
-                faits: rapport.disponibles,
-                total,
-            },
-        );
+        annoncer(app, None);
     }
+}
 
-    log::info!(
-        "{} résumé(s) disponibles sur {total} publication(s) — {} produit(s), {} sans texte, {} échec(s)",
-        rapport.disponibles,
-        rapport.produits,
-        rapport.sans_texte,
-        rapport.echecs
+/// Avance le décompte des publications traitées.
+fn avancer(etat: &EtatResumes) {
+    *etat.faits.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+}
+
+/// Vide la file et rend combien de publications y attendaient.
+fn vider_la_file(etat: &EtatResumes) -> usize {
+    let mut file = etat.file.lock().unwrap_or_else(|e| e.into_inner());
+    let restantes = file.len();
+    file.clear();
+    restantes
+}
+
+/// Envoie l'avancement à l'interface, avec l'heure de reprise s'il y en a une.
+fn annoncer(app: &AppHandle, reprise_a: Option<String>) {
+    let etat = app.state::<EtatResumes>();
+    let faits = *etat.faits.lock().unwrap_or_else(|e| e.into_inner());
+    let total = *etat.total.lock().unwrap_or_else(|e| e.into_inner());
+
+    let _ = app.emit(
+        EVENEMENT_RESUMES,
+        AvancementResumes {
+            faits,
+            total,
+            reprise_a,
+        },
     );
-    Ok(rapport)
+}
+
+/// L'heure qu'il sera dans tant de secondes, en `HH:MM`.
+///
+/// L'heure et non la durée : « reprise à 11:07 » se vérifie d'un coup d'œil à
+/// la pendule, là où « dans 173 secondes » demande un calcul et vieillit mal à
+/// l'écran.
+fn heure_dans(secondes: u64) -> String {
+    let quand = chrono::Local::now() + chrono::Duration::seconds(secondes as i64);
+    quand.format("%H:%M").to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -556,4 +756,99 @@ fn ranger_la_synthese(
 fn resume_du_groupe(dossier: &std::path::Path, groupe: &GroupeAResumer) -> Option<Resume> {
     let recent = groupe.ids.first()?;
     corps::lire_resume_de(dossier, recent, corps::Portee::Publication)
+}
+
+/// Cette publication a-t-elle déjà été reconnue comme n'ayant rien à envoyer ?
+///
+/// Elle compte alors comme réglée : la remettre en file à chaque passage
+/// ferait relire ses corps pour reconstater qu'ils sont vides.
+fn groupe_sans_texte(dossier: &std::path::Path, groupe: &GroupeAResumer) -> bool {
+    groupe
+        .ids
+        .first()
+        .is_some_and(|recent| corps::est_sans_texte(dossier, recent))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn groupe(cle: &str) -> GroupeAResumer {
+        GroupeAResumer {
+            cle: cle.into(),
+            ids: vec![format!("{cle}-1")],
+        }
+    }
+
+    fn cles(etat: &EtatResumes) -> Vec<String> {
+        etat.file
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|g| g.cle.clone())
+            .collect()
+    }
+
+    /// Cliquer deux fois « Analyser » pendant une pause de quota ne doit pas
+    /// faire payer deux fois le même appel.
+    #[test]
+    fn une_publication_deja_en_file_n_y_entre_pas_deux_fois() {
+        let etat = EtatResumes::default();
+
+        assert_eq!(
+            empiler(&etat, vec![groupe("lemonde.fr"), groupe("x.io")]),
+            2
+        );
+        assert_eq!(empiler(&etat, vec![groupe("lemonde.fr")]), 0);
+
+        assert_eq!(cles(&etat), ["lemonde.fr", "x.io"]);
+        assert_eq!(*etat.total.lock().unwrap(), 2);
+    }
+
+    /// Le décompte affiché doit couvrir les deux demandes : sinon la barre
+    /// annoncerait « 3 sur 3 » avec trente publications qui attendent.
+    #[test]
+    fn une_demande_qui_arrive_pendant_un_passage_s_ajoute_au_sien() {
+        let etat = EtatResumes::default();
+        empiler(&etat, vec![groupe("a"), groupe("b")]);
+        // La file n'est pas vide : le passage précédent n'est pas fini.
+
+        empiler(&etat, vec![groupe("c")]);
+
+        assert_eq!(*etat.total.lock().unwrap(), 3);
+    }
+
+    /// Sans ouvrier au travail, un nouveau passage repart de zéro : le
+    /// décompte du précédent n'a plus rien à dire.
+    #[test]
+    fn un_nouveau_passage_ne_traine_pas_le_compte_du_precedent() {
+        let etat = EtatResumes::default();
+        empiler(&etat, vec![groupe("a"), groupe("b")]);
+        *etat.faits.lock().unwrap() = 2;
+        etat.file.lock().unwrap().clear();
+
+        empiler(&etat, vec![groupe("c")]);
+
+        assert_eq!(*etat.total.lock().unwrap(), 1);
+        assert_eq!(*etat.faits.lock().unwrap(), 0);
+    }
+
+    /// Le bouton arrêtait la boucle sans toucher à ce qui attendait derrière :
+    /// « Arrêter » ne faisait qu'une pause d'une publication.
+    #[test]
+    fn l_arret_vide_ce_qui_attendait() {
+        let etat = EtatResumes::default();
+        empiler(&etat, vec![groupe("a"), groupe("b"), groupe("c")]);
+
+        assert_eq!(vider_la_file(&etat), 3);
+        assert!(cles(&etat).is_empty());
+    }
+
+    /// L'heure et non la durée : elle se vérifie d'un coup d'œil à la pendule.
+    #[test]
+    fn l_heure_de_reprise_est_une_heure_de_pendule() {
+        let heure = heure_dans(120);
+        assert_eq!(heure.len(), 5);
+        assert_eq!(&heure[2..3], ":");
+    }
 }

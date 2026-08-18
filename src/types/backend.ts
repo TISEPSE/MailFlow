@@ -249,23 +249,21 @@ export interface SyntheseDuJour {
 }
 
 /**
- * Ce qu'un passage de résumés a réellement produit.
+ * Ce qu'un passage de résumés a mis en route.
  *
- * Miroir de `commands::resumes::RapportResumes`. Le détail compte : sans lui,
- * l'interface déduisait par soustraction et annonçait « aucun résumé n'a pu
- * être produit » devant vingt-huit résumés en place et deux publications
- * simplement muettes.
+ * Miroir de `commands::resumes::RapportResumes`. La commande ne résume plus
+ * elle-même : elle empile et rend la main. Ce que la file fait ensuite arrive
+ * par `EVENEMENT_RESUMES`, et les résumés eux-mêmes par `resumesConnus`.
  */
 export interface RapportResumes {
-  /** Résumés en main à la fin, ceux d'avant compris. */
+  /**
+   * Publications déjà réglées avant ce passage : celles qui ont un résumé, et
+   * celles dont on sait déjà qu'elles n'ont rien à envoyer.
+   */
   disponibles: number
   total: number
-  /** Produits pendant ce passage. */
-  produits: number
-  /** Publications dont aucun numéro n'avait de texte à envoyer. */
-  sansTexte: number
-  /** Publications que le moteur a réellement refusées. */
-  echecs: number
+  /** Publications mises en file par ce passage. */
+  enFile: number
 }
 
 /** Ce que l'interface sait du moteur de résumés. La clé n'en sort jamais. */

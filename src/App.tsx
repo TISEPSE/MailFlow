@@ -46,6 +46,7 @@ import {
   syntheseProduire,
   EVENEMENT_RESUMES,
   EVENEMENT_PRECHARGEMENT,
+  type AvancementResumes,
   EVENEMENT_RELEVE,
   type Avancement,
   comptesLister,
@@ -91,6 +92,11 @@ import type {
 } from './types/backend'
 
 type Vue = CategorieMessage | 'regles' | 'archives' | 'parametres'
+
+/** Les identifiants des newsletters d'un relevé, dans l'ordre. */
+function idsNewsletters(messages: MessageAffiche[]): string[] {
+  return messages.filter((m) => m.categorie === 'newsletter').map((m) => m.id)
+}
 
 /**
  * Valeur de `compteAffiche` désignant la vue mélangée.
@@ -247,6 +253,16 @@ export default function App() {
   const [resumes, setResumes] = useState<Record<string, Resume>>({})
 
   /**
+   * Publications dont on sait qu'elles n'ont pas un mot à résumer.
+   *
+   * Certains expéditeurs mettent tout en pièce jointe — une auto-école qui
+   * envoie son planning en PDF laisse un corps entièrement vide. Il n'y a rien
+   * à envoyer, et il n'y en aura jamais : la carte doit le dire plutôt que
+   * d'offrir un bouton qui ne peut rien faire.
+   */
+  const [sansTexte, setSansTexte] = useState<ReadonlySet<string>>(new Set())
+
+  /**
    * Ce que la journée a apporté, en trois points — ou `null`.
    *
    * `null` n'est pas une panne : c'est l'état d'une machine sans clé, ou d'une
@@ -260,7 +276,7 @@ export default function App() {
    *  Séparé de `avancement` à dessein : celui-ci pose un écran qui bloque, et
    *  les résumés ne doivent rien bloquer. Ils s'annoncent par une bande sur la
    *  seule page qui les concerne. */
-  const [avancementResumes, setAvancementResumes] = useState<Avancement | null>(null)
+  const [avancementResumes, setAvancementResumes] = useState<AvancementResumes | null>(null)
 
   /** Fenêtre de recherche, ouverte au raccourci. */
   const [rechercheOuverte, setRechercheOuverte] = useState(false)
@@ -339,11 +355,25 @@ export default function App() {
    * remonter à l'écran : les cartes reprenaient leur ligne composée localement,
    * et il fallait recliquer « Analyser » pour les revoir.
    */
-  const relireLesResumes = useCallback(async (messages: MessageAffiche[]) => {
-    const ids = messages.filter((m) => m.categorie === 'newsletter').map((m) => m.id)
+  const relireLesResumes = useCallback(async (ids: string[]) => {
     if (!ids.length) return
-    setResumes(await resumesConnus(ids).catch(() => ({})))
+    const connus = await resumesConnus(ids).catch(() => null)
+    if (!connus) return
+    setResumes(connus.resumes)
+    setSansTexte(new Set(connus.sansTexte))
   }, [])
+
+  /**
+   * Identifiants des newsletters à l'écran, pour la relecture des résumés.
+   *
+   * Une référence et non une dépendance : l'écoute des événements est posée au
+   * montage et ne doit pas se redéfinir à chaque relevé, sous peine de manquer
+   * ce qui passe pendant qu'elle se repose.
+   */
+  const idsDesNewsletters = useRef<string[]>([])
+  useEffect(() => {
+    idsDesNewsletters.current = idsNewsletters(boite)
+  }, [boite])
 
   const relever = useCallback(async () => {
     setEnRecherche(true)
@@ -545,25 +575,21 @@ export default function App() {
       }))
 
       const ids = newsletters.map((m) => m.id)
-      setResumes(await resumesConnus(ids).catch(() => ({})))
+      await relireLesResumes(ids)
 
       try {
-        const rapport = await resumesProduire(groupes)
-        setResumes(await resumesConnus(ids).catch(() => ({})))
-        // Non attendue : le bandeau se complète quand elle arrive, et rien
-        // d'autre ne l'attend.
-        void rafraichirLaSynthese(newsletters)
-        return rapport
+        // La commande empile et rend la main : ce qui suit n'attend donc pas
+        // les résumés, il les demande. Ils arrivent un à un, par l'événement
+        // d'avancement, à mesure que la file se vide.
+        return await resumesProduire(groupes)
       } catch (e) {
         // Un moteur de résumés indisponible ne mérite pas de notification :
         // chaque carte garde sa ligne composée localement.
-        console.warn('résumés non produits', messageDErreur(e))
+        console.warn('résumés non demandés', messageDErreur(e))
         return null
-      } finally {
-        setAvancementResumes(null)
       }
     },
-    [rafraichirLaSynthese],
+    [relireLesResumes],
   )
 
   /**
@@ -601,8 +627,11 @@ export default function App() {
       return
     }
 
+    // L'avancement n'est plus posé ici : c'est la file qui l'annonce, et elle
+    // seule sait combien de publications sont réellement à faire. En le
+    // devinant, le bandeau affichait « 0 sur 30 » devant trente publications
+    // déjà résumées, le temps d'un aller-retour.
     const ids = messages.map((m) => m.id)
-    setAvancementResumes({ faits: 0, total: ids.length })
     await corpsPrecharger(ids).catch(() => null)
 
     const rapport = await resumerLesNewsletters(messages)
@@ -638,25 +667,21 @@ export default function App() {
       await corpsPrecharger(ids).catch(() => null)
 
       try {
+        // Une seule publication, mais la même file : elle passera devant si
+        // elle est seule, et derrière ce qui attend sinon. Le résumé arrive
+        // par l'événement d'avancement, comme les autres.
         const rapport = await resumesProduire([{ cle: groupe.cle, ids }])
-
-        // Fusionné, et non remplacé : `resumesConnus` ne connaît que les
-        // identifiants qu'on lui donne, et les rendre seuls effacerait de
-        // l'écran les résumés de toutes les autres publications.
-        const siens = await resumesConnus(ids).catch(() => ({}))
-        setResumes((connus) => ({ ...connus, ...siens }))
-        // Une publication de plus a un résumé : la synthèse peut s'en nourrir.
-        void rafraichirLaSynthese(boite)
-        if (rapport.echecs > 0 || rapport.sansTexte > 0) {
-          annoncer(...phraseDuRapport(rapport))
+        if (rapport.enFile === 0) {
+          // Rien n'est parti : soit elle est déjà résumée — la carte le montre
+          // et il n'y a rien à dire — soit elle n'a pas un mot à envoyer, et
+          // c'est la carte qui le dit désormais, à sa place.
+          await relireLesResumes(idsDesNewsletters.current)
         }
       } catch (e) {
         annoncer(messageDErreur(e), true)
-      } finally {
-        setAvancementResumes(null)
       }
     },
-    [annoncer, boite, rafraichirLaSynthese],
+    [annoncer, relireLesResumes],
   )
 
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
@@ -693,9 +718,9 @@ export default function App() {
       // Les résumés d'abord, depuis le disque : ils sont là avant même que le
       // relevé ne parte. Puis de nouveau après lui, car il peut avoir apporté
       // un numéro qui en périme un.
-      void relireLesResumes(enCache)
+      void relireLesResumes(idsNewsletters(enCache))
       void relever().then((messages) => {
-        if (messages?.length) void relireLesResumes(messages)
+        if (messages?.length) void relireLesResumes(idsNewsletters(messages))
       })
       return
     }
@@ -816,12 +841,25 @@ export default function App() {
           setAvancement({ ...e.payload, etape: 'corps' })
         }
       }),
-      listen<Avancement>(EVENEMENT_RESUMES, (e) => setAvancementResumes(e.payload)),
+      // La file annonce chaque publication traitée, et l'on va aussitôt
+      // chercher sur le disque ce qu'elle vient d'y écrire : les résumés
+      // paraissent ainsi un à un, sans que personne n'ait à recliquer. Le
+      // passage est fini quand le compte est plein — ou quand il n'y a rien à
+      // compter, ce qui est le cas d'un arrêt.
+      listen<AvancementResumes>(EVENEMENT_RESUMES, (e) => {
+        const avancement = e.payload
+        const enCours = avancement.total > 0 && avancement.faits < avancement.total
+        setAvancementResumes(enCours ? avancement : null)
+        void relireLesResumes(idsDesNewsletters.current)
+      }),
     ]
     return () => {
       for (const arret of arrets) void arret.then((f) => f())
     }
-  }, [])
+  // `relireLesResumes` ne dépend de rien : son identité ne change jamais, et
+  // l'écoute n'est donc posée qu'une fois. La citer ici satisfait la règle sans
+  // rien reposer — une écoute qui se réinstalle perd ce qui passe entre-temps.
+  }, [relireLesResumes])
 
   useEffect(() => {
     void rafraichir().then(async (sante) => {
@@ -1623,6 +1661,7 @@ export default function App() {
               onArreterResumes={() => void resumesArreter()}
               onAnalyser={() => void analyserLesNewsletters()}
               onResumerGroupe={resumerUnGroupe}
+              sansTexte={sansTexte}
               synthese={synthese}
               vise={messageVise}
               onVise={() => setMessageVise(null)}

@@ -733,6 +733,41 @@ pub fn ranger_resume_de(dossier: &Path, id: &str, portee: Portee, resume: &crate
     }
 }
 
+/// Extension de la marque « cette publication n'a rien à résumer ».
+const MARQUE_SANS_TEXTE: &str = "sans-texte";
+
+/// Chemin de la marque, rangée sous le numéro le plus récent, comme le résumé.
+fn chemin_sans_texte(dossier: &Path, id: &str) -> PathBuf {
+    dossier.join(format!("{}.{MARQUE_SANS_TEXTE}", assaini(id)))
+}
+
+/// Note qu'une publication n'a pas un mot à envoyer.
+///
+/// # Pourquoi l'écrire plutôt que le redécouvrir
+///
+/// Certains expéditeurs mettent tout en pièce jointe : une auto-école qui
+/// envoie son planning en PDF laisse un corps entièrement vide. Il n'y a rien à
+/// résumer, et il n'y en aura jamais — le fait ne changera pas tant que ce
+/// message existe.
+///
+/// Sans cette marque, l'application le redécouvrait à chaque démarrage, et la
+/// carte continuait d'offrir un bouton « résumer » qui ne pouvait rien faire.
+/// Un bouton qui ne fait rien se lit comme une panne.
+///
+/// Un fichier vide : c'est sa présence qui dit tout. Il s'efface avec le
+/// message qui le porte, comme un résumé — voir [`oublier_les_absents`].
+pub fn marquer_sans_texte(dossier: &Path, id: &str) {
+    let _ = std::fs::create_dir_all(dossier);
+    if let Err(e) = crate::cache::ecrire_prive(&chemin_sans_texte(dossier, id), "") {
+        log::info!("marque « sans texte » non écrite : {e}");
+    }
+}
+
+/// Cette publication a-t-elle déjà été reconnue comme sans un mot ?
+pub fn est_sans_texte(dossier: &Path, id: &str) -> bool {
+    chemin_sans_texte(dossier, id).exists()
+}
+
 /// Lit un corps déjà rangé, ou `None`.
 pub fn lire(dossier: &Path, id: &str) -> Option<CorpsMessage> {
     let texte = std::fs::read_to_string(chemin_cache(dossier, id)).ok()?;
@@ -796,7 +831,10 @@ pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<S
             // C'est ce qui lui donne sa date de péremption sans qu'on ait à en
             // inventer une : un numéro plus récent arrive, la clé change, et le
             // résumé d'hier s'en va avec le message qui le portait.
-            Some("resume") | Some("resume-groupe") => !chemin
+            //
+            // La marque « sans texte » suit exactement la même règle : elle
+            // parle d'un message précis, et n'a plus de sens sans lui.
+            Some("resume") | Some("resume-groupe") | Some(MARQUE_SANS_TEXTE) => !chemin
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| prefixes_vivants.contains(n)),
@@ -1348,6 +1386,32 @@ mod tests {
 
             assert!(lire_resume(dossier.path(), "vivant").is_some());
             assert!(lire_resume(dossier.path(), "disparu").is_none());
+        }
+
+        /// Certains expéditeurs mettent tout en pièce jointe : il n'y a rien à
+        /// résumer, et il n'y en aura jamais. Sans la marque, l'application le
+        /// redécouvrait à chaque démarrage et offrait un bouton inutile.
+        #[test]
+        fn une_publication_sans_un_mot_est_notee_une_fois_pour_toutes() {
+            let dossier = tempfile::tempdir().unwrap();
+
+            assert!(!est_sans_texte(dossier.path(), "vide"));
+            marquer_sans_texte(dossier.path(), "vide");
+            assert!(est_sans_texte(dossier.path(), "vide"));
+        }
+
+        /// La marque parle d'un message précis : elle n'a plus de sens sans lui.
+        #[test]
+        fn la_marque_sans_texte_s_en_va_avec_son_message() {
+            let dossier = tempfile::tempdir().unwrap();
+            ranger(dossier.path(), "vivant", &un_corps());
+            marquer_sans_texte(dossier.path(), "vivant");
+            marquer_sans_texte(dossier.path(), "disparu");
+
+            oublier_les_absents(dossier.path(), &HashSet::from(["vivant".to_string()]));
+
+            assert!(est_sans_texte(dossier.path(), "vivant"));
+            assert!(!est_sans_texte(dossier.path(), "disparu"));
         }
 
         #[test]

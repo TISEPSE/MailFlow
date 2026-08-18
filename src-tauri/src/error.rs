@@ -70,6 +70,17 @@ pub enum AppError {
     /// personne ne sait quoi faire.
     #[error("clé de résumé refusée : {0}")]
     CleLlm(String),
+
+    /// Le quota gratuit du modèle est épuisé, et Google dit pour combien de
+    /// temps.
+    ///
+    /// À part de [`Self::Resume`] parce que ce n'est pas un échec : rien n'est
+    /// cassé, rien n'est perdu, il faut seulement attendre. Le délai voyage
+    /// avec l'erreur — c'est lui qui dit à la file quand revenir, et à l'écran
+    /// jusqu'à quand patienter. Sans lui, il ne resterait qu'à deviner, et
+    /// s'entêter sur un quota épuisé le consomme sans rien produire.
+    #[error("quota du modèle atteint, reprise dans {secondes} s")]
+    QuotaLlm { secondes: u64 },
 }
 
 impl AppError {
@@ -95,6 +106,7 @@ impl AppError {
             Self::Config(_) => "CONFIG_INVALIDE",
             Self::Resume(_) => "RESUME_INDISPONIBLE",
             Self::CleLlm(_) => "CLE_LLM_REFUSEE",
+            Self::QuotaLlm { .. } => "QUOTA_LLM",
         }
     }
 
@@ -129,6 +141,14 @@ impl AppError {
             }
             // Le seul cas où le détail est le message : voir la variante.
             Self::CleLlm(detail) => detail.clone(),
+            Self::QuotaLlm { secondes } => {
+                let minutes = secondes.div_ceil(60);
+                format!(
+                    "Le quota gratuit du modèle est atteint. La suite reprend \
+                     dans {minutes} minute{}.",
+                    if minutes > 1 { "s" } else { "" }
+                )
+            }
         }
     }
 }

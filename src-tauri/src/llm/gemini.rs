@@ -1206,7 +1206,6 @@ impl Gemini {
     /// serait absurde.
     async fn essayer(&self, modele: &str, demande: Demande<'_>) -> Result<String, EchecGemini> {
         let url = adresse(modele);
-        let mut quota_deja_repris = false;
 
         loop {
             let exigence = self.exigence();
@@ -1230,12 +1229,10 @@ impl Gemini {
                 return Ok(texte);
             }
 
-            if statut == 429 && !quota_deja_repris {
-                quota_deja_repris = true;
+            if statut == 429 {
                 let attente = delai_apres_quota(&texte, DELAI_QUOTA_DEFAUT);
-                log::info!("quota Gemini atteint, reprise dans {attente} s");
-                tokio::time::sleep(std::time::Duration::from_secs(attente)).await;
-                continue;
+                log::info!("quota Gemini atteint, reprise possible dans {attente} s");
+                return Err(EchecGemini::Quota { secondes: attente });
             }
 
             let motif = motif_du_refus(&texte);
@@ -1311,6 +1308,14 @@ pub enum EchecGemini {
     Reseau(AppError),
     /// Google a répondu, et il refuse.
     Refus { statut: u16, motif: Option<String> },
+    /// Le quota gratuit est épuisé, et Google dit pour combien de temps.
+    ///
+    /// À part des autres refus parce que la conduite à tenir l'est aussi : ce
+    /// n'est pas un échec, c'est un « pas maintenant ». Le fournisseur ne
+    /// dort plus dessus — attendre trois minutes sans que rien à l'écran ne
+    /// l'explique, c'est une application qui a l'air bloquée. C'est la file
+    /// qui attend, parce qu'elle seule peut le dire et le laisser interrompre.
+    Quota { secondes: u64 },
     /// Google a répondu 200, mais rien d'exploitable n'en sort.
     Reponse(AppError),
 }
@@ -1347,8 +1352,10 @@ impl EchecGemini {
     ///
     /// - **400** : la clé est mal recopiée, ou tronquée à la fin ;
     /// - **403** : la clé existe, mais l'API n'est pas activée sur son projet ;
-    /// - **404** : le modèle n'existe pas pour cette clé ;
-    /// - **429** : le quota gratuit est épuisé pour l'instant.
+    /// - **404** : le modèle n'existe pas pour cette clé.
+    ///
+    /// Le **429** ne passe plus par ici : il a sa variante, parce qu'il porte
+    /// un délai et qu'on en fait quelque chose.
     pub fn explication(&self, modele: &str) -> String {
         match self {
             Self::Reseau(_) => "Google est injoignable. Vérifiez votre connexion internet, \
@@ -1357,6 +1364,10 @@ impl EchecGemini {
 
             Self::Reponse(_) => "Google a répondu, mais pas ce qui était attendu. \
                  Réessayez dans quelques instants."
+                .to_string(),
+
+            Self::Quota { .. } => "Le quota gratuit est atteint pour le moment. \
+                 Réessayez dans quelques minutes."
                 .to_string(),
 
             Self::Refus { statut, motif } => {
@@ -1371,10 +1382,6 @@ impl EchecGemini {
                                   qu'elle est bien associée à un projet."
                     }
                     404 => "Le modèle demandé n'est pas disponible pour cette clé.",
-                    429 => {
-                        "Le quota gratuit est atteint pour le moment. \
-                            Réessayez dans quelques minutes."
-                    }
                     500..=599 => {
                         "Google rencontre un incident de son côté. \
                                   Réessayez dans quelques instants."
@@ -1405,9 +1412,11 @@ impl From<EchecGemini> for AppError {
     fn from(echec: EchecGemini) -> Self {
         match echec {
             EchecGemini::Reseau(e) | EchecGemini::Reponse(e) => e,
+            // Le délai survit à la traduction : c'est lui qui dit à la file
+            // quand revenir, et à l'écran jusqu'à quand patienter.
+            EchecGemini::Quota { secondes } => Self::QuotaLlm { secondes },
             EchecGemini::Refus { statut, .. } => Self::Resume(match statut {
                 400 | 401 | 403 => "clé refusée".into(),
-                429 => "quota atteint".into(),
                 autre => format!("réponse inattendue ({autre})"),
             }),
         }
@@ -2272,8 +2281,41 @@ mod tests {
         assert!(geste(400).contains("copiée"));
         assert!(geste(403).contains("accès"));
         assert!(geste(404).contains(MODELE));
-        assert!(geste(429).contains("quota"));
         assert!(geste(503).contains("incident"));
+
+        // Le quota a quitté les refus : il porte un délai, et la file en fait
+        // quelque chose. Sa phrase reste, sur sa propre variante.
+        assert!(
+            EchecGemini::Quota { secondes: 45 }
+                .explication(MODELE)
+                .contains("quota")
+        );
+    }
+
+    /// Le point de départ de la file : sans ce délai, elle ne saurait pas
+    /// quand revenir, et s'entêter sur un quota épuisé le consomme sans rien
+    /// produire.
+    #[test]
+    fn un_quota_rend_son_delai_plutot_qu_un_echec() {
+        let corps = serde_json::json!({
+            "error": {
+                "code": 429,
+                "details": [{
+                    "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                    "retryDelay": "37s"
+                }]
+            }
+        })
+        .to_string();
+
+        assert_eq!(delai_apres_quota(&corps, DELAI_QUOTA_DEFAUT), 37);
+
+        let erreur: AppError = EchecGemini::Quota { secondes: 37 }.into();
+        assert!(matches!(erreur, AppError::QuotaLlm { secondes: 37 }));
+        assert_eq!(erreur.code(), "QUOTA_LLM");
+        // La phrase dit combien de temps, en minutes entamées : « dans 37
+        // secondes » vieillit mal à l'écran, « dans 1 minute » se supporte.
+        assert!(erreur.message_utilisateur().contains("1 minute"));
     }
 
     #[test]

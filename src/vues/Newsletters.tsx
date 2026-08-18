@@ -49,7 +49,7 @@ import {
   resserrerSujet,
   type GroupeNewsletters,
 } from '../lib/newsletters'
-import type { Avancement } from '../lib/tauri'
+import type { AvancementResumes } from '../lib/tauri'
 import type {
   CorpsMessage,
   MessageAffiche,
@@ -93,7 +93,9 @@ const SEUIL_ATTENTE = 500
  * compte à rebours, puisque seul le passage de « rien » à « en cours » le
  * remet en marche.
  */
-function useAttenteEtablie(avancement: Avancement | null | undefined): Avancement | null {
+function useAttenteEtablie(
+  avancement: AvancementResumes | null | undefined,
+): AvancementResumes | null {
   const enCours = Boolean(avancement)
   const [etablie, setEtablie] = useState(false)
 
@@ -126,6 +128,7 @@ export function Newsletters({
   onArreterResumes,
   onAnalyser,
   onResumerGroupe,
+  sansTexte,
   synthese,
 }: {
   messages: MessageAffiche[]
@@ -144,12 +147,19 @@ export function Newsletters({
   /** Résumés déjà produits, par identifiant de message. */
   resumes?: Record<string, Resume>
   /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas. */
-  avancementResumes?: Avancement | null
+  avancementResumes?: AvancementResumes | null
   onArreterResumes?: () => void
   /** Relance l'analyse à la main, sans attendre un redémarrage. */
   onAnalyser?: () => void
   /** Résume une seule publication — un appel, décidé depuis sa carte. */
   onResumerGroupe?: (groupe: GroupeNewsletters) => Promise<void>
+  /**
+   * Numéros dont on sait qu'ils n'ont pas un mot à résumer.
+   *
+   * Tout est en pièce jointe — un planning en PDF, une facture scannée. La
+   * carte le dit au lieu d'offrir un bouton qui ne peut rien faire.
+   */
+  sansTexte?: ReadonlySet<string>
   /**
    * Ce que la journée a apporté, en trois points au plus.
    *
@@ -275,6 +285,7 @@ export function Newsletters({
                 (Boolean(attente) && !resumes?.[groupe.messages[0]?.id ?? ''])
               }
               resumes={resumes}
+              sansTexte={sansTexte}
             />
             </Cellule>
           ))}
@@ -329,7 +340,7 @@ function Synthese({
   /** Relance l'analyse à la main. Absent quand la page ne sait pas la faire. */
   onAnalyser?: () => void
   /** Avancement de l'analyse en cours, ou `null` quand elle ne tourne pas. */
-  avancement: Avancement | null
+  avancement: AvancementResumes | null
   onArreter?: () => void
   synthese: SyntheseDuJour | null
   /** Celles qui retiennent au moins une publication. Voir `etiquettesUtiles`. */
@@ -355,7 +366,11 @@ function Synthese({
    * sans mouvement, et sans promettre une mesure du temps qui reste.
    */
   const sousLigne = avancement
-    ? `Résumés — ${avancement.faits} sur ${avancement.total}`
+    ? `Résumés — ${avancement.faits} sur ${avancement.total}` +
+      // Le quota gratuit se compte en requêtes par minute. Le dire, avec
+      // l'heure de reprise, évite de croire que tout s'est arrêté : rien n'est
+      // perdu, la file repart d'elle-même.
+      (avancement.repriseA ? `, en pause jusqu'à ${avancement.repriseA}` : '')
     : synthese
       ? `${synthese.publications} publication${synthese.publications > 1 ? 's' : ''} ` +
         `lue${synthese.publications > 1 ? 's' : ''} ${momentDit(synthese.produiteLe)}`
@@ -665,6 +680,7 @@ function CarteGroupe({
   onResumer,
   resumeEnCours = false,
   resumes,
+  sansTexte,
 }: {
   groupe: GroupeNewsletters
   rang: number
@@ -676,6 +692,8 @@ function CarteGroupe({
   onResumer?: () => void
   resumeEnCours?: boolean
   resumes?: Record<string, Resume>
+  /** Numéros dont on sait qu'ils n'ont pas un mot à résumer. */
+  sansTexte?: ReadonlySet<string>
 }) {
   const [fond, encre] = palette(rang)
   const [deplie, setDeplie] = useState(false)
@@ -698,6 +716,20 @@ function CarteGroupe({
 
   const nombre = groupe.messages.length
   const decompte = decompteDuGroupe(groupe)
+
+  /**
+   * Le résumé de la **publication**, et non celui du numéro affiché.
+   *
+   * Il est rangé sous le numéro le plus récent — c'est ce qui le périme tout
+   * seul quand un numéro nouveau arrive — mais il parle de la pile entière.
+   * Le lire sous le numéro affiché le faisait disparaître dès qu'on feuilletait
+   * la pile, comme si les anciens numéros n'avaient pas été analysés.
+   */
+  const tete = groupe.messages[0]?.id ?? ''
+  const resume = resumes?.[tete]
+
+  /** Cette publication n'a-t-elle rien à envoyer, faute de texte ? */
+  const muette = !resume && Boolean(sansTexte?.has(tete))
 
   /** Le numéro effectivement à l'écran. */
   const courant = groupe.messages.find((m) => m.id === visible) ?? groupe.messages[0]
@@ -827,7 +859,7 @@ function CarteGroupe({
               d'actions : à quatre boutons, la rangée débordait de la carte et
               « Supprimer » s'y trouvait coupé en deux. Un geste facultatif ne
               doit pas pousser dehors ceux qui ne le sont pas. */}
-          {onResumer && !resumes?.[courant.id] && (
+          {onResumer && !resume && !muette && (
             <button
               type="button"
               onClick={onResumer}
@@ -856,27 +888,60 @@ function CarteGroupe({
               composée localement : même emplacement, même hauteur, même
               graisse. La page ne bouge pas d'un pixel selon qu'il est là ou
               non — c'est ce qui rend l'IA réellement optionnelle. */}
-          {/* Le résumé, et rien d'autre.
-              L'extrait de Gmail vivait juste en dessous, en gris : deux lignes
-              qui répétaient en moins bien ce que le résumé dit déjà, et qui
-              occupaient la place où il pouvait s'étendre. La consigne du modèle
-              a été allongée d'autant. */}
-          {resumes?.[courant.id] ? (
-            // Ce que le modèle a écrit se distingue de ce que la machine a
-            // composé seule. Sans marque, l'utilisateur ne sait pas s'il lit
-            // une phrase produite par une IA — donc s'il doit la croire sur
-            // parole ou vérifier. L'étincelle est la même que sur le bouton qui
-            // l'a demandée : le geste et son résultat portent le même signe.
-            <p className="text-[0.8125rem] leading-relaxed font-medium">
-              <Icone
-                nom="auto_awesome"
-                taille="0.8125rem"
-                rempli
-                className="mr-1 inline-block align-[-0.1em]"
-                style={{ color: 'var(--accent)' }}
-              />
-              {resumes[courant.id]?.texte}
-            </p>
+          {resume ? (
+            <>
+              {/* Ce repère porte la couleur de la carte — celle de sa pastille.
+                  Il dit deux choses d'un coup d'œil : que la phrase qui suit
+                  vient d'un modèle, et qu'elle parle de la **publication
+                  entière** et non du numéro qu'on regarde. Sans lui, un lecteur
+                  devant une pile de vingt-six numéros ne pouvait pas savoir
+                  lequel des deux il lisait.
+
+                  Sa couleur est celle de la publication, et non un accent
+                  unique : il appartient à sa carte, il n'alerte de rien. */}
+              <span
+                className="mb-2 inline-flex h-6 items-center gap-1 rounded-full px-2 text-[0.6562rem] font-semibold"
+                style={{ background: fond, color: encre }}
+              >
+                <Icone nom="auto_awesome" taille="0.75rem" rempli />
+                <span className="texte-optique">
+                  {nombre > 1 ? `Résumé des ${nombre} numéros` : 'Résumé de la publication'}
+                </span>
+              </span>
+
+              <p className="text-[0.8125rem] leading-relaxed font-medium">{resume.texte}</p>
+
+              {/* Le sujet du numéro regardé, en gris, seulement quand la pile
+                  en compte plusieurs : c'est alors la seule chose qui distingue
+                  un numéro de son voisin. Sur une carte à un seul numéro, il ne
+                  ferait que répéter ce que le résumé dit déjà. */}
+              {nombre > 1 && (
+                <p
+                  className="mt-1.5 text-[0.75rem] leading-snug"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  {ligneLocale(courant)}
+                </p>
+              )}
+            </>
+          ) : muette ? (
+            // Tout est en pièce jointe : un planning en PDF, une facture
+            // scannée. Il n'y a rien à envoyer, et il n'y en aura jamais. Le
+            // dire vaut mieux que de laisser une étincelle qui, cliquée,
+            // ne fait rien — un bouton sans effet se lit comme une panne.
+            <>
+              <p className="text-[0.8125rem] leading-relaxed font-medium">
+                {ligneLocale(courant)}
+              </p>
+              <p className="mt-1.5 text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+                <Icone
+                  nom="attach_file"
+                  taille="0.75rem"
+                  className="mr-1 inline-block align-[-0.1em]"
+                />
+                Rien à résumer : tout est en pièce jointe.
+              </p>
+            </>
           ) : (
             <p className="text-[0.8125rem] leading-relaxed font-medium">
               {ligneLocale(courant)}

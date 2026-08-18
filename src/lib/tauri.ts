@@ -328,6 +328,19 @@ export const EVENEMENT_PRECHARGEMENT = 'corps-precharges'
 /** Nom de l'evenement emis pendant la production des resumes. */
 export const EVENEMENT_RESUMES = 'resumes-produits'
 
+/**
+ * Avancement des resumes, tel que l'evenement le porte.
+ *
+ * Distinct d'`Avancement`, qui sert aussi au prechargement : lui n'a pas de
+ * quota a attendre, et n'a que faire d'une heure de reprise.
+ */
+export interface AvancementResumes {
+  faits: number
+  total: number
+  /** `HH:MM` quand la file attend que le quota se rouvre, `null` sinon. */
+  repriseA: string | null
+}
+
 /** Nom de l'evenement emis pendant le releve de la boite. */
 export const EVENEMENT_RELEVE = 'messages-releves'
 
@@ -461,9 +474,22 @@ export function llmCleEffacer(): Promise<void> {
   return invoke<void>('llm_cle_effacer')
 }
 
+/**
+ * Ce que le disque sait deja des publications demandees.
+ *
+ * Deux listes et non une : une publication sans resume n'est pas
+ * necessairement une publication a resumer. Certaines n'ont rien a envoyer —
+ * tout est en piece jointe — et la carte doit pouvoir le dire au lieu d'offrir
+ * un bouton qui ne peut rien faire.
+ */
+export interface ResumesConnus {
+  resumes: Record<string, Resume>
+  sansTexte: string[]
+}
+
 /** Resumes deja produits, lus sur le disque et sans aucun appel reseau. */
-export function resumesConnus(ids: string[]): Promise<Record<string, Resume>> {
-  return invoke<Record<string, Resume>>('resumes_connus', { ids })
+export function resumesConnus(ids: string[]): Promise<ResumesConnus> {
+  return invoke<ResumesConnus>('resumes_connus', { ids })
 }
 
 /** Une publication et ses numeros, du plus recent au plus ancien. */

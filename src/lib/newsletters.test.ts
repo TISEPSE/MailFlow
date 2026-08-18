@@ -216,55 +216,47 @@ describe("ce que le bouton « Analyser » annonce", () => {
   const rapport = (partiel: Partial<RapportResumes>): RapportResumes => ({
     disponibles: 0,
     total: 0,
-    produits: 0,
-    sansTexte: 0,
-    echecs: 0,
+    enFile: 0,
     ...partiel,
   })
 
+  it("promet que personne n'aura rien à recliquer", () => {
+    const [texte, erreur] = phraseDuRapport(rapport({ total: 30, enFile: 27 }))
+
+    expect(erreur).toBe(false)
+    expect(texte).toContain('27 publications mises en file')
+    expect(texte).toContain('toutes seules')
+  })
+
   it("ne crie pas au secours quand tout était déjà fait", () => {
-    // Le défaut rapporté : vingt-huit publications résumées, deux muettes,
-    // et l'application annonçait « aucun résumé n'a pu être produit » en
-    // rouge. Rien n'avait échoué.
-    const [texte, erreur] = phraseDuRapport(
-      rapport({ disponibles: 8, total: 8, produits: 0 }),
-    )
+    const [texte, erreur] = phraseDuRapport(rapport({ disponibles: 8, total: 8 }))
 
     expect(erreur).toBe(false)
     expect(texte).toContain('déjà résumées')
   })
 
-  it("compte une publication muette sans en faire une panne", () => {
-    const [texte, erreur] = phraseDuRapport(
-      rapport({ disponibles: 6, total: 8, produits: 6, sansTexte: 2 }),
-    )
-
-    expect(erreur).toBe(false)
-    expect(texte).toContain('6 publications résumées')
-    expect(texte).toContain('2 sans texte à résumer')
-  })
-
-  it("ne montre du rouge que pour un vrai refus du moteur", () => {
-    const [texte, erreur] = phraseDuRapport(rapport({ total: 8, echecs: 2 }))
-
-    expect(erreur).toBe(true)
-    expect(texte).toContain('2 échecs')
-    expect(texte).toContain('le journal')
-  })
-
   it("accorde le singulier, qui se lit vite", () => {
-    const [texte] = phraseDuRapport(rapport({ total: 1, produits: 1 }))
-    expect(texte).toBe('1 publication résumée.')
+    const [texte] = phraseDuRapport(rapport({ total: 1, enFile: 1 }))
+    expect(texte).toContain('1 publication mise en file')
   })
 
   it("dit toujours quelque chose, même sans rien à faire", () => {
-    // Un bouton sur lequel on vient de cliquer et qui ne répond rien donne à
-    // croire qu'il est cassé — on le reclique, et on paie deux fois.
     for (const r of [rapport({}), rapport({ total: 3, disponibles: 1 })]) {
       const [texte, erreur] = phraseDuRapport(r)
       expect(texte.length).toBeGreaterThan(0)
       expect(erreur).toBe(false)
     }
+  })
+
+  // Un quota atteint n'est pas une panne : c'est une attente, et la file s'en
+  // charge. Rien de ce que cette phrase annonce ne mérite du rouge.
+  it('ne montre jamais de rouge', () => {
+    const cas = [
+      rapport({ total: 30, enFile: 27 }),
+      rapport({ total: 8, disponibles: 8 }),
+      rapport({ total: 3, disponibles: 1 }),
+    ]
+    expect(cas.map((r) => phraseDuRapport(r)[1])).toEqual([false, false, false])
   })
 })
 
