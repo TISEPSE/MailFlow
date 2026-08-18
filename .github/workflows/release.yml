@@ -77,6 +77,14 @@ jobs:
       always() && needs.controle.result == 'success'
       && (needs.version.result == 'success' || needs.version.result == 'skipped')
     runs-on: ${{ matrix.plateforme }}
+    env:
+      # `aws-lc-sys` — la cryptographie de rustls, sous reqwest — assemble du
+      # code x86-64 avec NASM sur Windows, qui n'est pas installé sur le
+      # runner : sans cette variable, la compilation s'arrête sur « NASM
+      # command not found ». Elle lui fait employer les objets déjà assemblés
+      # qu'il embarque, et n'a d'effet que si NASM manque réellement — donc
+      # aucun sur macOS ni sur Linux.
+      AWS_LC_SYS_PREBUILT_NASM: 1
     strategy:
       # Un échec sur une plateforme ne doit pas annuler l'autre : mieux vaut
       # publier un binaire sur deux que zéro.
@@ -100,6 +108,20 @@ jobs:
             plateforme: ubuntu-22.04
             args: ''
             cibles_rust: x86_64-unknown-linux-gnu
+
+          # Windows : l'installateur NSIS — le « .exe » qu'on double-clique —
+          # et le paquet MSI, produits tous deux par `bundle.targets: "all"`.
+          # L'installateur embarque le nécessaire pour poser WebView2, présent
+          # d'origine depuis Windows 11 mais pas sur toutes les machines en 10.
+          #
+          # Rien n'est signé là non plus : SmartScreen affichera « Éditeur
+          # inconnu » au premier lancement, et il faudra passer par
+          # « Informations complémentaires » puis « Exécuter quand même ». Un
+          # certificat de signature de code se branche ici le jour venu.
+          - nom: Windows x86_64
+            plateforme: windows-latest
+            args: ''
+            cibles_rust: x86_64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v5
@@ -152,6 +174,9 @@ jobs:
       # script : une valeur interpolée est recopiée telle quelle dans le shell,
       # où un contenu inattendu deviendrait une commande.
       - name: Identifiants Google
+        # Écrit en shell : sans cette ligne, le runner Windows le passerait à
+        # PowerShell, qui ne connaît ni `[ -z ]` ni `fi`.
+        shell: bash
         env:
           CLIENT_ID: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_ID }}
         run: |
@@ -188,9 +213,15 @@ jobs:
           releaseBody: |
             Téléchargez le fichier correspondant à votre machine :
 
+            - **Windows** — `.exe` (l'installateur, à double-cliquer).
             - **macOS** — `.dmg` (universel : Intel et Apple Silicon).
             - **Linux** — `.AppImage` pour toutes les distributions,
               ou `.deb` pour Debian et Ubuntu.
+
+            **Premier lancement sur Windows.** L'application n'est pas
+            signée : SmartScreen annonce un « éditeur inconnu ». Cliquez sur
+            **Informations complémentaires**, puis sur **Exécuter quand
+            même**. Une seule fois, à l'installation.
 
             **Premier lancement sur macOS.** L'application n'est pas encore
             signée : macOS la refuse et propose de la mettre à la corbeille.

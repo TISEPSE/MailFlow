@@ -22,7 +22,14 @@
  * que la page ne bouge pas d'un pixel selon qu'il est là ou non. C'est ce qui
  * rend l'IA réellement optionnelle plutôt que promise.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import {
   Bouton,
   Confirmation,
@@ -181,27 +188,30 @@ export function Newsletters({
           groupes={groupes}
           logos={logos}
           onAnalyser={onAnalyser}
-          analyseEnCours={Boolean(avancementResumes)}
+          avancement={avancementResumes ?? null}
+          onArreter={onArreterResumes}
           synthese={synthese ?? null}
           etiquettes={etiquettes}
           etiquette={etiquette}
           onEtiquette={setEtiquette}
         />
 
-        {avancementResumes && (
-          <BandeResumes
-            avancement={avancementResumes}
-            onArreter={onArreterResumes}
-          />
-        )}
-
         {/* Deux colonnes : une carte tient dans la moitié d'un écran, et deux
-            de front font voir la journée d'un coup. Les cartes s'alignent en
-            haut — une pile dépliée ne doit pas étirer sa voisine. */}
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            de front font voir la journée d'un coup.
+
+            En mosaïque et non en rangées : les cartes n'ont pas la même
+            hauteur — un résumé de trois lignes contre un de six, une pile
+            dépliée contre un numéro seul — et une grille en rangées laissait
+            sous la plus courte un trou de la hauteur de sa voisine. Chaque
+            carte occupe ici le nombre de rangs de quatre pixels qu'elle
+            mesure vraiment, et la suivante se pose juste dessous. */}
+        <div
+          className="grid grid-cols-1 gap-x-4 lg:grid-cols-2"
+          style={{ gridAutoRows: `${PAS_MOSAIQUE}px` }}
+        >
           {affiches.map((groupe) => (
+            <Cellule key={groupe.cle}>
             <CarteGroupe
-              key={groupe.cle}
               groupe={groupe}
               // Le rang vient de la liste entière, et non de la liste filtrée :
               // une carte doit garder sa couleur quand une étiquette en retire
@@ -216,9 +226,17 @@ export function Newsletters({
               onArchiver={onArchiver}
               onSupprimer={onSupprimer}
               onResumer={onResumerGroupe && (() => void resumerCeGroupe(groupe))}
-              resumeEnCours={enCoursDeResume === groupe.cle}
+              // Pendant une analyse d'ensemble, les publications qui n'ont pas
+              // encore de résumé respirent : le nombre de cartes qui bougent
+              // décroît à mesure que le travail avance, ce qui dit l'avancement
+              // là où il se passe plutôt qu'au sommet de la page.
+              resumeEnCours={
+                enCoursDeResume === groupe.cle ||
+                (Boolean(avancementResumes) && !resumes?.[groupe.messages[0]?.id ?? ''])
+              }
               resumes={resumes}
             />
+            </Cellule>
           ))}
         </div>
       </div>
@@ -259,7 +277,8 @@ function Synthese({
   groupes,
   logos,
   onAnalyser,
-  analyseEnCours,
+  avancement,
+  onArreter,
   synthese,
   etiquettes,
   etiquette,
@@ -269,7 +288,9 @@ function Synthese({
   logos: Record<string, string>
   /** Relance l'analyse à la main. Absent quand la page ne sait pas la faire. */
   onAnalyser?: () => void
-  analyseEnCours: boolean
+  /** Avancement de l'analyse en cours, ou `null` quand elle ne tourne pas. */
+  avancement: Avancement | null
+  onArreter?: () => void
   synthese: SyntheseDuJour | null
   /** Celles qui retiennent au moins une publication. Voir `etiquettesUtiles`. */
   etiquettes: string[]
@@ -285,6 +306,22 @@ function Synthese({
     () => new Map(groupes.map((g, i) => [g.cle, { groupe: g, rang: i } as const])),
     [groupes],
   )
+
+  /**
+   * La ligne sous le titre, dans l'ordre de ce qui prime.
+   *
+   * L'avancement d'abord : pendant une analyse, c'est la seule chose qu'on
+   * attend. C'est aussi ce que disait la barre de progression — en chiffres,
+   * sans mouvement, et sans promettre une mesure du temps qui reste.
+   */
+  const sousLigne = avancement
+    ? `Résumés — ${avancement.faits} sur ${avancement.total}`
+    : synthese
+      ? `${synthese.publications} publication${synthese.publications > 1 ? 's' : ''} ` +
+        `lue${synthese.publications > 1 ? 's' : ''} ${momentDit(synthese.produiteLe)}`
+      : derniere
+        ? `Dernier reçu à ${heureCourte(derniere)}`
+        : 'En attente du relevé'
 
   const points = (synthese?.points ?? []).map((point) => ({
     texte: point.texte,
@@ -320,13 +357,7 @@ function Synthese({
             )}
           </span>
           <span className="block text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
-            {synthese
-              ? `${synthese.publications} publication${synthese.publications > 1 ? 's' : ''} lue${
-                  synthese.publications > 1 ? 's' : ''
-                } ${momentDit(synthese.produiteLe)}`
-              : derniere
-                ? `Dernier reçu à ${heureCourte(derniere)}`
-                : 'En attente du relevé'}
+            {sousLigne}
           </span>
         </span>
         <span className="flex flex-none items-center gap-1">
@@ -352,19 +383,37 @@ function Synthese({
             relancer — or la clé se pose souvent *après* le premier lancement,
             et la phase automatique était alors passée depuis longtemps. Ce
             bouton est le seul moyen d'y revenir sans redémarrer. */}
-        {onAnalyser && (
+        {/* Le même emplacement pour les deux gestes : arrêter une analyse en
+            cours est le seul geste qui ait du sens tant qu'elle tourne, et il
+            n'a pas besoin d'une bande à lui pour être atteint. L'arrêt est
+            réel — le drapeau est lu entre deux messages côté Rust — mais il ne
+            coupe pas l'appel en vol, qui a déjà coûté son quota. */}
+        {avancement && onArreter ? (
           <span className="flex-none pl-2">
             <Bouton
               compact
-              icone="auto_awesome"
-              onClick={onAnalyser}
-              enAttente={analyseEnCours}
-              disabled={analyseEnCours}
-              titre="Faire résumer les newsletters qui ne le sont pas encore"
+              icone="close"
+              onClick={onArreter}
+              titre="Arrêter après le résumé en cours"
             >
-              Analyser
+              Arrêter
             </Bouton>
           </span>
+        ) : (
+          onAnalyser && (
+            <span className="flex-none pl-2">
+              <Bouton
+                compact
+                icone="auto_awesome"
+                onClick={onAnalyser}
+                enAttente={Boolean(avancement)}
+                disabled={Boolean(avancement)}
+                titre="Faire résumer les newsletters qui ne le sont pas encore"
+              >
+                Analyser
+              </Bouton>
+            </span>
+          )
         )}
       </div>
 
@@ -479,46 +528,60 @@ function ChoixEtiquette({
 }
 
 /**
- * Bande d'avancement des résumés.
+ * Pas de la mosaïque, en pixels.
  *
- * Elle informe sans retenir : la page reste utilisable pendant que la troisième
- * phase tourne, et la bande disparaît d'elle-même quand elle a fini. Le bouton
- * d'arrêt est réel — le drapeau est lu entre deux messages côté Rust — mais il
- * ne coupe pas l'appel en vol, qui a déjà coûté son quota.
+ * Assez fin pour que l'arrondi ne se voie pas — au plus trois pixels d'écart
+ * entre la hauteur réelle d'une carte et le nombre de rangs qu'elle occupe — et
+ * assez gros pour ne pas fabriquer des milliers de rangs de grille.
  */
-function BandeResumes({
-  avancement,
-  onArreter,
-}: {
-  avancement: Avancement
-  onArreter?: () => void
-}) {
-  const part = avancement.total ? (avancement.faits / avancement.total) * 100 : 0
+const PAS_MOSAIQUE = 4
+
+/** Gouttière verticale entre deux cartes, en pixels. */
+const GOUTTIERE_MOSAIQUE = 16
+
+/**
+ * Une case de la mosaïque, qui prend exactement la hauteur de son contenu.
+ *
+ * # Pourquoi ce n'est pas une simple grille
+ *
+ * Une grille range par rangées : deux cartes côte à côte ouvrent une rangée
+ * aussi haute que la plus grande des deux, et la plus courte laisse sous elle
+ * un blanc que rien ne vient combler. Le blanc grandit avec l'écart — un résumé
+ * de six lignes contre un de deux, une pile dépliée contre un numéro seul.
+ *
+ * Ici chaque case déclare le nombre de rangs qu'elle occupe, la carte suivante
+ * se pose juste dessous, et les colonnes se remplissent indépendamment.
+ *
+ * # Pourquoi la hauteur est observée, et non mesurée une fois
+ *
+ * Elle change sous nos pieds, et à des moments que personne ne choisit : un
+ * résumé arrive et remplace une ligne par quatre, une pile se déplie, la
+ * fenêtre se rétrécit et un titre passe sur deux lignes, ou l'utilisateur
+ * change la taille du texte de son système. Une mesure prise au montage aurait
+ * été fausse dès la première de ces choses — d'où l'observateur, qui suit.
+ */
+function Cellule({ children }: { children: ReactNode }) {
+  const boite = useRef<HTMLDivElement>(null)
+  const [rangs, setRangs] = useState<number | null>(null)
+
+  // `useLayoutEffect` et non `useEffect` : la mesure a lieu avant que le
+  // navigateur ne peigne, sinon toutes les cartes se superposeraient sur un
+  // rang le temps d'une image.
+  useLayoutEffect(() => {
+    const element = boite.current
+    if (!element) return
+
+    const observateur = new ResizeObserver(() => {
+      const hauteur = element.getBoundingClientRect().height
+      setRangs(Math.ceil((hauteur + GOUTTIERE_MOSAIQUE) / PAS_MOSAIQUE))
+    })
+    observateur.observe(element)
+    return () => observateur.disconnect()
+  }, [])
 
   return (
-    <div
-      role="status"
-      className="flex items-center gap-3 rounded-2xl border px-4 py-3"
-      style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
-    >
-      <Icone nom="auto_awesome" taille="1rem" rempli style={{ color: 'var(--accent)' }} />
-      <span className="flex-none text-[0.8125rem] font-semibold">
-        Résumés — {avancement.faits} sur {avancement.total}
-      </span>
-      <span
-        className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full"
-        style={{ background: 'var(--sunk)' }}
-      >
-        <span
-          className="block h-full rounded-full transition-[width] duration-300 ease-out"
-          style={{ width: `${part}%`, background: 'var(--accent)' }}
-        />
-      </span>
-      {onArreter && (
-        <Bouton compact icone="close" onClick={onArreter}>
-          Arrêter
-        </Bouton>
-      )}
+    <div style={rangs ? { gridRowEnd: `span ${rangs}` } : undefined}>
+      <div ref={boite}>{children}</div>
     </div>
   )
 }
