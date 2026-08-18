@@ -942,6 +942,13 @@ export default function App() {
         setCorpsConnus(creerCache())
         setProfil(await compteProfil().catch(() => null))
         setLibelles(await libellesLister().catch(() => []))
+        // Le registre du nouveau compte, relu tout de suite : deux lectures de
+        // fichier, aucun appel réseau. Sans cette ligne, le compteur de la
+        // barre restait à zéro après une bascule — les archives venaient
+        // d'être lâchées avec le reste du compte précédent, et rien ne les
+        // remplaçait avant qu'on ouvre la table. Le chiffre annonçait donc une
+        // table vide devant une table qui ne l'était pas.
+        setArchives(await archivesLister().catch(() => []))
         return `Compte actif : ${adresse}.`
       },
       { rechargerTout: true },
@@ -1051,11 +1058,13 @@ export default function App() {
         return reglesAffichees.length
       case 'parametres':
         return 0
-      // Zéro tant que la table n'a pas été ouverte : elle ne se charge qu'à sa
-      // première visite. La pastille se tait quand le compte est nul, ce qui
-      // évite d'affirmer une table vide avant de l'avoir regardée.
+      // Ce que la page montrera, et non ce que le registre contient : celui-ci
+      // porte les archives de **tous** les comptes, et le chiffre annonçait
+      // sous une adresse les tuiles rangées sous une autre. Sous « Tous les
+      // comptes », il vaut zéro parce que la table y est vide — elle est
+      // cloisonnée par compte jusque dans son fichier de disposition.
       case 'archives':
-        return archives.length
+        return archivesVisibles.length
       default:
         return parCategorie[v].length
     }
