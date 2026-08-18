@@ -10,7 +10,6 @@ import { useEffect, useRef, useState } from 'react'
 import {
   HAUTEUR_LIGNE,
   Icone,
-  LARGEUR_LISTE,
   Pastille,
   SqueletteLecture,
 } from './base'
