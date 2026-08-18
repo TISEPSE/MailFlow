@@ -356,7 +356,7 @@ export function Courrier({
               icone="delete"
               onClick={() => setASupprimer(choisi)}
               disabled={enCours}
-              titre="Mettre à la corbeille — récupérable 30 jours"
+              titre="Mettre à la corbeille (récupérable 30 jours)"
             >
               Supprimer
             </Bouton>
@@ -364,7 +364,7 @@ export function Courrier({
             {aSupprimer && (
               <Confirmation
                 titre="Mettre ce message à la corbeille ?"
-                sous={`De ${aSupprimer.nom} — « ${aSupprimer.sujet || 'sans objet'} ». Gmail le garde trente jours, puis l'efface.`}
+                sous={`De ${aSupprimer.nom}, « ${aSupprimer.sujet || 'sans objet'} ». Gmail le garde trente jours, puis l'efface.`}
                 libelle="Supprimer"
                 variante="danger"
                 icone="delete"

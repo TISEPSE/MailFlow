@@ -181,7 +181,7 @@ export function Parametres({
           <Reglage
             icone="search"
             titre="Raccourci de recherche"
-            detail="Ouvre la recherche depuis n'importe quelle page. Une lettre, combinée à Ctrl — Cmd sur macOS."
+            detail="Ouvre la recherche depuis n'importe quelle page. Une lettre, combinée à Ctrl (Cmd sur macOS)."
           >
             <div className="flex items-center gap-2">
               <kbd
@@ -306,7 +306,7 @@ export function Parametres({
           <Reglage
             icone="info"
             titre="Version"
-            detail={`MailFlow ${etat.version} — ${etat.plateforme}`}
+            detail={`MailFlow ${etat.version} · ${etat.plateforme}`}
           >
             <span />
           </Reglage>
@@ -805,7 +805,7 @@ function MiseAJour({ onErreur }: { onErreur: (message: string) => void }) {
     if (etat === 'verifie') return 'Interrogation de GitHub…'
     if (!resultat) return "MailFlow demandera à GitHub s'il existe une version plus récente."
     if (resultat.disponible) {
-      return `Version ${resultat.versionPubliee} disponible — vous avez la ${resultat.versionActuelle}.`
+      return `Version ${resultat.versionPubliee} disponible (vous avez la ${resultat.versionActuelle}).`
     }
     if (!resultat.versionPubliee) {
       return "Aucune version n'est encore publiée sur le dépôt."

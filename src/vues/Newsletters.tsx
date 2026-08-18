@@ -366,7 +366,7 @@ function Synthese({
    * sans mouvement, et sans promettre une mesure du temps qui reste.
    */
   const sousLigne = avancement
-    ? `Résumés — ${avancement.faits} sur ${avancement.total}` +
+    ? `Résumés · ${avancement.faits} sur ${avancement.total}` +
       // Le quota gratuit se compte en requêtes par minute. Le dire, avec
       // l'heure de reprise, évite de croire que tout s'est arrêté : rien n'est
       // perdu, la file repart d'elle-même.
@@ -1100,7 +1100,7 @@ function CarteGroupe({
             variante="danger"
             icone="delete"
             onClick={() => setAConfirmer('supprimer')}
-            titre="Mettre à la corbeille — récupérable 30 jours"
+            titre="Mettre à la corbeille (récupérable 30 jours)"
           >
             Supprimer
           </Bouton>

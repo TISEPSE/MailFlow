@@ -797,7 +797,7 @@ function TuilePosee({
             e.stopPropagation()
             onRetirer()
           }}
-          title="Retirer de la table — le mail reste archivé chez Gmail"
+          title="Retirer de la table (le mail reste archivé chez Gmail)"
           aria-label={`Retirer « ${message.sujet || 'sans objet'} » de la table`}
           className="bouton bouton-icone rounded-md p-1"
         >
@@ -1074,7 +1074,7 @@ function LigneDuTas({
         type="button"
         tabIndex={hors}
         onClick={onRetirer}
-        title="Retirer de la table — le mail reste archivé chez Gmail"
+        title="Retirer de la table (le mail reste archivé chez Gmail)"
         aria-label={`Retirer « ${message.sujet || 'sans objet'} » de la table`}
         className="bouton bouton-icone flex-none rounded-md p-1"
       >

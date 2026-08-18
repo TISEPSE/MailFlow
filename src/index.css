@@ -97,6 +97,11 @@ body {
   user-select: text;
 }
 
+::selection {
+  background-color: var(--selection);
+  color: inherit;
+}
+
 *,
 *::before,
 *::after {
@@ -272,6 +277,15 @@ textarea:focus-visible {
   background: var(--selection);
 }
 
+/* Sélection de message style Google Material 3 / Android */
+.tuile[data-coche='true'] {
+  background: var(--accent-soft);
+}
+
+.tuile[data-coche='true']:hover {
+  background: color-mix(in oklab, var(--accent) 18%, var(--accent-soft));
+}
+
 /* Séparateurs internes d'une carte de réglages.
 
    `divide-y` de Tailwind fait hériter la couleur du texte : les traits
@@ -339,26 +353,26 @@ textarea:focus-visible {
   background: color-mix(in oklab, var(--accent) 20%, var(--card));
 }
 
-/* Rouge Google Material 3 */
+/* Rouge Google Material 3 — fond plein, texte blanc */
 .bouton-danger {
-  background: var(--card);
-  color: #d93025;
-  border: 1px solid color-mix(in oklab, #d93025 35%, var(--line));
+  background: #d93025;
+  color: #ffffff;
+  border: none;
 }
 
 .bouton-danger:hover:not(:disabled) {
-  background: color-mix(in oklab, #d93025 10%, var(--card));
-  border-color: color-mix(in oklab, #d93025 60%, var(--line));
+  background: #c5221f;
+  box-shadow: 0 1px 3px rgba(217, 48, 37, 0.35);
 }
 
 [data-mf='sombre'] .bouton-danger {
-  color: #f28b82;
-  border-color: color-mix(in oklab, #f28b82 30%, var(--line));
+  background: #c5221f;
+  color: #ffffff;
 }
 
 [data-mf='sombre'] .bouton-danger:hover:not(:disabled) {
-  background: color-mix(in oklab, #f28b82 14%, var(--card));
-  border-color: color-mix(in oklab, #f28b82 50%, var(--line));
+  background: #b31412;
+  box-shadow: 0 1px 4px rgba(194, 65, 12, 0.4);
 }
 
 .bouton-icone {

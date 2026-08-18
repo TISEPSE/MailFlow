@@ -79,7 +79,7 @@ export function LecteurEnGrand({
       large
       sansRembourrage
       titre={message.sujet || '(sans objet)'}
-      sous={`${message.nom} — ${message.adresse}`}
+      sous={`${message.nom} · ${message.adresse}`}
       onFermer={onFermer}
     >
       <div className="flex h-full min-h-0 flex-col">

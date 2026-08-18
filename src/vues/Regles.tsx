@@ -243,7 +243,7 @@ export function Regles({
           titre={regles.length === 0 ? 'Aucune règle' : 'Aucune règle ici'}
           detail={
             regles.length === 0
-              ? "Les règles se créent depuis les vues Publicités, Newsletters et Formations — ouvrez un message, et dites ce qu'il faut faire des suivants — ou avec « Ajouter une règle » ci-dessus."
+              ? "Les règles se créent depuis les vues Publicités, Newsletters et Formations. Ouvrez un message et dites ce qu'il faut faire des suivants, ou utilisez « Ajouter une règle » ci-dessus."
               : 'Aucune règle ne correspond à ce filtre.'
           }
         />

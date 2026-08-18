@@ -636,7 +636,7 @@ export default function App() {
 
     const rapport = await resumerLesNewsletters(messages)
     if (!rapport) {
-      annoncer("L'analyse n'a pas pu démarrer — le journal en dit la raison.", true)
+      annoncer("L'analyse n'a pas pu démarrer. Consultez le journal.", true)
       return
     }
 
@@ -1223,13 +1223,14 @@ export default function App() {
             />
           )}
 
-          <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1 gap-3 p-3">
         <nav
-          className="flex flex-none flex-col gap-1 border-r p-3 transition-[width] duration-150"
+          className="flex flex-none flex-col gap-1 rounded-2xl p-3 transition-[width] duration-150"
           style={{
             width: repliee ? '4.5rem' : '15.5rem',
             background: 'var(--side)',
-            borderColor: 'var(--line)',
+            border: '1px solid var(--line)',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
           }}
         >
           <div className="flex items-center justify-between pb-2 pt-1 px-1">
@@ -1265,25 +1266,37 @@ export default function App() {
                   aria-current={actif ? 'page' : undefined}
                   title={
                     repliee
-                      ? `${libelle}${releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
+                      ? `${libelle}${releveEnCours ? ' (relevé en cours…)' : ` (${compte(v)})`}`
                       : undefined
                   }
-                  className={`group relative flex items-center gap-3 rounded-full py-2.5 transition-all ${
+                  className={`group relative flex items-center gap-3 rounded-full py-2.5 transition-all duration-150 hover:brightness-95 ${
                     repliee ? 'justify-center px-0 h-10 w-10 mx-auto' : 'px-3.5 text-left h-10 w-full'
                   }`}
                   style={{
-                    background: actif ? (sombre ? 'var(--selection)' : 'var(--selection)') : 'transparent',
-                    color: actif ? (sombre ? 'var(--accent-fg)' : 'var(--accent-fg)') : 'var(--fg)',
+                    background: actif
+                      ? 'var(--selection)'
+                      : 'transparent',
+                    color: actif ? 'var(--accent-fg)' : 'var(--fg)',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!actif) {
+                      e.currentTarget.style.background = `color-mix(in oklab, ${solide} 12%, var(--side))`
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!actif) {
+                      e.currentTarget.style.background = 'transparent'
+                    }
                   }}
                 >
                   <span
-                    className={`flex flex-none items-center justify-center ${repliee ? '' : ''}`}
+                    className="flex flex-none items-center justify-center"
                   >
                     <Icone
                       nom={glyphe}
                       taille="1.25rem"
                       rempli={actif}
-                      style={{ color: actif ? 'var(--accent)' : 'var(--sub)' }}
+                      style={{ color: actif ? 'var(--accent)' : solide }}
                     />
                     {repliee &&
                       (releveEnCours ? (
@@ -1310,7 +1323,7 @@ export default function App() {
                         className="min-w-0 flex-1 truncate text-xs font-medium"
                         style={{
                           fontWeight: actif ? 600 : 500,
-                          color: actif ? 'var(--fg)' : 'var(--sub)',
+                          color: actif ? 'var(--fg)' : solide,
                         }}
                       >
                         {libelle}
@@ -1318,7 +1331,7 @@ export default function App() {
                       <span
                         className="flex flex-none items-center justify-end font-mono text-[0.6875rem] font-medium"
                         style={{
-                          color: actif ? 'var(--fg)' : 'var(--sub)',
+                          color: actif ? 'var(--fg)' : solide,
                           minWidth: 18,
                         }}
                       >
@@ -1327,8 +1340,10 @@ export default function App() {
                         ) : (
                           compte(v) > 0 ? (
                             <span
-                              className="rounded-full px-2 py-0.5 text-[0.6875rem]"
-                              style={actif ? { background: 'var(--card)', color: 'var(--fg)' } : { color: 'var(--sub)' }}
+                              className="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold"
+                              style={actif
+                                ? { background: 'var(--card)', color: 'var(--fg)' }
+                                : { background: `color-mix(in oklab, ${solide} 15%, var(--side))`, color: solide }}
                             >
                               {compte(v)}
                             </span>
@@ -1372,8 +1387,7 @@ export default function App() {
           <div className="flex-1" />
 
           <div
-            className="relative mt-3 flex items-center gap-1.5 border-t pt-3"
-            style={{ borderColor: 'var(--line)' }}
+            className="relative mt-3 flex items-center gap-1.5 pt-3"
           >
             {menuMonte && (
               <MenuDeCompte
@@ -1463,7 +1477,14 @@ export default function App() {
           </div>
         </nav>
 
-        <main className="flex min-w-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
+        <main
+          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border"
+          style={{
+            background: 'var(--bg)',
+            borderColor: 'var(--line)',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+          }}
+        >
           {avancement ? (
             <Progression
               faits={avancement.faits}

@@ -599,7 +599,7 @@ const EXPLICATIONS: Record<EtapeChargement, string> = {
   resumes:
     "Vous pouvez continuer à lire votre courrier pendant ce temps : cette étape ne bloque rien.",
   connexion:
-    "Terminez la connexion dans l'onglet qui vient de s'ouvrir. MailFlow attend cinq minutes, puis abandonne — vous pourrez relancer.",
+    "Terminez la connexion dans l'onglet qui vient de s'ouvrir. MailFlow attend cinq minutes, puis abandonne. Vous pourrez relancer.",
 }
 
 /**
