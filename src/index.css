@@ -1,54 +1,61 @@
 @import 'tailwindcss';
 
-/* Polices embarquées plutôt que chargées depuis Google Fonts : la CSP de
-   l'application interdit les origines externes, et une application de bureau ne
-   doit pas dépendre du réseau pour s'afficher. */
+/* Polices Google embarquées localement pour respecter la CSP */
+@import '@fontsource/google-sans/400.css';
+@import '@fontsource/google-sans/500.css';
+@import '@fontsource/google-sans/600.css';
+@import '@fontsource/google-sans/700.css';
+@import '@fontsource/roboto/400.css';
+@import '@fontsource/roboto/500.css';
+@import '@fontsource/roboto/700.css';
 @import '@fontsource/ibm-plex-mono/400.css';
 @import '@fontsource/ibm-plex-mono/500.css';
 
 @theme {
   --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial,
-    sans-serif;
+    'Google Sans', 'Google Sans Text', 'Roboto', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Helvetica, Arial, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
-/* Jetons de surface. Le thème bascule en changeant `data-mf` sur la racine,
-   l'accent en surchargeant --accent* par style en ligne. */
+/* Jetons de surface Google Workspace / Material Design 3. */
 :root,
 [data-mf='clair'] {
   --bg: #ffffff;
-  --side: #f5f5f7;
+  --side: #f0f4f9;
   --card: #ffffff;
-  --sunk: #f2f2f5;
-  --line: #e3e3e8;
-  --fg: #1d1d1f;
-  --sub: #6e6e76;
-  --faint: #ededf1;
-  --selection: #dfdfe6;
-  --accent: #2f6bff;
+  --sunk: #f2f6fc;
+  --line: #e0e3e7;
+  --fg: #1f1f1f;
+  --sub: #5e5e5e;
+  --faint: #e9eef6;
+  --selection: #d3e3fd;
+  --accent: #0b57d0;
   --accent-soft: #e8eeff;
-  --accent-fg: #2455cc;
-  --piste: #d6d6dc;
+  --accent-fg: #041e49;
+  --piste: #c7c7cc;
   --shadow:
-    0 1px 2px rgba(20, 20, 30, 0.06), 0 8px 24px rgba(20, 20, 30, 0.05);
+    0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-lg:
+    0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px 0 rgba(60, 64, 67, 0.3);
 }
 
 [data-mf='sombre'] {
-  --bg: #1c1c1f;
-  --side: #232327;
-  --card: #26262a;
-  --sunk: #1f1f23;
-  --line: #35353b;
-  --fg: #f3f3f5;
-  --sub: #9c9ca5;
-  --faint: #2e2e34;
-  --selection: #3a3a43;
-  --accent: #4e82ff;
-  --accent-soft: #23304f;
-  --accent-fg: #9ebbff;
-  --piste: #44444c;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.28);
+  --bg: #131314;
+  --side: #1e1f20;
+  --card: #232426;
+  --sunk: #1a1b1d;
+  --line: #3c4043;
+  --fg: #e3e3e3;
+  --sub: #a8aaad;
+  --faint: #2d2f31;
+  --selection: #283548;
+  --accent: #a8c7fa;
+  --accent-soft: #004a77;
+  --accent-fg: #d3e3fd;
+  --piste: #444746;
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.5), 0 4px 8px 3px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 6px 12px 4px rgba(0, 0, 0, 0.45), 0 2px 4px 0 rgba(0, 0, 0, 0.6);
 }
 
 html,
@@ -163,88 +170,16 @@ button:not(:disabled),
   box-shadow: 0 2px 10px rgb(0 0 0 / 9%);
 }
 
-/* Centrage optique du texte dans une boîte.
-
-   Une boîte de ligne s'étend de l'ascendante à la descendante ; les capitales,
-   elles, n'occupent que le haut de cet intervalle. Centrer la boîte, ce que
-   fait le navigateur, place donc la bande des capitales au-dessus du centre
-   réel, et l'œil le voit.
-
-   La valeur est mesurée, pas devinée. Trois erreurs de méthode ont précédé
-   celle-ci et méritent d'être consignées :
-
-   1. mesurer dans Chrome. Il ne choisit pas la même fonte de repli que
-      WebKitGTK et ne compose pas les boîtes de ligne pareil : il donnait
-      0,01 em là où le moteur de l'application donne 0,14 ;
-   2. mesurer sur un libellé accentué. L'accent du « é » de Déconnecter compte
-      comme le haut de l'encre, alors que l'œil centre sur les capitales ;
-   3. mesurer sans témoin. Une bande d'encre bornée à des pixels entiers porte
-      un biais d'un demi-pixel ; un carré que la mise en page centre
-      parfaitement donne le zéro de la méthode.
-
-   Mesures finales, photographies WebKitGTK 2.52, échelle 1, écart entre le
-   centre des capitales et celui d'un témoin parfaitement centré :
-
-     décalage     barre de recherche     pastille
-     0,00 em            −2,50 px         −1,50 px
-     0,10 em            −0,50 px         −0,50 px
-     0,12 em            (retenu)
-     0,14 em            −0,50 px         +0,50 px
-     0,16 em            +0,50 px         +0,50 px
-
-   0,12 em est le seul décalage qui laisse les deux à un demi-pixel du centre,
-   c'est-à-dire dans le pas de la trame. En `em` : la correction suit la taille
-   du texte, comme le défaut qu'elle corrige. */
+/* .texte-optique — désormais un no-op : le centrage flex natif remplace
+   l'ancien translateY. La classe reste déclarée pour que les rares occurences
+   encore présentes dans les vues ne cassent pas le rendu. */
 .texte-optique {
-  display: inline-block;
-  transform: translateY(0.12em);
+  display: inline-flex;
+  align-items: center;
 }
 
-/* Le décalage optique d'un champ de saisie.
-
-   Quatrième tentative, et la première fondée sur la bonne mesure. Les trois
-   précédentes relevaient des *boîtes* et supposaient que le curseur s'y
-   conformait. Il a fallu le mesurer pour ce qu'il est — des pixels peints —
-   en le colorant et en capturant l'écran jusqu'à en attraper une phase
-   allumée, puisqu'il clignote.
-
-   Relevés dans Chrome, en lignes de pixels depuis le haut du champ :
-
-     champ                  hauteur   encre     curseur   centre champ / encre
-     libellé, corps 13       46 px    18→26     15→29        23,0 / 22,5
-     recherche, corps 17     26 px     6→17      3→21        13,0 / 12,0
-     recherche, line-height 1 20 px    3→14      0→18        10,0 /  9,0
-
-   Trois choses en sortent, et deux d'entre elles ferment des pistes :
-
-   1. **Le curseur et l'encre sont concentriques.** 22,5 contre 22,5 ; 12,0
-      contre 12,5. Il n'y a aucun décalage entre eux à corriger.
-
-   2. **Le curseur est plus haut que l'encre, et rien n'y changera.** Quinze
-      pixels de curseur pour neuf pixels de capitales : il vaut l'ascendante
-      plus la descendante de la fonte, place des jambages comprise, qu'un mot
-      capitalisé laisse vide. `line-height: 1` ne le réduit pas — la troisième
-      ligne du tableau le montre, le curseur y remplit toujours la boîte
-      entière. C'est le comportement de tous les moteurs, et le réduire
-      couperait les jambages des mots qui en ont.
-
-   3. **L'encre, elle, est bien haute d'un pixel** dans son champ : 12,0 pour
-      un centre à 13,0. Voilà le seul défaut réel, et il vaut un pixel.
-
-   Un pixel sur un corps de 17 fait 0,059 em ; un demi-pixel sur un corps de 13
-   en fait 0,038. `0.05em` ramène les deux à moins d'un sixième de pixel du
-   centre, c'est-à-dire bien à l'intérieur du pas de la trame.
-
-   `position: relative` et non `transform` : le moteur peint le curseur avant
-   transformation, si bien qu'un `translateY` descendrait le texte en laissant
-   le curseur en place — c'était la première tentative. Déplacer la boîte les
-   emmène tous les deux, et leur concentricité est préservée.
-
-   La valeur précédente, 0,2 em, avait été relevée à l'œil : elle descendait le
-   texte de 3,4 px là où il en fallait 1. */
 .champ-de-saisie {
-  position: relative;
-  top: 0.05em;
+  position: static;
 }
 /* Le numéro qui arrive dans une carte de newsletter entre par la droite.
 
@@ -357,14 +292,17 @@ textarea:focus-visible {
    Les couleurs sont ici et non en style en ligne, sans quoi elles
    l'emporteraient sur les règles de survol. */
 .bouton {
+  font-family: inherit;
   transition:
-    background-color 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
+    background-color 150ms cubic-bezier(0.2, 0, 0, 1),
+    color 150ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 150ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 150ms cubic-bezier(0.2, 0, 0, 1);
+  border-radius: 9999px;
 }
 
 .bouton:disabled {
-  opacity: 0.4;
+  opacity: 0.38;
 }
 
 .bouton-principal {
@@ -372,8 +310,14 @@ textarea:focus-visible {
   color: #ffffff;
 }
 
+[data-mf='sombre'] .bouton-principal {
+  background: var(--accent);
+  color: #041e49;
+}
+
 .bouton-principal:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--accent) 85%, #000000);
+  filter: brightness(0.92);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .bouton-neutre {
@@ -392,44 +336,38 @@ textarea:focus-visible {
 }
 
 .bouton-doux:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--accent) 22%, var(--card));
+  background: color-mix(in oklab, var(--accent) 20%, var(--card));
 }
 
-/* Rouge, et bordé comme les autres boutons : « Supprimer » doit se lire comme
-   un bouton à part entière, pas comme un lien discret. Le rouge dit ce qu'il
-   fait avant qu'on ne lise le mot. */
+/* Rouge Google Material 3 */
 .bouton-danger {
   background: var(--card);
-  color: #c2410c;
-  border: 1px solid color-mix(in oklab, #c2410c 32%, var(--line));
+  color: #d93025;
+  border: 1px solid color-mix(in oklab, #d93025 35%, var(--line));
 }
 
 .bouton-danger:hover:not(:disabled) {
-  background: color-mix(in oklab, #c2410c 10%, var(--card));
-  border-color: color-mix(in oklab, #c2410c 55%, var(--line));
+  background: color-mix(in oklab, #d93025 10%, var(--card));
+  border-color: color-mix(in oklab, #d93025 60%, var(--line));
 }
 
 [data-mf='sombre'] .bouton-danger {
-  color: #f98a5e;
-  border-color: color-mix(in oklab, #f98a5e 30%, var(--line));
+  color: #f28b82;
+  border-color: color-mix(in oklab, #f28b82 30%, var(--line));
 }
 
 [data-mf='sombre'] .bouton-danger:hover:not(:disabled) {
-  background: color-mix(in oklab, #f98a5e 14%, var(--card));
-  border-color: color-mix(in oklab, #f98a5e 50%, var(--line));
+  background: color-mix(in oklab, #f28b82 14%, var(--card));
+  border-color: color-mix(in oklab, #f28b82 50%, var(--line));
 }
 
-/* Bouton réduit à son icône : il gagne un fond et son icône s'assombrit.
-
-   `inline-flex` n'est pas cosmétique. Sans lui, l'icône reste une image en
-   ligne posée sur une ligne de texte : le bouton hérite de la hauteur de cette
-   ligne, jambages compris, et se retrouve plus haut que large. Un carré de
-   trente pixels devenait un rectangle de trente sur trente-quatre. */
 .bouton-icone {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--sub);
+  border-radius: 9999px;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .bouton-icone:hover:not(:disabled) {
@@ -437,8 +375,7 @@ textarea:focus-visible {
   color: var(--fg);
 }
 
-/* Pastille de couleur d'accent. Le halo ne prend pas de place dans la mise en
-   page, contrairement à un agrandissement. */
+/* Pastille de couleur d'accent */
 .pastille-accent {
   transition: box-shadow 120ms ease;
 }
@@ -795,37 +732,14 @@ textarea:focus-visible {
    débordait donc de 5 px sous la ligne de base. L'œil lit cette ligne comme un
    appui : ce qui la traverse paraît tomber, même parfaitement centré.
 
-   L'icône vaut désormais 1 em, la taille du texte, et remonte d'un vingt-
-   cinquième d'em pour se poser dans la bande des capitales plutôt que de la
-   chevaucher.
-
-   Deux mises en garde, tirées des mesures précédentes :
-
-   - mesurer sur l'encre entière d'un mot induit en erreur. « Déconnecter »
-     porte un accent qui monte au-dessus des capitales ; la référence est la
-     bande des capitales, du sommet des majuscules à la ligne de base ;
-   - un fond clair vu à travers un coin arrondi se compte comme de l'encre si
-     l'on n'y prend garde, et décale la mesure de plusieurs pixels.
-
-   Troisième mesure, et celle qui manquait : les deux corrections avaient été
-   établies séparément, l'une contre la boîte du bouton et l'autre contre la
-   bande des capitales, sans qu'on les remette jamais côte à côte. Le texte
-   descend de 0,12 em (« .texte-optique », mesuré contre la boîte) et l'icône
-   remontait de 0,04 em (mesurée, elle, contre le texte *avant* qu'il ne
-   descende). Écart accumulé : 0,16 em, soit deux pixels dans un bouton de
-   12 px — visible, et visible surtout parce qu'il n'a aucune raison d'être.
-
-   L'icône reprend donc le déplacement du texte : 0,12 − 0,04 = 0,08 em. Les
-   deux corrections restent celles qui ont été mesurées, elles sont seulement
-   enfin exprimées dans le même repère. C'est l'icône qui bouge et non le
-   texte : remonter le texte l'aurait réaligné sur l'icône, mais en sortant du
-   même coup le groupe entier du centre optique du bouton, que 0,12 em avait
-   coûté trois campagnes de mesure à trouver. */
+/* Alignement icône dans les boutons : centrage flex parfait */
 .icone-bouton {
-  transform: translateY(0.08em);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-/* La rotation a besoin du même canal, et doit l'emporter. */
 .icone-bouton.tourne {
   transform: none;
 }

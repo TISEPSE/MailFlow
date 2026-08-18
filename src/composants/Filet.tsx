@@ -74,14 +74,14 @@ export class Filet extends Component<{ children: ReactNode }, EtatDuFilet> {
             onClick={() => window.location.reload()}
             className="bouton bouton-principal inline-flex h-9 items-center rounded-lg px-3.5 text-xs font-semibold"
           >
-            <span className="texte-optique">Recharger</span>
+            Recharger
           </button>
           <button
             type="button"
             onClick={() => void navigator.clipboard?.writeText(detail)}
             className="bouton bouton-neutre inline-flex h-9 items-center rounded-lg px-3.5 text-xs font-semibold"
           >
-            <span className="texte-optique">Copier le détail</span>
+            Copier le détail
           </button>
         </div>
 

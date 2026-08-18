@@ -1207,42 +1207,35 @@ export default function App() {
         />
       ) : (
         <>
-      {ajoutFormation && (
-        <ModaleFormation
-          expediteurs={boite}
-          compteParDefaut={compteParDefaut}
-          sombre={sombre}
-          onFermer={() => setAjoutFormation(false)}
-          onValider={async (compte, r) => {
-            setAjoutFormation(false)
-            await agir(async () => {
-              noterLesRegles(compte, await regleAjouter(compte, r))
-              return `${r.nom_affichage || r.expediteur} rejoint les rappels de formation.`
-            })
-          }}
-        />
-      )}
+          {ajoutFormation && (
+            <ModaleFormation
+              expediteurs={boite}
+              compteParDefaut={compteParDefaut}
+              sombre={sombre}
+              onFermer={() => setAjoutFormation(false)}
+              onValider={async (compte, r) => {
+                setAjoutFormation(false)
+                await agir(async () => {
+                  noterLesRegles(compte, await regleAjouter(compte, r))
+                  return `${r.nom_affichage || r.expediteur} rejoint les rappels de formation.`
+                })
+              }}
+            />
+          )}
 
-      <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1">
         <nav
-          className="flex flex-none flex-col gap-0.5 border-r p-3 transition-[width] duration-150"
+          className="flex flex-none flex-col gap-1 border-r p-3 transition-[width] duration-150"
           style={{
-            // En `rem`, comme le reste de la mise en page : la barre suit la
-            // taille de police du système au lieu de rester figée à côté d'un
-            // texte qui grandit.
-            //
-            // Repliée, 4,5 rem et pas moins : ôtez le rembourrage de chaque
-            // côté et celui de l'entrée, il ne reste que la place de l'icône.
-            // En deçà, elle débordait, et la pastille active le montrait.
-            width: repliee ? '4.25rem' : '14.5rem',
+            width: repliee ? '4.5rem' : '15.5rem',
             background: 'var(--side)',
             borderColor: 'var(--line)',
           }}
         >
-          <div className="flex items-center gap-1 pt-1 pb-3">
+          <div className="flex items-center justify-between pb-2 pt-1 px-1">
             {!repliee && (
               <span
-                className="min-w-0 flex-1 truncate px-2.5 text-[0.6875rem] font-semibold tracking-wider uppercase"
+                className="min-w-0 flex-1 truncate px-2 text-[0.6875rem] font-semibold tracking-wider uppercase"
                 style={{ color: 'var(--sub)' }}
               >
                 Boîte de réception
@@ -1254,87 +1247,100 @@ export default function App() {
               aria-expanded={!repliee}
               title={repliee ? 'Déplier la barre' : 'Replier la barre'}
               aria-label={repliee ? 'Déplier la barre' : 'Replier la barre'}
-              className="bouton bouton-icone mx-auto flex-none rounded-lg p-1.5"
+              className="bouton bouton-icone mx-auto h-9 w-9 flex-none rounded-full"
             >
               <Icone nom={repliee ? 'left_panel_open' : 'left_panel_close'} taille="1.125rem" />
             </button>
           </div>
 
-          {NAV.map(({ vue: v, libelle, glyphe }) => {
-            const actif = vue === v
-            const [solide, doux] = ton(teinteDeLaVue(v), sombre)
-            return (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setVue(v)}
-                aria-current={actif ? 'page' : undefined}
-                // Repliée, la barre garde le libellé en infobulle : une icône
-                // seule ne dit pas ce qu'elle range.
-                title={
-                  repliee
-                    ? `${libelle}${releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
-                    : undefined
-                }
-                className={`survolable flex items-center gap-3 rounded-lg py-2 ${
-                  repliee ? 'justify-center px-0' : 'px-2.5 text-left'
-                }`}
-                style={actif ? { background: 'var(--card)' } : undefined}
-              >
-                <span
-                  className="relative flex h-7 w-7 flex-none items-center justify-center rounded-[0.5625rem]"
-                  style={{ background: actif ? solide : doux }}
+          <div className="flex flex-col gap-1">
+            {NAV.map(({ vue: v, libelle, glyphe }) => {
+              const actif = vue === v
+              const [solide] = ton(teinteDeLaVue(v), sombre)
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVue(v)}
+                  aria-current={actif ? 'page' : undefined}
+                  title={
+                    repliee
+                      ? `${libelle}${releveEnCours ? ' — relevé en cours…' : ` (${compte(v)})`}`
+                      : undefined
+                  }
+                  className={`group relative flex items-center gap-3 rounded-full py-2.5 transition-all ${
+                    repliee ? 'justify-center px-0 h-10 w-10 mx-auto' : 'px-3.5 text-left h-10 w-full'
+                  }`}
+                  style={{
+                    background: actif ? (sombre ? 'var(--selection)' : 'var(--selection)') : 'transparent',
+                    color: actif ? (sombre ? 'var(--accent-fg)' : 'var(--accent-fg)') : 'var(--fg)',
+                  }}
                 >
-                  <Icone
-                    nom={glyphe}
-                    taille="1rem"
-                    rempli={actif}
-                    style={{ color: actif ? '#FFFFFF' : solide }}
-                  />
-                  {repliee &&
-                    (releveEnCours ? (
-                      <span
-                        className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
-                        style={{ background: solide, color: '#FFFFFF' }}
-                      >
-                        <Icone nom="progress_activity" taille="0.6875rem" tourne />
-                      </span>
-                    ) : (
-                      compte(v) > 0 && (
+                  <span
+                    className={`flex flex-none items-center justify-center ${repliee ? '' : ''}`}
+                  >
+                    <Icone
+                      nom={glyphe}
+                      taille="1.25rem"
+                      rempli={actif}
+                      style={{ color: actif ? 'var(--accent)' : 'var(--sub)' }}
+                    />
+                    {repliee &&
+                      (releveEnCours ? (
                         <span
-                          className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[0.5625rem] font-semibold"
+                          className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
                           style={{ background: solide, color: '#FFFFFF' }}
                         >
-                          {compte(v)}
+                          <Icone nom="progress_activity" taille="0.6875rem" tourne />
                         </span>
-                      )
-                    ))}
-                </span>
-                {!repliee && (
-                  <>
-                    <span
-                      className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium"
-                      style={{ color: actif ? 'var(--fg)' : 'var(--sub)' }}
-                    >
-                      {libelle}
-                    </span>
-                    <span
-                      className="flex flex-none items-center justify-end font-mono text-[0.6875rem]"
-                      // Largeur réservée : sans elle, le passage du compteur à
-                      // l'anneau décalait le libellé au moment du relevé.
-                      style={{ color: actif ? solide : 'var(--sub)', minWidth: 16 }}
-                    >
-                      {releveEnCours ? (
-                        <Icone nom="progress_activity" taille="0.8125rem" tourne />
                       ) : (
-                        compte(v)
-                      )}
-                    </span>
-                  </>
-                )}
-              </button>
-            )
-          })}
+                        compte(v) > 0 && (
+                          <span
+                            className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[0.5625rem] font-semibold shadow-xs"
+                            style={{ background: solide, color: '#FFFFFF' }}
+                          >
+                            {compte(v)}
+                          </span>
+                        )
+                      ))}
+                  </span>
+                  {!repliee && (
+                    <>
+                      <span
+                        className="min-w-0 flex-1 truncate text-xs font-medium"
+                        style={{
+                          fontWeight: actif ? 600 : 500,
+                          color: actif ? 'var(--fg)' : 'var(--sub)',
+                        }}
+                      >
+                        {libelle}
+                      </span>
+                      <span
+                        className="flex flex-none items-center justify-end font-mono text-[0.6875rem] font-medium"
+                        style={{
+                          color: actif ? 'var(--fg)' : 'var(--sub)',
+                          minWidth: 18,
+                        }}
+                      >
+                        {releveEnCours ? (
+                          <Icone nom="progress_activity" taille="0.875rem" tourne />
+                        ) : (
+                          compte(v) > 0 ? (
+                            <span
+                              className="rounded-full px-2 py-0.5 text-[0.6875rem]"
+                              style={actif ? { background: 'var(--card)', color: 'var(--fg)' } : { color: 'var(--sub)' }}
+                            >
+                              {compte(v)}
+                            </span>
+                          ) : null
+                        )}
+                      </span>
+                    </>
+                  )}
+                </button>
+              )
+            })}
+          </div>
 
           {etat?.compteConnecte && (
             <div className="pt-2">
@@ -1343,16 +1349,14 @@ export default function App() {
                 onClick={() => void agir(async () => (await relever(), null))}
                 disabled={enCours || premierReleve}
                 title={repliee ? 'Actualiser la boîte' : undefined}
-                // Replié, il prend la forme des entrées de navigation : un pavé
-                // large au milieu de carrés se lisait comme un élément étranger.
-                className={`bouton bouton-doux flex w-full items-center gap-3 rounded-lg py-2 text-[0.8125rem] font-semibold ${
-                  repliee ? 'justify-center px-0' : 'px-2.5 text-left'
+                className={`bouton bouton-neutre flex w-full items-center gap-3 rounded-full py-2.5 text-xs font-medium ${
+                  repliee ? 'justify-center px-0 h-10 w-10 mx-auto' : 'px-3.5 text-left h-10'
                 }`}
               >
-                <span className="flex h-7 w-7 flex-none items-center justify-center">
+                <span className="flex flex-none items-center justify-center">
                   <Icone
                     nom="refresh"
-                    taille="1rem"
+                    taille="1.125rem"
                     tourne={enCours || premierReleve}
                   />
                 </span>
@@ -1401,17 +1405,14 @@ export default function App() {
               />
             )}
 
-            {/* L'avatar est dans le bouton, pas à côté : la zone survolée doit
-                couvrir tout ce qui désigne le compte, sans quoi le fond gris
-                s'arrête au bord de la photo. */}
             <button
               ref={boutonProfil}
               type="button"
               onClick={() => setMenuCompte((o) => !o)}
               aria-haspopup="menu"
               aria-expanded={menuCompte}
-              className={`survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1.5 ${
-                repliee ? 'justify-center px-0' : 'px-1.5 text-left'
+              className={`survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-full py-2 transition-all ${
+                repliee ? 'justify-center px-0 h-11 w-11 mx-auto' : 'px-2.5 text-left h-12'
               }`}
               title={
                 compteAffiche === TOUS_LES_COMPTES
@@ -1419,15 +1420,12 @@ export default function App() {
                   : (profil?.adresse ?? undefined)
               }
             >
-              {/* La vue mélangée a sa propre marque : sans elle, le profil
-                  affichait le compte actif alors que la liste montrait tout,
-                  et rien ne disait où l'on se trouvait. */}
               {compteAffiche === TOUS_LES_COMPTES ? (
                 <span
-                  className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+                  className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
                   style={{ background: 'var(--accent-soft)' }}
                 >
-                  <Icone nom="groups" taille="0.9375rem" style={{ color: 'var(--accent-fg)' }} />
+                  <Icone nom="groups" taille="1.125rem" style={{ color: 'var(--accent-fg)' }} />
                 </span>
               ) : (
                 <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
@@ -1435,14 +1433,14 @@ export default function App() {
               {!repliee && (
                 <>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.75rem] font-semibold">
+                    <span className="block truncate text-xs font-semibold">
                       {compteAffiche === TOUS_LES_COMPTES
                         ? 'Tous les comptes'
                         : (profil?.nom ??
                           (etat?.compteConnecte ? 'Compte Google' : 'Non connecté'))}
                     </span>
                     <span
-                      className="block truncate font-mono text-[0.625rem]"
+                      className="block truncate font-mono text-[0.6875rem]"
                       style={{ color: 'var(--sub)' }}
                     >
                       {compteAffiche === TOUS_LES_COMPTES
@@ -1452,11 +1450,9 @@ export default function App() {
                   </span>
                   <Icone
                     nom="expand_more"
-                    taille="1rem"
+                    taille="1.125rem"
                     style={{
                       color: 'var(--sub)',
-                      // Pivote vers le haut quand le menu s'ouvre : la flèche
-                      // désigne alors l'endroit où le menu vient d'apparaître.
                       transform: menuCompte ? 'rotate(180deg)' : undefined,
                       transition: 'transform 160ms ease',
                     }}
@@ -1464,7 +1460,6 @@ export default function App() {
                 </>
               )}
             </button>
-
           </div>
         </nav>
 
@@ -1859,24 +1854,16 @@ function MenuDeCompte({
       ref={cadre}
       role="menu"
       aria-hidden={sortant}
-      // Rembourrage horizontal : sans lui, le fond de survol d'une ligne va
-      // d'un bord à l'autre et coupe les arrondis du menu.
       className={`${
         sortant ? 'menu-disparait' : 'menu-apparait'
-      } absolute bottom-full left-2 z-40 mb-2 rounded-xl border p-1.5`}
+      } absolute bottom-full left-2 z-40 mb-2 rounded-2xl border p-2`}
       style={{
-        // Une largeur fixe, plus généreuse que la barre : « Ajouter un compte
-        // Google » passait à la ligne dans les 236 pixels disponibles, et un
-        // menu qui déborde d'un cran se lit comme ce qu'il est — une couche
-        // par-dessus, pas une partie de la barre.
-        width: 268,
+        width: 280,
         background: 'var(--card)',
         borderColor: 'var(--line)',
-        boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
+        boxShadow: 'var(--shadow-lg)',
       }}
     >
-      {/* Le compte fictif, en tête et seulement à plusieurs : à un compte, la
-          vue mélangée montrerait exactement la même chose que la boîte. */}
       {comptes.length > 1 && (
         <>
           <button
@@ -1884,19 +1871,19 @@ function MenuDeCompte({
             role="menuitem"
             onClick={onMelanger}
             aria-current={melange || undefined}
-            className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
+            className="survolable flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left"
           >
             <span
-              className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+              className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
               style={{ background: 'var(--accent-soft)' }}
             >
-              <Icone nom="groups" taille="0.9375rem" style={{ color: 'var(--accent-fg)' }} />
+              <Icone nom="groups" taille="1.125rem" style={{ color: 'var(--accent-fg)' }} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[0.7812rem] font-semibold">
+              <span className="block truncate text-xs font-semibold">
                 Tous les comptes
               </span>
-              <span className="block truncate text-[0.625rem]" style={{ color: 'var(--sub)' }}>
+              <span className="block truncate font-mono text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
                 {comptes.length} boîtes réunies
               </span>
             </span>
@@ -1910,29 +1897,27 @@ function MenuDeCompte({
           key={c.adresse}
           type="button"
           role="menuitem"
-          // « Celui qu'on regarde » et non « l'actif » : en vue mélangée on
-          // regarde tout, et aucune ligne ne doit alors se prétendre courante.
           aria-current={(!melange && c.actif) || undefined}
           onClick={() => onBasculer(c.adresse)}
-          className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
+          className="survolable flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left"
         >
           {c.photo ? (
-            <img src={c.photo} alt="" className="h-7 w-7 flex-none rounded-full object-cover" />
+            <img src={c.photo} alt="" className="h-8 w-8 flex-none rounded-full object-cover" />
           ) : (
             <span
-              className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+              className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
               style={{ background: 'var(--sunk)' }}
             >
-              <LogoGoogle taille="0.875rem" />
+              <LogoGoogle taille="1rem" />
             </span>
           )}
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[0.7812rem] font-semibold">
+            <span className="block truncate text-xs font-semibold">
               {c.nom ?? c.adresse}
             </span>
             {c.nom && (
               <span
-                className="block truncate font-mono text-[0.625rem]"
+                className="block truncate font-mono text-[0.6875rem]"
                 style={{ color: 'var(--sub)' }}
               >
                 {c.adresse}
@@ -1942,7 +1927,7 @@ function MenuDeCompte({
           {!melange && c.actif && (
             <Icone
               nom="check_circle"
-              taille="1rem"
+              taille="1.125rem"
               rempli
               style={{ color: 'var(--accent-fg)' }}
             />
@@ -1958,10 +1943,10 @@ function MenuDeCompte({
         type="button"
         role="menuitem"
         onClick={onAjouter}
-        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.7812rem] font-semibold"
-        style={{ color: 'var(--accent-fg)' }}
+        className="survolable flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium"
+        style={{ color: 'var(--accent)' }}
       >
-        <Icone nom="login" taille="1rem" compenser />
+        <Icone nom="login" taille="1.125rem" />
         Ajouter un compte Google
       </button>
 
@@ -1969,9 +1954,9 @@ function MenuDeCompte({
         type="button"
         role="menuitem"
         onClick={onParametres}
-        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.7812rem] font-semibold"
+        className="survolable flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium"
       >
-        <Icone nom="settings" taille="1rem" compenser style={{ color: 'var(--sub)' }} />
+        <Icone nom="settings" taille="1.125rem" style={{ color: 'var(--sub)' }} />
         Paramètres
       </button>
 
@@ -1979,10 +1964,10 @@ function MenuDeCompte({
         type="button"
         role="menuitem"
         onClick={onDeconnecter}
-        className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.7812rem] font-semibold"
-        style={{ color: '#C2410C' }}
+        className="survolable flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium"
+        style={{ color: '#d93025' }}
       >
-        <Icone nom="logout" taille="1rem" compenser />
+        <Icone nom="logout" taille="1.125rem" />
         Se déconnecter
       </button>
     </div>

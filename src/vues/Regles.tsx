@@ -188,42 +188,33 @@ export function Regles({
         style={{ borderColor: 'var(--line)' }}
       >
         <div
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3.5 py-2.5"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-4 py-2"
           style={{ background: 'var(--sunk)' }}
         >
-          {/* Sans `compenser` : le relèvement optique vise l'alignement sur des
-              capitales, pas le centrage dans un champ de saisie. */}
-          <Icone nom="search" taille="1.0625rem" style={{ color: 'var(--sub)' }} />
+          <Icone nom="search" taille="1.125rem" style={{ color: 'var(--sub)' }} />
           <input
             type="text"
             value={recherche}
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Rechercher une règle par nom ou adresse"
             aria-label="Rechercher une règle"
-            className="champ-de-saisie selectionnable min-w-0 flex-1 bg-transparent text-[0.8438rem] leading-5 outline-none"
+            className="champ-de-saisie selectionnable min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-[var(--sub)]"
             style={{ color: 'var(--fg)' }}
           />
         </div>
 
-        <button
-          type="button"
+        <Bouton
+          variante="principal"
+          icone="playlist_add_check"
           onClick={() => setFenetre('ajout')}
-          aria-haspopup="dialog"
-          className="bouton bouton-principal inline-flex flex-none items-center justify-center gap-2 self-stretch rounded-xl px-4 text-[0.8125rem] leading-none font-semibold"
         >
-          <Icone
-            nom="playlist_add_check"
-            taille="1.45em"
-            rempli
-            className="icone-bouton"
-          />
           Ajouter une règle
-        </button>
+        </Bouton>
 
         <div
           role="tablist"
           aria-label="Filtrer par catégorie"
-          className="flex flex-none items-center gap-1 self-stretch rounded-xl px-1"
+          className="flex flex-none items-center gap-1 self-center rounded-full p-1"
           style={{ background: 'var(--sunk)' }}
         >
           {ONGLETS.map((o) => {
@@ -235,9 +226,11 @@ export function Regles({
                 role="tab"
                 aria-selected={actif}
                 onClick={() => setOnglet(o)}
-                className="segment flex h-8 items-center rounded-lg px-4 text-[0.8125rem] leading-none font-semibold whitespace-nowrap"
+                className={`segment inline-flex h-8 items-center justify-center rounded-full px-3.5 text-xs font-medium whitespace-nowrap transition-all ${
+                  actif ? 'font-semibold' : ''
+                }`}
               >
-                {o}
+                <span>{o}</span>
               </button>
             )
           })}
@@ -334,7 +327,7 @@ export function Regles({
                         onClick={() => setFenetre({ compte, regle: r })}
                         aria-label={`Modifier la règle : ${phrase(r)}`}
                         title="Modifier"
-                        className="bouton bouton-icone flex-none rounded-lg p-1.5"
+                        className="bouton bouton-icone h-8 w-8 flex-none rounded-full"
                       >
                         <Icone nom="edit" taille="1.125rem" />
                       </button>
@@ -344,7 +337,7 @@ export function Regles({
                         onClick={() => setAConfirmer(r.id)}
                         aria-label={`Supprimer la règle : ${phrase(r)}`}
                         title="Supprimer"
-                        className="bouton bouton-icone flex-none rounded-lg p-1.5"
+                        className="bouton bouton-icone h-8 w-8 flex-none rounded-full"
                       >
                         <Icone nom="delete" taille="1.125rem" />
                       </button>
@@ -571,13 +564,13 @@ function FormulaireAjout({
         </p>
         <div className="flex items-center justify-end gap-2">
           <Bouton onClick={onAnnuler}>Annuler</Bouton>
-          <button
+          <Bouton
             type="submit"
+            variante="principal"
             disabled={!valide || !compte || enCours}
-            className="bouton bouton-principal inline-flex h-9 flex-none items-center justify-center gap-2 rounded-lg px-4 text-[0.8125rem] leading-none font-semibold"
           >
             {enCours ? 'Enregistrement…' : 'Enregistrer la règle'}
-          </button>
+          </Bouton>
         </div>
       </div>
     </form>

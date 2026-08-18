@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { BOITE, GLYPHES, GLYPHES_PLEINS, MARGE_ENCRE, type NomIcone } from './glyphes'
+import { BOITE, GLYPHES, GLYPHES_PLEINS, type NomIcone } from './glyphes'
 
 /**
  * Icône, dessinée en SVG.
@@ -28,39 +28,16 @@ export function Icone({
   className = '',
   style,
   rempli = false,
-  compenser = false,
   tourne = false,
 }: {
   nom: NomIcone
-  /** Longueur CSS relative, jamais un nombre de pixels — le type l'interdit,
-   *  et ce n'est pas un caprice. Une icône figée en pixels à côté d'un texte
-   *  qui, lui, suit la taille de police du système finit forcément décalée :
-   *  c'est l'origine de tous les défauts d'alignement rencontrés jusqu'ici.
-   *  `'1.15em'` la lie au texte voisin, `'1rem'` au réglage général. */
   taille?: string
   className?: string
   style?: CSSProperties
   rempli?: boolean
-  /** Retranche le blanc interne du dessin, pour un centrage optique. */
-  compenser?: boolean
-  /** Fait tourner l'icône : signale une attente en cours. */
   tourne?: boolean
 }) {
   const trace = (rempli ? GLYPHES_PLEINS[nom] : undefined) ?? GLYPHES[nom]
-
-  // Deux corrections, toutes deux mesurées.
-  //
-  // À l'horizontale : la croix « close » laissait quatre pixels de plus à
-  // gauche que le libellé n'en laissait à droite. Les boîtes étaient pourtant
-  // symétriques — c'est le blanc *dans* le dessin qui décalait l'ensemble.
-  //
-  // À la verticale : une icône est plus haute que les capitales du texte
-  // qu'elle accompagne, et déborde donc sous la ligne de base. Centrer les
-  // boîtes ne suffit pas ; l'œil lit un décalage vers le bas. Un léger
-  // relèvement la ramène dans la bande des capitales.
-  // La compensation s'exprime en proportion de l'icône, donc dans la même
-  // unité qu'elle : un `calc` suit la taille au lieu de la figer.
-  const marge = compenser ? `calc(${taille} * ${-MARGE_ENCRE[nom]})` : undefined
 
   return (
     <svg
@@ -69,30 +46,9 @@ export function Icone({
       viewBox={BOITE}
       width={taille}
       height={taille}
-      className={`inline-block flex-none ${tourne ? 'mouvement-utile tourne ' : ''}${className}`}
+      className={`inline-flex shrink-0 items-center justify-center ${tourne ? 'mouvement-utile tourne ' : ''}${className}`}
       style={{
         fill: 'currentColor',
-        marginInline: marge,
-        // Aligne l'icône sur les capitales du texte quand elle est posée dans
-        // le fil du texte plutôt que dans une rangée flex.
-        //
-        // C'est là qu'était le défaut d'alignement, et il est bien plus gros
-        // que celui qu'on cherchait ailleurs : une boîte en ligne repose sur
-        // la *ligne de base*, si bien qu'une icône d'une fois et demie la
-        // hauteur du texte dépasse largement au-dessus des capitales — mesuré
-        // à 3,9 px, quand les rangées flex se disputaient un quart de pixel.
-        //
-        //   vertical-align   écart icône / capitales
-        //   défaut           −3,88 px
-        //   −0,20 em         −1,38 px
-        //   −0,25 em         −0,62 px
-        //   −0,30 em         −0,12 px  ← retenu
-        //   −0,35 em         +0,62 px
-        //
-        // Sans effet sur les rangées flex : `vertical-align` ne s'applique pas
-        // à un enfant de conteneur flex. La même valeur sert donc partout, et
-        // il n'y a plus deux façons d'aligner une icône selon son entourage.
-        verticalAlign: '-0.3em',
         ...style,
       }}
     >
@@ -115,16 +71,12 @@ export function Pastille({
   logo,
 }: {
   texte: string
-  /** Longueur CSS relative — jamais de pixels : voir `Icone`. */
   taille?: string
   fond: string
   couleur: string
   logo?: string
 }) {
   if (logo) {
-    // `cover` plutôt que `contain` : le logo occupe tout le disque, comme les
-    // initiales qu'il remplace. Une icône de site est carrée, le recadrage ne
-    // rogne donc rien en pratique.
     return (
       <img
         src={logo}
@@ -137,26 +89,17 @@ export function Pastille({
 
   return (
     <div
-      className="flex flex-none items-center justify-center rounded-full font-semibold"
+      className="flex flex-none items-center justify-center rounded-full font-medium"
       style={{
         width: taille,
         height: taille,
         background: fond,
         color: couleur,
-        // Les initiales tiennent 38 % du disque quelle que soit sa taille : un
-        // rapport, pas une valeur, sinon elles ne suivent plus dès que la
-        // pastille change de gabarit.
         fontSize: `calc(${taille} * 0.38)`,
+        lineHeight: 1,
       }}
     >
-      {/* Une note précédente affirmait ici, mesures à l'appui, que les
-          initiales tombaient à moins d'un demi-pixel du centre. Elle était
-          fausse : la mesure avait été faite dans Chrome, qui ne choisit pas la
-          même fonte de repli que le moteur de l'application. Photographiées
-          dans WebKitGTK, et sur une capture de l'application elle-même, elles
-          sont trois pixels et demi au-dessus du centre d'un disque de soixante.
-          Voir `.texte-optique`. */}
-      <span className="texte-optique">{texte}</span>
+      <span>{texte}</span>
     </div>
   )
 }
@@ -239,14 +182,13 @@ export function Segments<T extends string>({
   valeur: T
   onChange: (v: T) => void
   libelle: string
-  /** Occupe toute la ligne, chaque segment se partageant la largeur. */
   pleineLargeur?: boolean
 }) {
   return (
     <div
       role="radiogroup"
       aria-label={libelle}
-      className={`flex gap-1 rounded-xl p-1.5 ${pleineLargeur ? 'w-full' : 'flex-none'}`}
+      className={`inline-flex items-center gap-1 rounded-full p-1 ${pleineLargeur ? 'w-full' : 'flex-none'}`}
       style={{ background: 'var(--sunk)' }}
     >
       {valeurs.map((v) => {
@@ -258,17 +200,11 @@ export function Segments<T extends string>({
             role="radio"
             aria-checked={actif}
             onClick={() => onChange(v)}
-            className={`segment inline-flex h-[2.125rem] items-center justify-center rounded-lg px-4 text-[0.8438rem] font-semibold whitespace-nowrap ${
+            className={`segment inline-flex h-8 items-center justify-center rounded-full px-3.5 text-xs font-medium whitespace-nowrap transition-all ${
               pleineLargeur ? 'flex-1' : ''
             }`}
           >
-            {/* La correction optique manquait ici, et nulle part ailleurs elle
-                ne se voit autant : trois segments côte à côte donnent trois
-                lignes de texte parallèles, et l'œil compare une bande de
-                capitales à un bord arrondi tout proche. Le libellé était haut
-                de 0,12 em dans sa pastille — mesuré une fois, jamais appliqué
-                ici. Voir `.texte-optique`. */}
-            <span className="texte-optique">{v}</span>
+            <span>{v}</span>
           </button>
         )
       })}
@@ -302,9 +238,6 @@ export function Toasts({
 }) {
   return (
     <div
-      // `pointer-events-none` sur la pile, rétabli sur chaque toast : sans
-      // cela, la colonne invisible interceptait les clics de ce qu'elle
-      // recouvre — ici l'en-tête de lecture et ses boutons d'action.
       className="pointer-events-none fixed top-4 right-4 z-50 flex w-80 flex-col gap-2"
       role="status"
       aria-live="polite"
@@ -312,40 +245,34 @@ export function Toasts({
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="toast pointer-events-auto overflow-hidden rounded-xl border"
+          className="toast pointer-events-auto overflow-hidden rounded-2xl border"
           style={{
             background: 'var(--card)',
             borderColor: 'var(--line)',
-            boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
+            boxShadow: 'var(--shadow-lg)',
           }}
         >
-          {/* Trois pixels de plus en haut qu'en bas : la barre de décompte
-              occupe cette hauteur sous la rangée, si bien que le texte se
-              trouvait au centre de sa rangée mais au-dessus du centre de la
-              tuile. On rend au haut ce que la barre prend au bas. */}
-          <div className="flex items-start gap-2.5 px-3.5 pt-[0.9375rem] pb-3">
+          <div className="flex items-center gap-3 px-4 py-3">
             <Icone
               nom={t.erreur ? 'error' : 'check_circle'}
-              taille="1.0625rem"
+              taille="1.125rem"
               rempli
-              style={{ color: t.erreur ? '#C2410C' : 'var(--accent-fg)' }}
+              style={{ color: t.erreur ? '#d93025' : 'var(--accent-fg)' }}
             />
-            <span className="min-w-0 flex-1 text-[0.8125rem] leading-5">{t.texte}</span>
+            <span className="min-w-0 flex-1 text-xs leading-normal font-medium">{t.texte}</span>
             <button
               type="button"
               onClick={() => onFermer(t.id)}
               aria-label="Fermer le message"
-              className="bouton bouton-icone -mt-0.5 flex-none rounded-md p-1"
+              className="bouton bouton-icone h-7 w-7 flex-none rounded-full"
             >
               <Icone nom="close" taille="0.875rem" />
             </button>
           </div>
-          <div className="h-[0.1875rem]" style={{ background: 'var(--faint)' }}>
+          <div className="h-[2px]" style={{ background: 'var(--faint)' }}>
             <div
               className="toast-decompte h-full"
-              style={{ background: t.erreur ? '#C2410C' : 'var(--accent)' }}
-              // L'animation est le minuteur : c'est elle qui prévient la fin,
-              // et le retrait suit dans `App`.
+              style={{ background: t.erreur ? '#d93025' : 'var(--accent)' }}
               onAnimationEnd={() => onFermer(t.id)}
             />
           </div>
@@ -538,23 +465,23 @@ export function Modale({
         // une ligne de moins à faire défiler. Les marges du fond restent —
         // collée aux bords, la fenêtre ne se distinguerait plus de la page, et
         // l'on ne saurait plus par où en sortir.
-        className={`apparait my-auto w-full rounded-2xl border ${
+        className={`apparait my-auto w-full rounded-3xl border ${
           large ? 'max-w-[min(1500px,94vw)]' : 'max-w-lg'
         }`}
         style={{
           background: 'var(--card)',
           borderColor: 'var(--line)',
-          boxShadow: '0 24px 64px rgb(0 0 0 / 28%)',
+          boxShadow: 'var(--shadow-lg)',
         }}
       >
         <div
-          className="flex items-start gap-4 border-b px-6 py-5"
+          className="flex items-center gap-4 border-b px-6 py-4"
           style={{ borderColor: 'var(--line)' }}
         >
           <div className="min-w-0 flex-1">
-            <h2 className="text-[1.0625rem] font-semibold tracking-tight">{titre}</h2>
+            <h2 className="text-base font-semibold tracking-tight">{titre}</h2>
             {sous && (
-              <p className="pt-1 text-[0.8125rem]" style={{ color: 'var(--sub)' }}>
+              <p className="pt-0.5 text-xs" style={{ color: 'var(--sub)' }}>
                 {sous}
               </p>
             )}
@@ -563,23 +490,16 @@ export function Modale({
             type="button"
             onClick={onFermer}
             aria-label="Fermer"
-            className="bouton bouton-icone flex-none rounded-lg p-2"
+            className="bouton bouton-icone h-9 w-9 flex-none rounded-full"
           >
-            <Icone nom="close" taille="1.0625rem" />
+            <Icone nom="close" taille="1.125rem" />
           </button>
         </div>
 
-        {/* Défilement interne : les suggestions d'adresse débordaient de la
-            fenêtre au lieu de la faire défiler. */}
-        {/* Sans rembourrage, le contenu touche les bords : il doit donc
-            reprendre l'arrondi du bas de la fenêtre, sans quoi ses coins
-            carrés dépassent de la carte. Le défilement lui est laissé — deux
-            barres imbriquées, l'une pour la fenêtre et l'autre pour le
-            message, se disputaient la molette. */}
         <div
           className={`${large ? 'h-[82vh]' : 'max-h-[70vh]'} ${
             sansRembourrage
-              ? 'overflow-hidden rounded-b-2xl'
+              ? 'overflow-hidden rounded-b-3xl'
               : 'overflow-y-auto px-6 py-5'
           }`}
         >
@@ -824,7 +744,7 @@ export function Vide({
   )
 }
 
-/** Bouton d'action principal ou secondaire. */
+/** Bouton d'action principal ou secondaire façon Google Material 3 */
 export function Bouton({
   children,
   onClick,
@@ -834,30 +754,21 @@ export function Bouton({
   titre,
   enAttente = false,
   compact = false,
-  tailleIcone = '1em',
+  tailleIcone = '1.125rem',
   className = '',
+  type = 'button',
 }: {
   children: ReactNode
-  onClick: () => void
+  onClick?: () => void
   variante?: 'principal' | 'secondaire' | 'discret' | 'danger'
   icone?: NomIcone
-  /** En `em` : l'icône suit la taille du texte du bouton, et le suit encore
-   *  si l'utilisateur change la taille de police du système.
-   *
-   *  Une valeur par défaut qui vaut la taille du texte, et non une fois et
-   *  demie : à 1,35 em l'icône faisait deux fois la hauteur des capitales et
-   *  débordait autant sous la ligne de base qu'au-dessus des majuscules. Elle
-   *  était pourtant centrée au dixième de pixel — c'est la taille qui se
-   *  voyait, pas le centrage. */
   tailleIcone?: string
   disabled?: boolean
   titre?: string
-  /** Fait tourner l'icône tant que l'action n'a pas rendu la main. */
   enAttente?: boolean
-  /** Un cran plus bas, pour les barres d'action logées dans un en-tête. */
   compact?: boolean
-  /** Pour s'accorder à la hauteur d'un champ voisin. */
   className?: string
+  type?: 'button' | 'submit'
 }) {
   const teintes: Record<string, string> = {
     principal: 'bouton-principal',
@@ -868,23 +779,23 @@ export function Bouton({
 
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
       disabled={disabled}
       title={titre}
       className={`bouton ${teintes[variante]} inline-flex ${
-        compact ? 'h-8 px-3' : 'h-9 px-3.5'
-      } flex-none items-center justify-center gap-1.5 rounded-lg text-xs leading-none font-semibold whitespace-nowrap ${className}`}
+        compact ? 'h-8 px-3.5 text-xs' : 'h-9 px-4 text-xs'
+      } flex-none items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap ${className}`}
     >
       {icone && (
         <Icone
           nom={icone}
           taille={tailleIcone}
-          className="icone-bouton"
+          className="flex-none shrink-0"
           tourne={enAttente}
         />
       )}
-      <span className="texte-optique">{children}</span>
+      <span className="inline-flex items-center">{children}</span>
     </button>
   )
 }
@@ -1022,7 +933,7 @@ export function Etiquette({
 }) {
   return (
     <span
-      className="inline-flex flex-none items-center rounded-lg px-3 py-2 text-xs leading-none font-semibold"
+      className="inline-flex flex-none items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium"
       style={{ background: fond, color: couleur }}
     >
       {texte}

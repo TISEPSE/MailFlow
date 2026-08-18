@@ -90,18 +90,18 @@ export function Recherche({
       role="dialog"
       aria-modal="true"
       aria-label="Rechercher dans tous les messages"
-      className="apparait relative w-full max-w-3xl overflow-hidden rounded-2xl border"
+      className="apparait relative w-full max-w-3xl overflow-hidden rounded-3xl border"
       style={{
         background: 'var(--card)',
         borderColor: 'var(--line)',
-        boxShadow: '0 24px 64px rgb(0 0 0 / 28%)',
+        boxShadow: 'var(--shadow-lg)',
       }}
     >
       <div
-        className="flex h-16 items-center gap-3.5 border-b px-5"
+        className="flex h-14 items-center gap-3.5 border-b px-5"
         style={{ borderColor: ouvert ? 'var(--line)' : 'transparent' }}
       >
-        <Icone nom="search" taille="1.375rem" style={{ color: 'var(--sub)' }} />
+        <Icone nom="search" taille="1.25rem" style={{ color: 'var(--sub)' }} />
         <input
           ref={champ}
           type="text"
@@ -109,7 +109,7 @@ export function Recherche({
           onChange={(e) => setQ(e.target.value)}
           placeholder="Rechercher un message, un expéditeur, une phrase…"
           aria-label="Rechercher dans tous les messages"
-          className="champ-de-saisie selectionnable min-w-0 flex-1 bg-transparent text-[1.0625rem] outline-none"
+          className="champ-de-saisie selectionnable min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-[var(--sub)]"
           style={{ color: 'var(--fg)' }}
         />
         {q && (
@@ -120,9 +120,9 @@ export function Recherche({
               champ.current?.focus()
             }}
             aria-label="Effacer la recherche"
-            className="bouton bouton-icone flex-none rounded-md p-1"
+            className="bouton bouton-icone h-8 w-8 flex-none rounded-full"
           >
-            <Icone nom="close" taille="0.9375rem" />
+            <Icone nom="close" taille="1rem" />
           </button>
         )}
       </div>
@@ -130,7 +130,7 @@ export function Recherche({
       {ouvert ? (
         <div>
           {resultats.length === 0 ? (
-            <p className="px-5 py-7 text-center text-[0.8438rem]" style={{ color: 'var(--sub)' }}>
+            <p className="px-5 py-8 text-center text-xs" style={{ color: 'var(--sub)' }}>
               Aucun message ne correspond à « {q.trim()} ».
             </p>
           ) : (
@@ -146,19 +146,19 @@ export function Recherche({
                       onOuvrir(message)
                       onFermer()
                     }}
-                    className="survolable flex w-full items-center gap-3 border-b px-4 py-3 text-left last:border-b-0"
+                    className="survolable flex w-full items-center gap-3 border-b px-5 py-3 text-left transition-colors last:border-b-0"
                     style={{ borderColor: 'var(--line)' }}
                   >
                     <Pastille
                       texte={initiales(message.nom)}
-                      taille="1.875rem"
+                      taille="2rem"
                       fond={fond}
                       couleur={encre}
                       logo={logos[domaineDe(message.adresse)]}
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[0.875rem] font-semibold">
+                        <span className="min-w-0 flex-1 truncate text-xs font-semibold">
                           {message.nom}
                         </span>
                         <span
@@ -168,13 +168,13 @@ export function Recherche({
                           {heureCourte(message.date)}
                         </span>
                       </span>
-                      <span className="block truncate text-[0.8125rem]">
+                      <span className="block truncate text-xs font-medium">
                         {message.sujet || '(sans objet)'}
                       </span>
                     </span>
                     <span className="flex flex-none flex-col items-end gap-1">
                       <span
-                        className="rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold"
+                        className="rounded-full px-2.5 py-0.5 text-[0.6875rem] font-medium"
                         style={{ background: doux, color: solide }}
                       >
                         {VUES[message.categorie]}
@@ -190,9 +190,9 @@ export function Recherche({
           )}
         </div>
       ) : (
-        <p className="px-5 py-7 text-center text-[0.8438rem]" style={{ color: 'var(--sub)' }}>
+        <p className="px-5 py-8 text-center text-xs" style={{ color: 'var(--sub)' }}>
           Cherchez un expéditeur, un sujet, une phrase — dans toutes les pages à
-          la fois. <kbd>Échap</kbd> pour fermer.
+          la fois. <kbd className="rounded-md bg-[var(--faint)] px-1.5 py-0.5 font-mono text-[0.6875rem]">Échap</kbd> pour fermer.
         </p>
       )}
     </div>

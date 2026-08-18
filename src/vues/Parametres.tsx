@@ -649,7 +649,7 @@ function BoutonTexte({
     <button
       type="button"
       onClick={onClick}
-      className="bouton flex-none rounded-md px-2 py-1 text-[0.75rem] leading-none font-semibold"
+      className="bouton flex-none rounded-full px-2.5 py-1 text-xs font-medium"
       style={{ color: couleur ?? 'var(--fg)' }}
     >
       {children}
@@ -676,20 +676,10 @@ function BoutonCarte({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      // Toute la géométrie en `em` : hauteur, rembourrage, écart et taille de
-      // l'icône suivent la taille du texte. Régler le texte suffit alors à
-      // régler le bouton, au lieu de reprendre quatre valeurs en pixels dont
-      // chacune peut se désaccorder des autres.
-      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex flex-none items-center justify-center gap-[0.5em] rounded-xl font-semibold`}
-      style={{
-        fontSize: '0.95rem',
-        height: '2.8em',
-        paddingInline: '1.15em',
-        lineHeight: 1,
-      }}
+      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex h-10 flex-none items-center justify-center gap-2 rounded-full px-5 text-xs font-medium`}
     >
-      {icone && <Icone nom={icone} taille="1em" className="icone-bouton" />}
-      <span className="texte-optique">{children}</span>
+      {icone && <Icone nom={icone} taille="1.125rem" />}
+      <span>{children}</span>
     </button>
   )
 }

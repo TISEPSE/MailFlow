@@ -572,12 +572,12 @@ function ChoixEtiquette({
       type="button"
       onClick={onClick}
       aria-pressed={actif}
-      className={`inline-flex h-7 items-center rounded-full px-2.5 text-[0.6875rem] font-semibold ${
+      className={`inline-flex h-7 items-center justify-center rounded-full px-3 text-xs font-medium transition-all ${
         actif ? '' : 'pilule-accent'
       }`}
       style={actif ? { background: 'var(--accent)', color: '#FFFFFF' } : undefined}
     >
-      <span className="texte-optique">{children}</span>
+      <span>{children}</span>
     </button>
   )
 }
@@ -893,11 +893,11 @@ function CarteGroupe({
                   : 'Résume ce mail en quelques lignes'
               }
               aria-label="Résumer cette publication"
-              className={`bouton bouton-icone flex-none rounded-md p-1 ${
+              className={`bouton bouton-icone h-8 w-8 flex-none rounded-full ${
                 resumeEnCours ? 'etincelle-ia mouvement-utile' : ''
               }`}
             >
-              <Icone nom="auto_awesome" taille="0.9375rem" rempli={resumeEnCours} />
+              <Icone nom="auto_awesome" taille="1rem" rempli={resumeEnCours} />
             </button>
           )}
         </div>
@@ -927,59 +927,45 @@ function CarteGroupe({
                   Sa couleur est celle de la publication, et non un accent
                   unique : il appartient à sa carte, il n'alerte de rien. */}
               <span
-                className="mb-2 inline-flex h-6 items-center gap-1 rounded-full px-2 text-[0.6562rem] font-semibold"
+                className="mb-2 inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium"
                 style={{ background: fond, color: encre }}
               >
-                <Icone nom="auto_awesome" taille="0.75rem" rempli />
-                <span className="texte-optique">
+                <Icone nom="auto_awesome" taille="0.8125rem" rempli />
+                <span>
                   {nombre > 1 ? `Résumé des ${nombre} numéros` : 'Résumé de la publication'}
                 </span>
               </span>
 
-              <p className="text-[0.8125rem] leading-relaxed font-medium">{resume.texte}</p>
+              <p className="text-xs leading-relaxed font-medium">{resume.texte}</p>
 
             </>
           ) : muette ? (
-            // Le message n'a pas un mot à envoyer : tout est en pièce jointe,
-            // ou l'expéditeur n'a rien écrit. Le dire vaut mieux que de laisser
-            // une étincelle qui, cliquée, ne fait rien — un bouton sans effet
-            // se lit comme une panne.
-            //
-            // La phrase ne nomme pas les pièces jointes : la carte ne les
-            // connaît pas, et affirmer qu'il y en a devant un message qui n'en
-            // a pas serait remplacer une confusion par une autre.
             <>
-              <p className="text-[0.8125rem] leading-relaxed font-medium">
+              <p className="text-xs leading-relaxed font-medium">
                 {ligneLocale(courant)}
               </p>
-              <p className="mt-1.5 text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+              <p className="mt-1.5 text-xs" style={{ color: 'var(--sub)' }}>
                 <Icone
                   nom="attach_file"
-                  taille="0.75rem"
-                  className="mr-1 inline-block align-[-0.1em]"
+                  taille="0.875rem"
+                  className="mr-1 inline-flex shrink-0"
                 />
                 Rien à résumer : ce message n'a pas de texte.
               </p>
             </>
           ) : (
-            <p className="text-[0.8125rem] leading-relaxed font-medium">
+            <p className="text-xs leading-relaxed font-medium">
               {ligneLocale(courant)}
             </p>
           )}
 
-          {/* Le dépliant paraît dès qu'il y a quelque chose derrière : les
-              autres numéros, ou — sur une publication qui n'en a qu'un — le
-              numéro lui-même, dont le résumé occupe la place. */}
           {autres.length > 0 && (
             <button
               type="button"
               onClick={() => setDeplie(!deplie)}
               aria-expanded={deplie}
-              className="pilule-accent mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[0.6875rem] font-semibold"
+              className="pilule-accent mt-2.5 inline-flex h-7 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium"
             >
-              {/* La même flèche retournée, comme au panneau des destinataires :
-                  le jeu d'icônes est engendré à partir des noms employés dans
-                  le code, et n'en porte donc qu'une seule. */}
               <Icone
                 nom="expand_more"
                 taille="0.875rem"
@@ -988,10 +974,7 @@ function CarteGroupe({
                   transition: 'transform 160ms ease',
                 }}
               />
-              {/* Le libellé descend d'un cheveu pour se poser sur l'axe de la
-                  flèche : même correction optique qu'aux boutons et aux
-                  pastilles, voir `.texte-optique`. */}
-              <span className="texte-optique">
+              <span>
                 {deplie ? 'Replier' : decompte || '1 mail'}
               </span>
             </button>
@@ -1077,7 +1060,7 @@ function CarteGroupe({
                   onClick={() => onArchiver(m.id)}
                   title="Archiver ce mail"
                   aria-label="Archiver ce mail"
-                  className="bouton bouton-icone flex-none rounded-md p-1"
+                  className="bouton bouton-icone h-7 w-7 flex-none rounded-full"
                 >
                   <Icone nom="archive" taille="0.875rem" />
                 </button>
@@ -1086,7 +1069,7 @@ function CarteGroupe({
                   onClick={() => onSupprimer(m.id)}
                   title="Mettre ce mail à la corbeille"
                   aria-label="Mettre ce mail à la corbeille"
-                  className="bouton bouton-icone flex-none rounded-md p-1"
+                  className="bouton bouton-icone h-7 w-7 flex-none rounded-full"
                 >
                   <Icone nom="delete" taille="0.875rem" />
                 </button>

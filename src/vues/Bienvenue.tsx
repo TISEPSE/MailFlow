@@ -267,7 +267,7 @@ function Illustration({
             className="inline-flex h-8 flex-none items-center justify-center gap-1.5 rounded-lg px-3 text-xs leading-none font-semibold"
             style={{ background: 'var(--accent)', color: '#FFFFFF' }}
           >
-            <Icone nom="archive" taille="0.875rem" compenser />
+            <Icone nom="archive" taille="0.875rem" />
             Archiver
           </span>
         </div>
