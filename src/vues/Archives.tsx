@@ -775,14 +775,15 @@ function TuilePosee({
         <span className="min-w-0 flex-1 truncate text-[0.75rem] font-semibold">
           {message.nom || message.adresse}
         </span>
-        <span className="flex-none text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
-          {heureCourte(message.date)}
-        </span>
       </div>
 
       <div className="line-clamp-2 text-[0.75rem] leading-snug" style={{ color: 'var(--sub)' }}>
         {message.sujet || '(sans objet)'}
       </div>
+
+      <span className="absolute bottom-2.5 right-3 text-[0.625rem] font-medium" style={{ color: 'var(--sub)' }}>
+        {heureCourte(message.date)}
+      </span>
 
       {/* Cachés tant que la tuile n'est pas survolée : deux icônes visibles sur
           deux cents tuiles feraient de la table un champ de mines.

@@ -816,14 +816,24 @@ pub async fn archives_synchroniser(
 /// n'avait donc aucun moyen de dire « celui-là est classé, je n'ai plus à m'en
 /// occuper » sans le jeter.
 #[tauri::command]
-pub async fn archive_retirer(app: AppHandle, id: String) -> Resultat<()> {
+pub async fn archive_retirer(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    id: String,
+) -> Resultat<()> {
     let config = dossier_config(&app)?;
     let compte = compte_du_message(&app, &id).unwrap_or_else(|| compte_actif(&app));
+
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_pour(&etat, &compte_actif(&app), Some(&compte)),
+    );
+    client.poser_libelle(&id, crate::gmail::libelles::INBOX).await?;
 
     let registre = crate::archives::retirer(crate::archives::charger(&config, &compte), &id);
     crate::archives::enregistrer(&config, &compte, &registre)?;
 
-    log::info!("message retiré de la table, toujours archivé chez Gmail");
+    log::info!("message retiré de la table, remis dans la boîte de réception (INBOX) sur Gmail");
     Ok(())
 }
 
@@ -958,7 +968,11 @@ pub async fn tas_defaire(
 ) -> Resultat<()> {
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
 
-    client.retirer_libelle_lot(&ids, &libelle).await?;
+    // Le retrait des messages peut échouer si certains ont été effacés sur Gmail.
+    // On l'enregistre en journal sans bloquer la suppression finale du libellé.
+    if let Err(e) = client.retirer_libelle_lot(&ids, &libelle).await {
+        log::warn!("Impossible de retirer le libellé des messages en lot : {e}");
+    }
     client.supprimer_libelle(&libelle).await?;
 
     for id in &ids {

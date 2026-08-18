@@ -55,17 +55,7 @@ export function ListeMessages({
   onBasculer?: (id: string) => void
 }) {
   return (
-    <div
-      className="flex flex-none flex-col overflow-y-auto border-r"
-      // `--sunk` plutôt que `--side` : c'est ce fond qui fait le gris des
-      // messages lus, et il doit se distinguer du blanc d'un message non lu
-      // autant que de la barre latérale, qui le jouxte.
-      style={{
-        width: LARGEUR_LISTE,
-        background: 'var(--sunk)',
-        borderColor: 'var(--line)',
-      }}
-    >
+    <div className="flex-1 overflow-y-auto">
       {messages.map((m, i) => {
         const [fond, encre] = palette(i)
         const choisi = m.id === selection

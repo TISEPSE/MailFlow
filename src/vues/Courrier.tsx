@@ -16,6 +16,7 @@ import {
   SqueletteLecture,
   SqueletteListe,
   Vide,
+  LARGEUR_LISTE,
 } from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
@@ -161,7 +162,9 @@ export function Courrier({
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault()
-        setCoches(new Set(messages.map((m) => m.id)))
+        setCoches((deja) =>
+          deja.size === messages.length ? new Set() : new Set(messages.map((m) => m.id))
+        )
         return
       }
 
@@ -273,19 +276,14 @@ export function Courrier({
 
   return (
     <div className="flex min-h-0 flex-1">
-      <ListeMessages
-        messages={messages}
-        selection={choisi.id}
-        onSelect={(id) => {
-          setSelection(id)
-          onOuvrir(id)
+      <div
+        className="flex flex-none flex-col border-r overflow-hidden"
+        style={{
+          width: LARGEUR_LISTE,
+          background: 'var(--sunk)',
+          borderColor: 'var(--line)',
         }}
-        logos={logos}
-        comptes={comptes}
-        coches={coches}
-        onBasculer={basculer}
-      />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      >
         {coches.size > 0 && (
           <BarreSelection
             nombre={coches.size}
@@ -295,8 +293,22 @@ export function Courrier({
             onAnnuler={viderLaSelection}
           />
         )}
+        <ListeMessages
+          messages={messages}
+          selection={choisi.id}
+          onSelect={(id) => {
+            setSelection(id)
+            onOuvrir(id)
+          }}
+          logos={logos}
+          comptes={comptes}
+          coches={coches}
+          onBasculer={basculer}
+        />
+      </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Lecture
-        message={choisi}
+          message={choisi}
         corps={corps}
         chargement={chargementCorps}
         attente={attenteCorps}
@@ -451,30 +463,48 @@ function BarreSelection({
   return (
     <div
       role="status"
-      className="flex flex-none items-center gap-2 border-b px-4 py-2"
+      className="flex flex-none items-center justify-between border-b px-4 py-1.5 transition-all duration-150"
       style={{ background: 'var(--accent-soft)', borderColor: 'var(--line)' }}
     >
-      <Icone nom="check_circle" taille="1rem" rempli style={{ color: 'var(--accent)' }} />
-      <span className="text-[0.8125rem] font-semibold">
-        {nombre} message{nombre > 1 ? 's' : ''} sélectionné{nombre > 1 ? 's' : ''}
-      </span>
-      <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
-        Ctrl+clic pour en ajouter, Ctrl+A pour tout prendre
-      </span>
+      <div className="flex items-center gap-2.5">
+        <Icone nom="check_circle" taille="1.125rem" rempli style={{ color: 'var(--accent)' }} />
+        <span className="text-[0.8125rem] font-semibold text-[var(--fg)]">
+          {nombre} message{nombre > 1 ? 's' : ''} sélectionné{nombre > 1 ? 's' : ''}
+        </span>
+        <span className="hidden sm:inline text-[0.6875rem] font-medium" style={{ color: 'var(--sub)' }}>
+          (Ctrl+A pour tout désélectionner)
+        </span>
+      </div>
 
-      <span className="flex flex-1 items-center justify-end gap-2">
+      <div className="flex items-center gap-1.5">
         {archivable && (
-          <Bouton compact variante="principal" icone="archive" onClick={onArchiver}>
-            Archiver
-          </Bouton>
+          <button
+            type="button"
+            onClick={onArchiver}
+            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(0,0,0,0.06)] dark:hover:bg-[rgba(255,255,255,0.08)] transition-colors text-[var(--accent)]"
+            title="Archiver"
+          >
+            <Icone nom="archive" taille="1.125rem" />
+          </button>
         )}
-        <Bouton compact variante="danger" icone="delete" onClick={onSupprimer}>
-          Supprimer
-        </Bouton>
-        <Bouton compact icone="close" onClick={onAnnuler}>
-          Annuler
-        </Bouton>
-      </span>
+        <button
+          type="button"
+          onClick={onSupprimer}
+          className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(217,48,37,0.08)] transition-colors text-[#d93025]"
+          title="Supprimer"
+        >
+          <Icone nom="delete" taille="1.125rem" />
+        </button>
+        <div className="h-4 w-[1px] bg-[var(--line)] mx-1" />
+        <button
+          type="button"
+          onClick={onAnnuler}
+          className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(0,0,0,0.06)] dark:hover:bg-[rgba(255,255,255,0.08)] transition-colors"
+          title="Annuler"
+        >
+          <Icone nom="close" taille="1.125rem" style={{ color: 'var(--sub)' }} />
+        </button>
+      </div>
     </div>
   )
 }
