@@ -1296,7 +1296,7 @@ export default function App() {
                       nom={glyphe}
                       taille="1.25rem"
                       rempli={actif}
-                      style={{ color: actif ? 'var(--accent)' : solide }}
+                      style={{ color: solide }}
                     />
                     {repliee &&
                       (releveEnCours ? (
