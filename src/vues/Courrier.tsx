@@ -277,7 +277,7 @@ export function Courrier({
   return (
     <div className="flex min-h-0 flex-1">
       <div
-        className="flex flex-none flex-col border-r overflow-hidden"
+        className="flex flex-none flex-col border-r overflow-hidden h-full min-h-0"
         style={{
           width: LARGEUR_LISTE,
           background: 'var(--sunk)',

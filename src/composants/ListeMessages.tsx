@@ -54,7 +54,7 @@ export function ListeMessages({
   onBasculer?: (id: string) => void
 }) {
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
       {messages.map((m, i) => {
         const [fond, encre] = palette(i)
         const choisi = m.id === selection
