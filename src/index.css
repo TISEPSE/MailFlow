@@ -135,6 +135,14 @@ body {
   background-clip: content-box;
 }
 
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Réduit les animations pour qui l'a demandé au système.
 
    Toutes, sauf celles qui portent une information. Une barre qui avance, une
@@ -341,7 +349,7 @@ textarea:focus-visible {
 
 [data-mf='sombre'] .bouton-principal {
   background: var(--accent);
-  color: #041e49;
+  color: #ffffff;
 }
 
 .bouton-principal:hover:not(:disabled) {
