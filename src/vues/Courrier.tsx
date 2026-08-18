@@ -466,22 +466,19 @@ function BarreSelection({
       className="flex flex-none items-center justify-between border-b px-4 py-1.5 transition-all duration-150"
       style={{ background: 'var(--accent-soft)', borderColor: 'var(--line)' }}
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2">
         <Icone nom="check_circle" taille="1.125rem" rempli style={{ color: 'var(--accent)' }} />
         <span className="text-[0.8125rem] font-semibold text-[var(--fg)]">
           {nombre} message{nombre > 1 ? 's' : ''} sélectionné{nombre > 1 ? 's' : ''}
         </span>
-        <span className="hidden sm:inline text-[0.6875rem] font-medium" style={{ color: 'var(--sub)' }}>
-          (Ctrl+A pour tout désélectionner)
-        </span>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         {archivable && (
           <button
             type="button"
             onClick={onArchiver}
-            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(0,0,0,0.06)] dark:hover:bg-[rgba(255,255,255,0.08)] transition-colors text-[var(--accent)]"
+            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] active:scale-90 transition-all duration-150 text-[var(--accent)] cursor-pointer"
             title="Archiver"
           >
             <Icone nom="archive" taille="1.125rem" />
@@ -490,7 +487,7 @@ function BarreSelection({
         <button
           type="button"
           onClick={onSupprimer}
-          className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(217,48,37,0.08)] transition-colors text-[#d93025]"
+          className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(217,48,37,0.18)] active:scale-90 transition-all duration-150 text-[#d93025] cursor-pointer"
           title="Supprimer"
         >
           <Icone nom="delete" taille="1.125rem" />
@@ -499,10 +496,10 @@ function BarreSelection({
         <button
           type="button"
           onClick={onAnnuler}
-          className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(0,0,0,0.06)] dark:hover:bg-[rgba(255,255,255,0.08)] transition-colors"
-          title="Annuler"
+          className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,var(--fg)_14%,transparent)] active:scale-90 transition-all duration-150 text-[var(--fg)] cursor-pointer"
+          title="Désélectionner tout"
         >
-          <Icone nom="close" taille="1.125rem" style={{ color: 'var(--sub)' }} />
+          <Icone nom="close" taille="1.125rem" />
         </button>
       </div>
     </div>
