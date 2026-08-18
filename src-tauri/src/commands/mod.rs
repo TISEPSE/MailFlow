@@ -828,7 +828,9 @@ pub async fn archive_retirer(
         TransportHttp::nouveau()?,
         jetons_pour(&etat, &compte_actif(&app), Some(&compte)),
     );
-    client.poser_libelle(&id, crate::gmail::libelles::INBOX).await?;
+    client
+        .poser_libelle(&id, crate::gmail::libelles::INBOX)
+        .await?;
 
     let registre = crate::archives::retirer(crate::archives::charger(&config, &compte), &id);
     crate::archives::enregistrer(&config, &compte, &registre)?;
