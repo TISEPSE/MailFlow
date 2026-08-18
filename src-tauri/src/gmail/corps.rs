@@ -226,6 +226,76 @@ pub fn pieces_par_cid(charge: &Charge) -> HashMap<String, String> {
     table
 }
 
+/// Les parties de texte que Gmail n'a pas servies en ligne.
+///
+/// # Pourquoi elles existent
+///
+/// Gmail remplace parfois le contenu d'une partie par une **référence** : le
+/// corps porte alors un `attachmentId` et aucun `data`. La partie n'est pas une
+/// pièce jointe pour autant — elle n'a pas de nom de fichier, et c'est bien la
+/// lettre. Sans ce rattrapage, un message dont Gmail affiche pourtant l'extrait
+/// arrivait entièrement vide, et l'application en concluait qu'il n'y avait
+/// rien à lire ni à résumer.
+///
+/// Rend les couples `(type MIME, identifiant de la partie)`, dans l'ordre du
+/// document.
+pub fn textes_par_reference(charge: &Charge) -> Vec<(String, String)> {
+    let mut trouvees = Vec::new();
+    collecter_references(charge, &mut trouvees);
+    trouvees
+}
+
+fn collecter_references(charge: &Charge, trouvees: &mut Vec<(String, String)>) {
+    let mime = charge.mime_type.as_deref().unwrap_or("");
+    let piece_jointe = charge.filename.as_deref().is_some_and(|f| !f.is_empty());
+
+    if !piece_jointe
+        && matches!(mime, "text/plain" | "text/html")
+        && let Some(body) = charge.body.as_ref()
+        && body.data.is_none()
+        && let Some(id) = body.attachment_id.as_deref()
+    {
+        trouvees.push((mime.to_string(), id.to_string()));
+    }
+
+    for partie in &charge.parts {
+        collecter_references(partie, trouvees);
+    }
+}
+
+/// Décrit la structure d'un message, pour le journal.
+///
+/// Écrit uniquement quand rien n'a pu être lu : ce jour-là, savoir de quoi le
+/// message était fait est la seule chose qui permette de comprendre. Les types
+/// MIME et les tailles, jamais le contenu — le journal reste sur la machine,
+/// mais il n'a aucune raison de porter du courrier.
+pub fn description_des_parties(charge: &Charge) -> String {
+    let mut morceaux = Vec::new();
+    decrire(charge, &mut morceaux);
+    morceaux.join(", ")
+}
+
+fn decrire(charge: &Charge, morceaux: &mut Vec<String>) {
+    let mime = charge.mime_type.as_deref().unwrap_or("sans type");
+    let nomme = charge.filename.as_deref().is_some_and(|f| !f.is_empty());
+    let etat = match charge.body.as_ref() {
+        Some(b) if b.data.is_some() => "en ligne",
+        Some(b) if b.attachment_id.is_some() => "par référence",
+        Some(_) => "vide",
+        None => "sans corps",
+    };
+    let taille = charge.body.as_ref().and_then(|b| b.size).unwrap_or(0);
+
+    morceaux.push(format!(
+        "{mime}({etat}, {taille} o{})",
+        if nomme { ", nommée" } else { "" }
+    ));
+
+    for partie in &charge.parts {
+        decrire(partie, morceaux);
+    }
+}
+
 fn collecter_cid(charge: &Charge, table: &mut HashMap<String, String>) {
     let identifiant = charge
         .headers
@@ -1386,6 +1456,63 @@ mod tests {
 
             assert!(lire_resume(dossier.path(), "vivant").is_some());
             assert!(lire_resume(dossier.path(), "disparu").is_none());
+        }
+
+        /// Gmail sert parfois la lettre par référence : la partie porte un
+        /// identifiant au lieu de son contenu. Sans ce rattrapage, le message
+        /// arrivait vide alors que Gmail en affiche pourtant l'extrait.
+        #[test]
+        fn une_partie_de_texte_servie_par_reference_est_reperee() {
+            let message = Charge {
+                mime_type: Some("multipart/mixed".into()),
+                parts: vec![
+                    Charge {
+                        mime_type: Some("text/plain".into()),
+                        body: Some(CorpsPartie {
+                            attachment_id: Some("partie-1".into()),
+                            size: Some(4096),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    partie("text/html", "<p>en ligne</p>"),
+                ],
+                ..Default::default()
+            };
+
+            assert_eq!(
+                textes_par_reference(&message),
+                [("text/plain".to_string(), "partie-1".to_string())]
+            );
+        }
+
+        /// Une vraie pièce jointe, elle, n'est pas la lettre — même en HTML.
+        #[test]
+        fn une_piece_jointe_n_est_pas_prise_pour_du_texte_par_reference() {
+            let mut jointe = partie("text/html", "");
+            jointe.filename = Some("facture.html".into());
+            jointe.body = Some(CorpsPartie {
+                attachment_id: Some("piece-1".into()),
+                ..Default::default()
+            });
+
+            assert!(textes_par_reference(&jointe).is_empty());
+        }
+
+        /// Le journal doit permettre de comprendre, sans porter de courrier.
+        #[test]
+        fn la_description_dit_la_structure_sans_le_contenu() {
+            let message = Charge {
+                mime_type: Some("multipart/mixed".into()),
+                parts: vec![partie("text/plain", "bonjour les amis")],
+                ..Default::default()
+            };
+
+            let dite = description_des_parties(&message);
+
+            assert!(dite.contains("multipart/mixed"));
+            assert!(dite.contains("text/plain(en ligne"));
+            assert!(!dite.contains("bonjour"));
         }
 
         /// Certains expéditeurs mettent tout en pièce jointe : il n'y a rien à

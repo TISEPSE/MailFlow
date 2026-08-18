@@ -734,11 +734,31 @@ function CarteGroupe({
   /** Le numéro effectivement à l'écran. */
   const courant = groupe.messages.find((m) => m.id === visible) ?? groupe.messages[0]
 
-  /** Les autres numéros — ceux que la liste dépliée propose encore.
+  /**
+   * Le résumé est-il ce qu'on regarde ?
+   *
+   * # Pourquoi c'est une place à part
+   *
+   * Le résumé s'affichait à l'endroit exact où se lit un numéro, et la liste
+   * dépliée n'en parlait pas : rien ne disait qu'on regardait la publication
+   * entière plutôt que le mail du dessus, et une fois descendu dans la pile on
+   * ne pouvait plus y revenir. Il occupe donc désormais **sa propre entrée**,
+   * en tête de la liste — une chose qu'on choisit, comme on choisit un numéro,
+   * au lieu d'une chose qui prend la place d'un autre.
+   *
+   * `null` désigne cette entrée, et c'est la position de départ quand un
+   * résumé existe : c'est ce qu'on vient lire.
+   */
+  const montreLeResume = Boolean(resume) && visible === null
+
+  /** Les numéros que la liste dépliée propose encore.
    *
    *  Celui qui est à l'écran en est retiré : le laisser laissait croire qu'il
-   *  restait à cliquer, et le clic ne faisait alors rien de visible. */
-  const autres = groupe.messages.filter((m) => m.id !== courant.id)
+   *  restait à cliquer, et le clic ne faisait alors rien de visible. Devant le
+   *  résumé, en revanche, aucun numéro n'est à l'écran : ils sont tous là. */
+  const autres = montreLeResume
+    ? groupe.messages
+    : groupe.messages.filter((m) => m.id !== courant.id)
 
   const contenu = useRef<HTMLDivElement>(null)
 
@@ -757,8 +777,11 @@ function CarteGroupe({
    * étroite, deux textes qui se croisent font illisible une fraction de
    * seconde. D'où l'attente de la fin de la sortie avant de changer d'état.
    */
-  const changerDeNumero = (id: string) => {
-    if (id === courant.id || enTransit.current) return
+  const changerDeNumero = (id: string | null) => {
+    // `null` désigne le résumé de la publication, qui a sa propre entrée dans
+    // la liste. Il n'est jamais « déjà à l'écran » au sens d'un numéro.
+    if (enTransit.current) return
+    if (id === null ? montreLeResume : id === courant.id && !montreLeResume) return
 
     const bloc = contenu.current
     // Le réglage système prime : une animation imposée à qui l'a désactivée
@@ -883,12 +906,16 @@ function CarteGroupe({
             relance le fondu. Sans lui, React réutiliserait les mêmes nœuds et
             le texte se remplacerait d'un coup, sans qu'on voie qu'il a
             changé — le clic paraîtrait alors n'avoir rien fait. */}
-        <div ref={contenu} key={courant.id} className="glisse-entre px-4 pt-3">
+        <div
+          ref={contenu}
+          key={montreLeResume ? 'resume' : courant.id}
+          className="glisse-entre px-4 pt-3"
+        >
           {/* Le résumé du modèle prend exactement la place de la ligne
               composée localement : même emplacement, même hauteur, même
               graisse. La page ne bouge pas d'un pixel selon qu'il est là ou
               non — c'est ce qui rend l'IA réellement optionnelle. */}
-          {resume ? (
+          {montreLeResume && resume ? (
             <>
               {/* Ce repère porte la couleur de la carte — celle de sa pastille.
                   Il dit deux choses d'un coup d'œil : que la phrase qui suit
@@ -911,24 +938,16 @@ function CarteGroupe({
 
               <p className="text-[0.8125rem] leading-relaxed font-medium">{resume.texte}</p>
 
-              {/* Le sujet du numéro regardé, en gris, seulement quand la pile
-                  en compte plusieurs : c'est alors la seule chose qui distingue
-                  un numéro de son voisin. Sur une carte à un seul numéro, il ne
-                  ferait que répéter ce que le résumé dit déjà. */}
-              {nombre > 1 && (
-                <p
-                  className="mt-1.5 text-[0.75rem] leading-snug"
-                  style={{ color: 'var(--sub)' }}
-                >
-                  {ligneLocale(courant)}
-                </p>
-              )}
             </>
           ) : muette ? (
-            // Tout est en pièce jointe : un planning en PDF, une facture
-            // scannée. Il n'y a rien à envoyer, et il n'y en aura jamais. Le
-            // dire vaut mieux que de laisser une étincelle qui, cliquée,
-            // ne fait rien — un bouton sans effet se lit comme une panne.
+            // Le message n'a pas un mot à envoyer : tout est en pièce jointe,
+            // ou l'expéditeur n'a rien écrit. Le dire vaut mieux que de laisser
+            // une étincelle qui, cliquée, ne fait rien — un bouton sans effet
+            // se lit comme une panne.
+            //
+            // La phrase ne nomme pas les pièces jointes : la carte ne les
+            // connaît pas, et affirmer qu'il y en a devant un message qui n'en
+            // a pas serait remplacer une confusion par une autre.
             <>
               <p className="text-[0.8125rem] leading-relaxed font-medium">
                 {ligneLocale(courant)}
@@ -939,7 +958,7 @@ function CarteGroupe({
                   taille="0.75rem"
                   className="mr-1 inline-block align-[-0.1em]"
                 />
-                Rien à résumer : tout est en pièce jointe.
+                Rien à résumer : ce message n'a pas de texte.
               </p>
             </>
           ) : (
@@ -948,7 +967,10 @@ function CarteGroupe({
             </p>
           )}
 
-          {decompte && (
+          {/* Le dépliant paraît dès qu'il y a quelque chose derrière : les
+              autres numéros, ou — sur une publication qui n'en a qu'un — le
+              numéro lui-même, dont le résumé occupe la place. */}
+          {autres.length > 0 && (
             <button
               type="button"
               onClick={() => setDeplie(!deplie)}
@@ -969,12 +991,14 @@ function CarteGroupe({
               {/* Le libellé descend d'un cheveu pour se poser sur l'axe de la
                   flèche : même correction optique qu'aux boutons et aux
                   pastilles, voir `.texte-optique`. */}
-              <span className="texte-optique">{deplie ? 'Replier' : decompte}</span>
+              <span className="texte-optique">
+                {deplie ? 'Replier' : decompte || '1 mail'}
+              </span>
             </button>
           )}
         </div>
 
-        {autres.length > 0 && (
+        {(autres.length > 0 || (resume && !montreLeResume)) && (
           // Le dépliage passe par une grille dont l'unique rangée va de `0fr`
           // à `1fr` : la hauteur s'interpole d'elle-même, sans qu'on ait à la
           // mesurer ni à la figer. Une hauteur mesurée en JavaScript se
@@ -993,6 +1017,36 @@ function CarteGroupe({
                 className="mt-3 flex max-h-[21rem] flex-col overflow-y-auto border-t"
                 style={{ borderColor: 'var(--line)' }}
               >
+            {/* Le résumé de la publication a son entrée, en tête, comme un
+                numéro en aurait une. C'est ce qui le rend **choisissable** :
+                descendu dans la pile, on peut y revenir — et sa présence dans
+                la liste dit qu'il est autre chose qu'un mail, sans avoir à
+                l'expliquer. Il porte la couleur de la carte, la même qu'en
+                tête, pour qu'on reconnaisse ce qu'on va retrouver. */}
+            {resume && !montreLeResume && (
+              <li
+                className="flex items-center gap-2 border-b px-4 py-2"
+                style={{ borderColor: 'var(--line)' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => changerDeNumero(null)}
+                  className="survolable flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[0.75rem] font-semibold"
+                  title="Revenir au résumé de la publication"
+                >
+                  <Icone
+                    nom="auto_awesome"
+                    taille="0.8125rem"
+                    rempli
+                    className="flex-none"
+                    style={{ color: encre }}
+                  />
+                  <span className="truncate">
+                    {nombre > 1 ? `Résumé des ${nombre} numéros` : 'Résumé de la publication'}
+                  </span>
+                </button>
+              </li>
+            )}
             {autres.map((m) => (
               <li
                 key={m.id}

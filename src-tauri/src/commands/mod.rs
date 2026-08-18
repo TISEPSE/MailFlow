@@ -1104,6 +1104,29 @@ where
         .map(corps::extraire)
         .unwrap_or_default();
 
+    // Gmail sert parfois la lettre par référence plutôt qu'en ligne : la partie
+    // porte un identifiant au lieu de son contenu. Elle n'est pas une pièce
+    // jointe — elle n'a pas de nom de fichier — et sans ce rattrapage le
+    // message arrivait vide alors que Gmail en affiche l'extrait.
+    if trouve.html.is_none()
+        && trouve.texte.is_none()
+        && let Some(payload) = message.payload.as_ref()
+    {
+        for (mime, piece) in corps::textes_par_reference(payload) {
+            match client.piece_jointe(id, &piece).await {
+                Ok(octets) => {
+                    let texte = String::from_utf8_lossy(&octets).into_owned();
+                    match mime.as_str() {
+                        "text/html" if trouve.html.is_none() => trouve.html = Some(texte),
+                        "text/plain" if trouve.texte.is_none() => trouve.texte = Some(texte),
+                        _ => {}
+                    }
+                }
+                Err(e) => log::info!("partie de texte non rapatriée : {e}"),
+            }
+        }
+    }
+
     trouve.html = trouve.html.as_deref().map(corps::assainir);
 
     if let Some(html) = trouve.html.as_deref() {
@@ -1127,14 +1150,21 @@ where
         trouve.pieces.retain(|p| !integrees.contains(p.id.as_str()));
     }
 
-    log::info!(
-        "corps lu : {}",
-        match (&trouve.html, &trouve.texte) {
-            (Some(_), _) => "html",
-            (None, Some(_)) => "texte seul",
-            _ => "aucun",
-        }
-    );
+    match (&trouve.html, &trouve.texte) {
+        (Some(_), _) => log::info!("corps lu : html"),
+        (None, Some(_)) => log::info!("corps lu : texte seul"),
+        // Rien n'a pu être lu. Dire de quoi le message était fait est la seule
+        // chose qui permette de comprendre pourquoi, le jour où cela se
+        // reproduit : les types et les tailles, jamais le contenu.
+        _ => log::info!(
+            "corps lu : aucun — parties : {}",
+            message
+                .payload
+                .as_ref()
+                .map(corps::description_des_parties)
+                .unwrap_or_else(|| "aucune".into())
+        ),
+    }
     corps::ranger(dossier, id, &trouve);
     Ok(trouve)
 }
