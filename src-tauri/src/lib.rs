@@ -138,7 +138,6 @@ pub fn run() {
             commands::resumes::resumes_produire,
             commands::resumes::resumes_arreter,
             commands::resumes::synthese_produire,
-
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de l'application Tauri");
