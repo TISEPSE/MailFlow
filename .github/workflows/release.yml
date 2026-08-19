@@ -229,10 +229,6 @@ jobs:
             descendez jusqu'à « Sécurité » : MailFlow y est nommé, avec un
             bouton **Ouvrir quand même**. Une seule fois — les lancements
             suivants ne demandent plus rien.
-          # Un tag suffixé — « v0.1.0-beta.1 » — est une pré-version : elle
-          # paraît aussitôt, marquée comme telle, parce qu'elle n'existe que
-          # pour être essayée. Une version définitive reste au contraire en
-          # brouillon, le temps de la relire avant de la rendre publique.
-          releaseDraft: ${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+          releaseDraft: false
           prerelease: ${{ github.ref_type != 'tag' || contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
