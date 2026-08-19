@@ -4,6 +4,8 @@
   "description": "Permissions de la fenêtre principale. Volontairement minimales : le webview affiche du HTML d'e-mail, donc du contenu non fiable. Rien n'est ajouté ici sans qu'une vue en ait un besoin démontré.",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

@@ -207,6 +207,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MAILFLOW_GOOGLE_CLIENT_ID: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_ID }}
           MAILFLOW_GOOGLE_CLIENT_SECRET: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_SECRET }}
+          # Clés de signature pour la mise à jour automatique. Le binaire est
+          # signé par la clé privée ; l'application vérifie la signature avec
+          # la clé publique figée dans tauri.conf.json. Sans ces deux secrets,
+          # les artefacts sont construits sans signature, et le fichier
+          # latest.json n'est pas généré — la mise à jour silencieuse est alors
+          # impossible, mais le bouton « Télécharger » reste fonctionnel.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v0.0.0-dev-{0}', github.run_number) }}
           releaseName: 'MailFlow ${{ github.ref_type == ''tag'' && github.ref_name || ''(build de développement)'' }}'

@@ -20,7 +20,6 @@ pub mod error;
 pub mod gmail;
 pub mod html;
 pub mod llm;
-pub mod maj;
 pub mod rules;
 pub mod secrets;
 pub mod sortie;
@@ -30,6 +29,8 @@ pub mod tableau;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(liens_vers_le_navigateur())
         .setup(|app| {
             // Le journal est écrit **dans toutes les constructions**, pas
@@ -137,8 +138,7 @@ pub fn run() {
             commands::resumes::resumes_produire,
             commands::resumes::resumes_arreter,
             commands::resumes::synthese_produire,
-            commands::maj_verifier,
-            commands::maj_ouvrir,
+
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de l'application Tauri");

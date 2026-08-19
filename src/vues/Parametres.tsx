@@ -26,8 +26,6 @@ import {
   llmCleEffacer,
   llmCleEnregistrer,
   llmEtat,
-  majOuvrir,
-  majVerifier,
   messageDErreur,
 } from '../lib/tauri'
 import type {
@@ -35,7 +33,6 @@ import type {
   EtatApplication,
   EtatLlm,
   ProfilCompte,
-  VerificationMaj,
 } from '../types/backend'
 
 /** Même orangé que les notifications d'erreur : un refus se reconnaît d'un
@@ -778,61 +775,141 @@ function Statut({ ok }: { ok: boolean }) {
 }
 
 /**
- * Vérification des mises à jour.
+ * Mise à jour automatique intégrée.
  *
- * Rien n'est téléchargé ni installé ici : on demande à GitHub quelle est la
- * dernière version publiée, et on ouvre la page si elle est plus récente. La
- * mise à jour silencieuse supposerait une paire de clés de signature, faute de
- * quoi l'application exécuterait un binaire reçu du réseau sur parole.
+ * Le plugin `tauri-plugin-updater` interroge le fichier `latest.json` attaché
+ * à la dernière publication GitHub, vérifie la signature Ed25519, télécharge
+ * le binaire et l'installe — le tout sans que l'utilisateur quitte
+ * l'application.
+ *
+ * Flux : Vérifier → télécharger (avec pourcentage) → installer → relancer.
  */
 function MiseAJour({ onErreur }: { onErreur: (message: string) => void }) {
-  const [etat, setEtat] = useState<'repos' | 'verifie' | 'fait'>('repos')
-  const [resultat, setResultat] = useState<VerificationMaj | null>(null)
+  const [phase, setPhase] = useState<
+    'repos' | 'verifie' | 'a_jour' | 'disponible' | 'telecharge' | 'pret' | 'installe'
+  >('repos')
+  const [version, setVersion] = useState<string | null>(null)
+  const [progression, setProgression] = useState(0)
 
   const verifier = async () => {
-    setEtat('verifie')
+    setPhase('verifie')
     try {
-      const v = await majVerifier()
-      setResultat(v)
-      setEtat('fait')
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const maj = await check()
+      if (maj) {
+        setVersion(maj.version)
+        setPhase('disponible')
+      } else {
+        setPhase('a_jour')
+      }
     } catch (e) {
       onErreur(messageDErreur(e))
-      setEtat('repos')
+      setPhase('repos')
     }
   }
 
-  const detail = () => {
-    if (etat === 'verifie') return 'Interrogation de GitHub…'
-    if (!resultat) return "MailFlow demandera à GitHub s'il existe une version plus récente."
-    if (resultat.disponible) {
-      return `Version ${resultat.versionPubliee} disponible (vous avez la ${resultat.versionActuelle}).`
+  const installer = async () => {
+    setPhase('telecharge')
+    setProgression(0)
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const maj = await check()
+      if (!maj) {
+        setPhase('a_jour')
+        return
+      }
+
+      let totalRecu = 0
+      let totalAttendu = 0
+
+      await maj.downloadAndInstall((ev) => {
+        if (ev.event === 'Started' && ev.data.contentLength) {
+          totalAttendu = ev.data.contentLength
+        } else if (ev.event === 'Progress') {
+          totalRecu += ev.data.chunkLength
+          if (totalAttendu > 0) {
+            setProgression(Math.round((totalRecu / totalAttendu) * 100))
+          }
+        } else if (ev.event === 'Finished') {
+          setProgression(100)
+        }
+      })
+
+      setPhase('pret')
+    } catch (e) {
+      onErreur(messageDErreur(e))
+      setPhase('repos')
     }
-    if (!resultat.versionPubliee) {
-      return "Aucune version n'est encore publiée sur le dépôt."
+  }
+
+  const relancer = async () => {
+    setPhase('installe')
+    try {
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
+    } catch (e) {
+      onErreur(messageDErreur(e))
+      setPhase('repos')
     }
-    return `Vous avez la dernière version (${resultat.versionActuelle}).`
+  }
+
+  const detail = (): string => {
+    switch (phase) {
+      case 'verifie':
+        return 'Vérification en cours…'
+      case 'a_jour':
+        return 'Vous avez la dernière version.'
+      case 'disponible':
+        return `Version ${version} disponible.`
+      case 'telecharge':
+        return `Téléchargement… ${progression} %`
+      case 'pret':
+        return `Version ${version} prête. Redémarrez pour l'appliquer.`
+      case 'installe':
+        return 'Redémarrage…'
+      default:
+        return "Vérifie s'il existe une version plus récente."
+    }
+  }
+
+  const bouton = () => {
+    switch (phase) {
+      case 'disponible':
+        return (
+          <Bouton variante="principal" icone="download" onClick={() => void installer()}>
+            Installer
+          </Bouton>
+        )
+      case 'pret':
+        return (
+          <Bouton variante="principal" icone="refresh" onClick={() => void relancer()}>
+            Redémarrer
+          </Bouton>
+        )
+      case 'telecharge':
+      case 'installe':
+        return (
+          <Bouton icone="refresh" enAttente disabled>
+            {phase === 'telecharge' ? `${progression} %` : 'Redémarrage…'}
+          </Bouton>
+        )
+      default:
+        return (
+          <Bouton
+            icone="refresh"
+            enAttente={phase === 'verifie'}
+            disabled={phase === 'verifie'}
+            onClick={() => void verifier()}
+          >
+            {phase === 'verifie' ? 'Vérification…' : 'Vérifier'}
+          </Bouton>
+        )
+    }
   }
 
   return (
     <Reglage icone="refresh" titre="Mises à jour" detail={detail()}>
-      {resultat?.disponible ? (
-        <Bouton
-          variante="principal"
-          icone="open_in_new"
-          onClick={() => void majOuvrir().catch((e) => onErreur(messageDErreur(e)))}
-        >
-          Télécharger
-        </Bouton>
-      ) : (
-        <Bouton
-          icone="refresh"
-          enAttente={etat === 'verifie'}
-          disabled={etat === 'verifie'}
-          onClick={() => void verifier()}
-        >
-          {etat === 'verifie' ? 'Vérification…' : 'Vérifier'}
-        </Bouton>
-      )}
+      {bouton()}
     </Reglage>
   )
 }

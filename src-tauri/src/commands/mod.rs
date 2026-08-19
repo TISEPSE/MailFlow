@@ -1829,23 +1829,6 @@ fn url_mailto(destinataire: &str, sujet: &str, copies: &[String]) -> Resultat<St
     Ok(url)
 }
 
-/// Demande à GitHub s'il existe une version plus récente.
-///
-/// Rien n'est téléchargé ni installé : la commande rend un constat, et c'est
-/// l'utilisateur qui décide d'aller voir. La mise à jour silencieuse
-/// supposerait une paire de clés de signature — voir [`crate::maj`].
-#[tauri::command]
-pub async fn maj_verifier(app: AppHandle) -> Resultat<crate::maj::Verification> {
-    let verification = crate::maj::verifier(&app.package_info().version.to_string()).await?;
-
-    log::info!(
-        "mise à jour : publiée={:?}, disponible={}",
-        verification.version_publiee,
-        verification.disponible
-    );
-    Ok(verification)
-}
-
 /// Ouvre dans le navigateur du système un lien cliqué dans un message.
 ///
 /// # Pourquoi cette commande existe
@@ -1889,30 +1872,6 @@ pub async fn lien_ouvrir(url: String) -> Resultat<()> {
     // Passe par `crate::sortie` et non par le greffon : depuis une AppImage,
     // l'enfant hériterait des bibliothèques embarquées et mourrait au
     // démarrage, sans un mot. Voir le module pour le détail.
-    crate::sortie::ouvrir(sortie.as_str())
-}
-
-/// Ouvre la page d'une publication dans le navigateur du système.
-///
-/// L'adresse n'est pas reçue du frontend mais redemandée à GitHub : une adresse
-/// qui traverserait l'IPC pourrait être remplacée en chemin, et ce bouton
-/// ouvrirait alors une page choisie par quelqu'un d'autre.
-#[tauri::command]
-pub async fn maj_ouvrir(app: AppHandle) -> Resultat<()> {
-    let verification = crate::maj::verifier(&app.package_info().version.to_string()).await?;
-
-    let Some(adresse) = verification.adresse else {
-        return Err(AppError::Reseau("aucune version publiée".into()));
-    };
-
-    // L'adresse vient de la réponse de GitHub. Elle est donc extérieure, et
-    // passe par la même garde que les liens d'e-mail : la confiance accordée à
-    // une source ne dispense pas de vérifier ce qu'elle envoie.
-    let sortie = tauri::Url::parse(&adresse)
-        .ok()
-        .filter(crate::sortie_autorisee)
-        .ok_or_else(|| AppError::Reseau("adresse de publication inattendue".into()))?;
-
     crate::sortie::ouvrir(sortie.as_str())
 }
 
