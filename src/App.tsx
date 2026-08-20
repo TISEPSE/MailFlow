@@ -462,7 +462,7 @@ export default function App() {
    * moitié des gestes échoue.
    */
   const archivesVisibles = useMemo(
-    () => (melange ? [] : archivesDuCompte(archives, compteRegarde)),
+    () => (melange ? archives : archivesDuCompte(archives, compteRegarde)),
     [archives, melange, compteRegarde],
   )
 
@@ -1579,6 +1579,7 @@ export default function App() {
               archives={archivesVisibles}
               libelles={libelles}
               compte={compteRegarde}
+              comptes={comptes}
               tableau={tableau}
               onTableau={poserSurLaTable}
               sombre={sombre}

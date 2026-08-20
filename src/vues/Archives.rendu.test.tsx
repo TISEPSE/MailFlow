@@ -106,13 +106,11 @@ describe('la table se rend sans lever', () => {
     expect(() => rendre([message('m1')], [], ancienne)).not.toThrow()
   })
 
-  it("invite à choisir un compte sous la vue mélangée", () => {
-    // La table est cloisonnée par compte jusque dans son fichier de
-    // disposition : mélangée, la moitié de ses gestes échouerait en silence.
+  it('affiche les archives par bloc de compte sous la vue mélangée', () => {
     const html = rendre([message('m1')], [], vide, true)
 
-    expect(html).toContain('Choisissez un compte')
-    expect(html).not.toContain('Sujet m1')
+    expect(html).toContain('Sujet m1')
+    expect(html).toContain('moi@gmail.com')
   })
 
   it('offre de supprimer chaque tuile', () => {

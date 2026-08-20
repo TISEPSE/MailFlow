@@ -53,6 +53,7 @@ import {
 import type { Pose } from '../lib/table'
 import { heureCourte, initiales, palette, ton } from '../lib/presentation'
 import type {
+  CompteConnu,
   CorpsMessage,
   LibelleGmail,
   MessageAffiche,
@@ -105,6 +106,7 @@ export function Archives({
   archives,
   libelles,
   compte,
+  comptes,
   tableau,
   onTableau,
   sombre,
@@ -118,11 +120,12 @@ export function Archives({
   /** Adresse de la boîte regardée. Sert de repère, pas d'affichage : quand elle
    *  change, tout ce que la page retenait du compte précédent est lâché. */
   compte: string | null
+  comptes?: CompteConnu[]
   tableau: Tableau
   /** Appelée à chaque dépose : c'est elle qui écrit `tableau.json`. */
   onTableau: (tableau: Tableau) => void
   sombre: boolean
-  /** Vrai sous « Tous les comptes », où la table n'a pas de sens. */
+  /** Vrai sous « Tous les comptes ». */
   melange: boolean
   corpsConnus: ReadonlyMap<string, CorpsMessage>
   onCorpsCharge: (id: string, corps: CorpsMessage) => void
@@ -160,17 +163,6 @@ export function Archives({
 
   /**
    * Un tas par libellé **qui porte au moins une tuile**.
-   *
-   * La table énumérait tous les libellés Gmail, portants ou non, au motif qu'un
-   * tas vide reste une catégorie où déposer. À l'usage c'est faux : sur une
-   * boîte ordinaire, la table s'ouvrait couverte de « 0 message » qu'on ne peut
-   * ni lire ni ranger, et le plan de travail n'était plus un plan de travail.
-   *
-   * Les deux sens du classement continuent de circuler — un libellé posé depuis
-   * le téléphone arrive bien ici, mais **par ses messages** : `archives_synchroniser`
-   * relève `has:userlabels` et les fait entrer au registre, tuiles et tas d'un
-   * coup. Ce qu'on ne montre plus, ce sont les libellés qui n'avaient rien à
-   * montrer.
    */
   const tasVivants = useMemo(() => [...parTas.keys()], [parTas])
 
@@ -180,35 +172,13 @@ export function Archives({
   /** Tas dont on a déjà demandé la suppression. Un ordre suffit. */
   const signales = useRef(new Set<string>())
 
-  /**
-   * Vrai quand la table vient d'être modifiée par un geste de l'utilisateur.
-   *
-   * C'est la garde qui distingue « j'ai sorti la dernière tuile » de « le
-   * relevé a rendu une liste différente ». Sans elle, une relecture du
-   * classement Gmail — ou un simple changement de compte — pourrait faire
-   * tomber un tas à zéro sans que personne n'ait rien demandé, et emporter un
-   * libellé qui contient trois cents messages ailleurs.
-   */
   const apresUnGeste = useRef(false)
 
-  /** Le compte a changé : la mémoire des effectifs ne vaut plus rien.
-   *
-   *  Les identifiants de libellé d'une boîte ne désignent rien dans une autre.
-   *  Sans cette remise à zéro, basculer de compte ferait « tomber à zéro » tous
-   *  les tas du précédent — et les supprimerait dans le nouveau. */
   useEffect(() => {
     effectifs.current = new Map()
     signales.current = new Set()
   }, [compte])
 
-  /**
-   * Les gestes, tenus à part des dépendances de l'effet.
-   *
-   * La page les reçoit sous forme d'objet reconstruit à chaque rendu : les
-   * placer en dépendance ferait courir la détection à chaque rendu, y compris
-   * ceux où la table n'a pas bougé — et la garde du geste serait effacée avant
-   * d'avoir servi.
-   */
   const gestesRecents = useRef(gestes)
   useEffect(() => {
     gestesRecents.current = gestes
@@ -226,8 +196,6 @@ export function Archives({
     for (const [id, combien] of avant) {
       if (combien === 0 || maintenant.has(id) || signales.current.has(id)) continue
 
-      // Un libellé que Gmail ne liste plus n'a plus rien à supprimer : le tas a
-      // disparu parce que le libellé avait déjà été effacé ailleurs.
       const nom = nomsDesLibelles.get(id)
       if (!nom) continue
 
@@ -243,8 +211,7 @@ export function Archives({
   }, [])
 
   // La disposition complétée : ce qui a une place la garde, ce qui vient
-  // d'arriver en reçoit une. Sans cela, un message relevé depuis la dernière
-  // ouverture s'afficherait au coin supérieur gauche, sous tous les autres.
+  // d'arriver en reçoit une au coin supérieur gauche libre.
   const dispose = useMemo(
     () =>
       completer(
@@ -255,10 +222,7 @@ export function Archives({
     [tableau, tasVivants, seuls],
   )
 
-  /** Tout ce qui est posé, pour savoir ce qu'on survole en lâchant.
-   *
-   *  La taille en fait partie : un tas est plus court qu'une tuile, et viser
-   *  sous son bord inférieur, c'est viser la table. */
+  /** Tout ce qui est posé, pour savoir ce qu'on survole en lâchant. */
   const poses: Pose[] = useMemo(
     () => [
       ...tasVivants.map((id) => ({
@@ -293,10 +257,6 @@ export function Archives({
 
   /**
    * Ce qui se passe quand une tuile est lâchée.
-   *
-   * Trois issues, et l'ordre compte : on regarde d'abord si elle atterrit sur
-   * quelque chose, parce que c'est le geste porteur de sens. Le simple
-   * déplacement est ce qui reste quand rien n'a été visé.
    */
   const lacher = useCallback(
     (message: MessageAffiche, position: Position) => {
@@ -313,9 +273,6 @@ export function Archives({
         return
       }
 
-      // Lâchée sur une autre tuile : il faut un nom, donc un libellé à créer.
-      // On ne le devine pas — un tas nommé « Karim, Devis » que personne n'a
-      // choisi serait plus difficile à défaire qu'à faire.
       setANommer({ message: message.id, sur: cible.id })
     },
     [poses, poser, nomsDesLibelles, gestes],
@@ -340,17 +297,61 @@ export function Archives({
 
   const [accent] = ton('archive', sombre)
 
-  // La table est cloisonnée par compte jusque dans son fichier de disposition,
-  // et les libellés de l'un n'existent pas chez l'autre : une table mélangée
-  // serait une table dont la moitié des gestes échoue. Mieux vaut le dire que
-  // de laisser essayer.
+  // Sous « Tous les comptes », on montre les archives séparées dans des blocs distincts par compte.
   if (melange) {
     return (
-      <Vide
-        icone="archive"
-        titre="Choisissez un compte"
-        detail="Chaque compte a sa propre table : ses tas sont ses libellés Gmail, et la disposition des tuiles lui appartient. Sélectionnez un compte pour ouvrir la sienne."
-      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <VueArchivesMelangees
+          archives={archives}
+          comptes={comptes}
+          nomsDesLibelles={nomsDesLibelles}
+          accent={accent}
+          onOuvrir={ouvrir}
+          onSupprimer={setASupprimer}
+          onRetirer={(m) => {
+            noterLeGeste()
+            void gestes.onRetirer(m.id).catch((e) => gestes.onErreur(String(e)))
+          }}
+        />
+
+        {lu && (
+          <LecteurEnGrand
+            message={lu}
+            corps={corpsConnus.get(lu.id) ?? null}
+            onCorpsCharge={onCorpsCharge}
+            onFermer={() => setLu(null)}
+            actions={
+              <Bouton
+                variante="danger"
+                icone="delete"
+                onClick={() => {
+                  const cible = lu
+                  setLu(null)
+                  setASupprimer(cible)
+                }}
+              >
+                Supprimer
+              </Bouton>
+            }
+          />
+        )}
+
+        {aSupprimer && (
+          <Confirmation
+            titre="Supprimer ce message ?"
+            sous={`« ${aSupprimer.sujet || '(sans objet)'} » part à la corbeille de Gmail, où il reste récupérable trente jours.`}
+            libelle="Supprimer"
+            icone="delete"
+            onAnnuler={() => setASupprimer(null)}
+            onConfirmer={() => {
+              const cible = aSupprimer
+              setASupprimer(null)
+              noterLeGeste()
+              void gestes.onSupprimer(cible.id).catch((e) => gestes.onErreur(String(e)))
+            }}
+          />
+        )}
+      </div>
     )
   }
 
@@ -1141,5 +1142,316 @@ function NommerLeTas({
         </div>
       </div>
     </Modale>
+  )
+}
+
+/** Vue sous « Tous les comptes » : les archives regroupées par compte dans des blocs distincts. */
+function VueArchivesMelangees({
+  archives,
+  comptes,
+  nomsDesLibelles,
+  accent,
+  onOuvrir,
+  onSupprimer,
+  onRetirer,
+}: {
+  archives: MessageAffiche[]
+  comptes?: CompteConnu[]
+  nomsDesLibelles: Map<string, string>
+  accent: string
+  onOuvrir: (message: MessageAffiche) => void
+  onSupprimer: (message: MessageAffiche) => void
+  onRetirer: (message: MessageAffiche) => void
+}) {
+  const [deplieTas, setDeplieTas] = useState<string | null>(null)
+
+  // Liste ordonnée des comptes à afficher
+  const listeComptes = useMemo(() => {
+    if (comptes && comptes.length > 0) {
+      return comptes
+    }
+    const adresses = Array.from(new Set(archives.map((m) => m.compte).filter(Boolean)))
+    return adresses.map((adresse) => ({
+      adresse,
+      nom: null,
+      photo: null,
+      actif: false,
+    }))
+  }, [comptes, archives])
+
+  if (archives.length === 0) {
+    return (
+      <Vide
+        icone="archive"
+        titre="Aucune archive"
+        detail="Les messages que vous rangez depuis les autres pages apparaîtront ici."
+      />
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6" style={{ background: 'var(--sunk)' }}>
+      <div className="mx-auto w-full max-w-7xl space-y-6">
+        {listeComptes.map((c, indexCompte) => {
+          const messagesDuCompte = archives.filter(
+            (m) => m.compte === c.adresse || (!m.compte && indexCompte === 0),
+          )
+          const { parTas: parTasCompte, seuls: seulsCompte } = repartir(
+            messagesDuCompte,
+            new Set(nomsDesLibelles.keys()),
+          )
+          const tasCompte = [...parTasCompte.keys()]
+          const [fondCompte, encreCompte] = palette(indexCompte)
+
+          return (
+            <div
+              key={c.adresse}
+              className="overflow-hidden rounded-2xl border transition-all"
+              style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+            >
+              {/* En-tête du bloc de compte */}
+              <div
+                className="flex items-center justify-between border-b px-5 py-4"
+                style={{ borderColor: 'var(--line)', background: 'var(--bg)' }}
+              >
+                <div className="flex items-center gap-3">
+                  {c.photo ? (
+                    <img
+                      src={c.photo}
+                      alt={c.nom ?? c.adresse}
+                      className="h-9 w-9 rounded-full object-cover shadow-xs"
+                    />
+                  ) : (
+                    <span
+                      className="flex h-9 w-9 flex-none items-center justify-center rounded-xl text-[0.875rem] font-bold shadow-xs"
+                      style={{ background: fondCompte, color: encreCompte }}
+                    >
+                      {initiales(c.nom || c.adresse)}
+                    </span>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2 text-[0.9375rem] font-semibold tracking-tight">
+                      {c.nom || c.adresse}
+                      {c.nom && c.nom !== c.adresse && (
+                        <span className="text-[0.75rem] font-normal" style={{ color: 'var(--sub)' }}>
+                          ({c.adresse})
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+                      {decompte(messagesDuCompte.length, 'archive', 'archives')}
+                    </div>
+                  </div>
+                </div>
+
+                <span
+                  className="rounded-full px-2.5 py-1 text-[0.6875rem] font-medium"
+                  style={{ background: 'var(--accent-soft)', color: 'var(--accent-fg)' }}
+                >
+                  {decompte(messagesDuCompte.length, 'archive', 'archives')}
+                </span>
+              </div>
+
+              {/* Contenu du bloc */}
+              <div className="p-5">
+                {messagesDuCompte.length === 0 ? (
+                  <div className="py-6 text-center text-[0.8125rem]" style={{ color: 'var(--sub)' }}>
+                    Aucune archive pour ce compte.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-5">
+                    {/* Les tas de ce compte */}
+                    {tasCompte.length > 0 && (
+                      <div className="space-y-3">
+                        <div
+                          className="flex items-center gap-1.5 text-[0.75rem] font-semibold uppercase tracking-wider"
+                          style={{ color: 'var(--sub)' }}
+                        >
+                          <Icone nom="rule_folder" taille="0.875rem" rempli style={{ color: accent }} />
+                          Tas & Libellés ({tasCompte.length})
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {tasCompte.map((id) => {
+                            const nom = nomsDesLibelles.get(id) ?? 'Sans nom'
+                            const msgs = parTasCompte.get(id) ?? []
+                            const ouvert = deplieTas === id
+
+                            return (
+                              <div
+                                key={id}
+                                className="flex flex-col rounded-xl border p-3.5 transition-all"
+                                style={{ borderColor: 'var(--line)', background: 'var(--bg)' }}
+                              >
+                                <div
+                                  className="flex cursor-pointer items-center justify-between"
+                                  onClick={() => setDeplieTas((d) => (d === id ? null : id))}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault()
+                                      setDeplieTas((d) => (d === id ? null : id))
+                                    }
+                                  }}
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <Icone nom="rule_folder" taille="1.125rem" rempli style={{ color: accent }} />
+                                    <span className="truncate text-[0.8125rem] font-semibold">{nom}</span>
+                                  </div>
+                                  <span
+                                    className="rounded-md px-2 py-0.5 font-mono text-[0.6875rem]"
+                                    style={{ background: 'var(--sunk)', color: 'var(--sub)' }}
+                                  >
+                                    {msgs.length}
+                                  </span>
+                                </div>
+
+                                {ouvert && (
+                                  <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: 'var(--line)' }}>
+                                    {msgs.map((m) => (
+                                      <div
+                                        key={m.id}
+                                        className="group/item flex cursor-pointer items-center justify-between rounded-lg p-2 transition-colors hover:bg-[var(--sunk)]"
+                                        onClick={() => onOuvrir(m)}
+                                      >
+                                        <div className="min-w-0 flex-1 pr-2">
+                                          <div className="truncate text-[0.75rem] font-medium">
+                                            {m.sujet || '(sans objet)'}
+                                          </div>
+                                          <div className="truncate text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+                                            {m.nom || m.adresse}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/item:opacity-100">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              onRetirer(m)
+                                            }}
+                                            className="bouton bouton-icone rounded p-1"
+                                            title="Retirer de la table"
+                                          >
+                                            <Icone nom="close" taille="0.75rem" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              onSupprimer(m)
+                                            }}
+                                            className="bouton bouton-icone rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                            title="Mettre à la corbeille"
+                                          >
+                                            <Icone nom="delete" taille="0.75rem" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Les tuiles libres de ce compte */}
+                    {seulsCompte.length > 0 && (
+                      <div className="space-y-3">
+                        {tasCompte.length > 0 && (
+                          <div
+                            className="text-[0.75rem] font-semibold uppercase tracking-wider"
+                            style={{ color: 'var(--sub)' }}
+                          >
+                            Tuiles libres ({seulsCompte.length})
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {seulsCompte.map((message) => {
+                            const [fondTuile, encreTuile] = palette(rangDeLAdresse(message.adresse))
+
+                            return (
+                              <div
+                                key={message.id}
+                                onClick={() => onOuvrir(message)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    onOuvrir(message)
+                                  }
+                                }}
+                                className="tuile-de-table relative flex cursor-pointer flex-col justify-between rounded-xl border p-3.5 transition-all hover:shadow-xs"
+                                style={{ borderColor: 'var(--line)', background: 'var(--bg)' }}
+                              >
+                                <div>
+                                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span
+                                        className="flex h-5 w-5 flex-none items-center justify-center rounded-full text-[0.5625rem] font-bold"
+                                        style={{ background: fondTuile, color: encreTuile }}
+                                      >
+                                        {initiales(message.nom || message.adresse)}
+                                      </span>
+                                      <span className="min-w-0 truncate text-[0.75rem] font-semibold">
+                                        {message.nom || message.adresse}
+                                      </span>
+                                    </div>
+                                    <span
+                                      className="flex-none text-[0.625rem] font-medium"
+                                      style={{ color: 'var(--sub)' }}
+                                    >
+                                      {heureCourte(message.date)}
+                                    </span>
+                                  </div>
+                                  <div className="line-clamp-2 text-[0.75rem] font-medium leading-snug">
+                                    {message.sujet || '(sans objet)'}
+                                  </div>
+                                </div>
+
+                                <div
+                                  className="geste-de-tuile absolute top-2 right-2 flex items-center gap-0.5 rounded-md border shadow-xs"
+                                  style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      onRetirer(message)
+                                    }}
+                                    title="Retirer de la table"
+                                    className="bouton bouton-icone rounded-md p-1"
+                                  >
+                                    <Icone nom="close" taille="0.75rem" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      onSupprimer(message)
+                                    }}
+                                    title="Mettre à la corbeille"
+                                    className="bouton bouton-icone rounded-md p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                  >
+                                    <Icone nom="delete" taille="0.75rem" />
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }

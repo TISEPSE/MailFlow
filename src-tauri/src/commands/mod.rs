@@ -752,17 +752,28 @@ pub async fn boite_melangee(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
 /// ([`crate::archives`]), en une lecture de fichier, sans réseau et sans délai.
 #[tauri::command]
 pub async fn archives_lister(app: AppHandle) -> Resultat<Vec<MessageAffiche>> {
-    let compte = compte_actif(&app);
     let config = dossier_config(&app)?;
-    let mut archives = crate::archives::charger(&config, &compte);
+    let annuaire = comptes::charger(&config);
 
-    // Les règles peuvent avoir changé depuis l'archivage : la tuile doit porter
-    // la même couleur que partout ailleurs.
-    let regles = RulesStore::pour_compte(&config, &compte).charger()?;
-    cache::reclasser(&mut archives, &regles);
+    let mut toutes = Vec::new();
+    if annuaire.connus.is_empty() {
+        let compte = compte_actif(&app);
+        let mut archives = crate::archives::charger(&config, &compte);
+        let regles = RulesStore::pour_compte(&config, &compte).charger()?;
+        cache::reclasser(&mut archives, &regles);
+        toutes.extend(archives);
+    } else {
+        for c in &annuaire.connus {
+            let mut archives = crate::archives::charger(&config, &c.adresse);
+            if let Ok(regles) = RulesStore::pour_compte(&config, &c.adresse).charger() {
+                cache::reclasser(&mut archives, &regles);
+            }
+            toutes.extend(archives);
+        }
+    }
 
-    log::info!("{} message(s) sur la table des archives", archives.len());
-    Ok(archives)
+    log::info!("{} message(s) sur la table des archives", toutes.len());
+    Ok(toutes)
 }
 
 /// Requête des messages que l'utilisateur a **lui-même** classés chez Gmail.

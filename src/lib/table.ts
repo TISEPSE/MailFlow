@@ -213,18 +213,16 @@ export function completer(
     ...Object.values(complet.messages),
   ]
 
-  let rang = 0
-
   for (const id of tas) {
     if (complet.tas[id]) continue
-    const place = placeLibre(posees, rang++)
+    const place = placeLibre(posees, 0)
     complet.tas[id] = place
     posees.push(place)
   }
 
   for (const id of messages) {
     if (complet.messages[id]) continue
-    const place = placeLibre(posees, rang++)
+    const place = placeLibre(posees, 0)
     complet.messages[id] = place
     posees.push(place)
   }
