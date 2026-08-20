@@ -486,13 +486,30 @@ fn assaini(brut: &str) -> String {
         .collect()
 }
 
+/// Identifiant de pièce assaini et borné pour respecter la limite de longueur de fichier de l'OS.
+fn assaini_piece(brut: &str) -> String {
+    let pur = assaini(brut);
+    if pur.len() <= 48 {
+        pur
+    } else {
+        use std::hash::{DefaultHasher, Hasher};
+        let mut h = DefaultHasher::new();
+        h.write(brut.as_bytes());
+        format!("{}_{:016x}", &pur[..24], h.finish())
+    }
+}
+
 /// Chemin de la vignette d'une pièce jointe.
 ///
 /// Le nom porte l'identifiant du message **puis** celui de la pièce, séparés
 /// par deux tirets bas : c'est ce préfixe qui permet au nettoyage de rattacher
 /// une vignette au message dont elle dépend.
 pub fn chemin_vignette(dossier: &Path, message: &str, piece: &str) -> PathBuf {
-    dossier.join(format!("{}__{}.png", assaini(message), assaini(piece)))
+    dossier.join(format!(
+        "{}__{}.png",
+        assaini(message),
+        assaini_piece(piece)
+    ))
 }
 
 /// Lit une vignette déjà rangée, ou `None`.
