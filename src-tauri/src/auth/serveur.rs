@@ -42,7 +42,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
         GenrePage::Succes => (
             "var(--hero-bg, #C4EED0)",
             r##"<svg width="42" height="42" viewBox="0 0 48 48" fill="none"><path d="M14 24.5L21 31.5L34 17.5" stroke="var(--hero-stroke, #137333)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>"##,
-            "Revenir à l'application",
+            "Fermer cet onglet",
         ),
         GenrePage::Refus | GenrePage::Erreur => (
             "var(--hero-err-bg, #FCE8E6)",
@@ -235,7 +235,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
     <h1>{titre}</h1>
     <p class="detail">{message}</p>
 
-    <button type="button" class="btn" id="closeBtn" onclick="revenir()">
+    <button type="button" class="btn" id="closeBtn" onclick="fermerOnglet()">
       {bouton_texte}
     </button>
 
@@ -245,20 +245,18 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
     </div>
   </div>
   <script>
-    function revenir() {{
-      fetch('/focus').catch(function(){{}});
+    function fermerOnglet() {{
+      window.opener = null;
       try {{
-        window.open('', '_self', '');
+        window.open('', '_self');
         window.close();
       }} catch (e) {{}}
       try {{ window.close(); }} catch (e) {{}}
-      try {{ window.blur(); }} catch (e) {{}}
-      var b = document.getElementById('closeBtn');
-      if (b) {{
-        b.textContent = "MailFlow est ouvert !";
-        b.style.background = "var(--hero-stroke, #137333)";
-        b.style.color = "#FFFFFF";
-      }}
+      setTimeout(function() {{
+        try {{
+          window.location.href = "about:blank";
+        }} catch (e) {{}}
+      }}, 50);
     }}
   </script>
 </body>
