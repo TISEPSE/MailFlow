@@ -291,7 +291,7 @@ impl ServeurRedirection {
                         &page(
                             GenrePage::Succes,
                             "Compte connecté !",
-                            "Votre compte Gmail a été relié avec succès. Vous pouvez fermer cet onglet.",
+                            "Vous pouvez fermer cet onglet.",
                         ),
                     )
                     .await;
