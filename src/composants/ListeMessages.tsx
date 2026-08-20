@@ -898,7 +898,11 @@ function CadreIsole({ html }: { html: string }) {
 
       mesurer(document)
       observateur?.disconnect()
-      observateur = new ResizeObserver(() => mesurer(document))
+      observateur = new ResizeObserver(() => {
+        requestAnimationFrame(() => {
+          mesurer(document)
+        })
+      })
       // Les images arrivent après le chargement du document et changent la
       // hauteur : sans cette observation, une lettre illustrée resterait
       // tronquée à la taille de son seul texte.

@@ -627,8 +627,11 @@ function Cellule({ children }: { children: ReactNode }) {
     if (!element) return
 
     const observateur = new ResizeObserver(() => {
-      const hauteur = element.getBoundingClientRect().height
-      setRangs(Math.ceil((hauteur + GOUTTIERE_MOSAIQUE) / PAS_MOSAIQUE))
+      requestAnimationFrame(() => {
+        if (!element) return
+        const hauteur = element.getBoundingClientRect().height
+        setRangs(Math.ceil((hauteur + GOUTTIERE_MOSAIQUE) / PAS_MOSAIQUE))
+      })
     })
     observateur.observe(element)
     return () => observateur.disconnect()

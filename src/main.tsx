@@ -21,13 +21,22 @@ import { messageDErreur } from './lib/tauri.ts'
  */
 function surveillerLesErreursNonRattrapees() {
   window.addEventListener('error', (e) => {
+    // Les notifications de cycle ResizeObserver sont des alertes de timing normales du navigateur
+    // (ex. redimensionnements animés/transitions) et non des erreurs d'application.
+    if (typeof e.message === 'string' && e.message.includes('ResizeObserver')) {
+      return
+    }
     console.error('erreur non rattrapée', e.error ?? e.message)
     signalerUneErreur(`Erreur inattendue : ${e.message}`)
   })
 
   window.addEventListener('unhandledrejection', (e) => {
+    const msg = messageDErreur(e.reason)
+    if (typeof msg === 'string' && msg.includes('ResizeObserver')) {
+      return
+    }
     console.error('promesse rejetée sans traitement', e.reason)
-    signalerUneErreur(`Erreur inattendue : ${messageDErreur(e.reason)}`)
+    signalerUneErreur(`Erreur inattendue : ${msg}`)
   })
 }
 

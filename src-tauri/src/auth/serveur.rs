@@ -40,7 +40,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
         GenrePage::Succes => (
             "var(--hero-bg, #C4EED0)",
             r##"<svg width="42" height="42" viewBox="0 0 48 48" fill="none"><path d="M14 24.5L21 31.5L34 17.5" stroke="var(--hero-stroke, #137333)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>"##,
-            "Fermer cet onglet",
+            "Revenir à l'application",
         ),
         GenrePage::Refus | GenrePage::Erreur => (
             "var(--hero-err-bg, #FCE8E6)",
@@ -52,7 +52,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
     let encart = if genre == GenrePage::Succes {
         r##"<div class="card-hint">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-          <span>Vous pouvez maintenant fermer cet onglet en toute sécurité et revenir sur l'application <strong>MailFlow</strong>.</span>
+          <span>Connexion réussie ! Vous pouvez maintenant basculer sur l'application <strong>MailFlow</strong> ou fermer cet onglet.</span>
         </div>"##
     } else {
         r##"<div class="card-hint">
@@ -279,7 +279,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
 
     {encart}
 
-    <button type="button" class="btn" id="closeBtn" onclick="window.close()">
+    <button type="button" class="btn" id="closeBtn" onclick="revenir()">
       {bouton_texte}
     </button>
 
@@ -288,6 +288,17 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
       <span>Autorisation sécurisée OAuth 2.0 PKCE • MailFlow</span>
     </div>
   </div>
+  <script>
+    function revenir() {{
+      try {{ window.close(); }} catch (e) {{}}
+      var b = document.getElementById('closeBtn');
+      if (b) {{
+        b.textContent = "MailFlow est prêt ! Basculez sur votre application";
+        b.style.background = "var(--hero-stroke, #137333)";
+        b.style.color = "#FFFFFF";
+      }}
+    }}
+  </script>
 </body>
 </html>"##
     )

@@ -374,7 +374,7 @@ pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<E
 /// fait dans le délai imparti. Aucun jeton ne remonte au frontend : il apprend le
 /// résultat en rappelant `app_health`.
 #[tauri::command]
-pub async fn google_connecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
+pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<()> {
     let client = etat.client()?;
 
     // Le verrou est pris pour toute la durée du parcours : deux connexions
@@ -397,6 +397,14 @@ pub async fn google_connecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
     .inspect_err(|e| log::warn!("connexion Google interrompue : {e}"))?;
 
     log::info!("compte Gmail connecté");
+
+    // Ramène la fenêtre MailFlow au premier plan
+    if let Some(fenetre) = app.get_webview_window("main") {
+        let _ = fenetre.unminimize();
+        let _ = fenetre.show();
+        let _ = fenetre.set_focus();
+    }
+
     Ok(())
 }
 
@@ -2069,7 +2077,7 @@ pub async fn compte_ajouter(app: AppHandle, etat: State<'_, EtatAuth>) -> Result
     // Si l'autorisation échoue ou est refusée, l'application se retrouve sans
     // compte actif — mais l'ancien est en réserve, et la liste le propose
     // toujours. Rien n'est perdu.
-    google_connecter(etat).await
+    google_connecter(app, etat).await
 }
 
 /// Retire un compte de la liste et efface son autorisation.
