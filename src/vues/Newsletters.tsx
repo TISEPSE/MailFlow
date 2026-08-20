@@ -338,7 +338,7 @@ function Synthese({
   groupes: GroupeNewsletters[]
   logos: Record<string, string>
   /** Relance l'analyse à la main. Absent quand la page ne sait pas la faire. */
-  onAnalyser?: () => void
+  onAnalyser?: () => void | Promise<void>
   /** Avancement de l'analyse en cours, ou `null` quand elle ne tourne pas. */
   avancement: AvancementResumes | null
   onArreter?: () => void
@@ -348,6 +348,9 @@ function Synthese({
   etiquette: string | null
   onEtiquette: (e: string | null) => void
 }) {
+  const [enLancement, setEnLancement] = useState(false)
+  const enCoursDAnalyse = Boolean(avancement) || enLancement
+
   const sources = groupes.slice(0, 6)
   const numeros = groupes.reduce((n, g) => n + g.messages.length, 0)
   const derniere = groupes[0]?.messages[0]?.date
@@ -358,19 +361,24 @@ function Synthese({
     [groupes],
   )
 
+  const gererAnalyser = async () => {
+    if (!onAnalyser || enCoursDAnalyse) return
+    setEnLancement(true)
+    try {
+      await onAnalyser()
+    } finally {
+      setEnLancement(false)
+    }
+  }
+
   /**
    * La ligne sous le titre, dans l'ordre de ce qui prime.
-   *
-   * L'avancement d'abord : pendant une analyse, c'est la seule chose qu'on
-   * attend. C'est aussi ce que disait la barre de progression — en chiffres,
-   * sans mouvement, et sans promettre une mesure du temps qui reste.
    */
-  const sousLigne = avancement
-    ? `Résumés · ${avancement.faits} sur ${avancement.total}` +
-      // Le quota gratuit se compte en requêtes par minute. Le dire, avec
-      // l'heure de reprise, évite de croire que tout s'est arrêté : rien n'est
-      // perdu, la file repart d'elle-même.
-      (avancement.repriseA ? `, en pause jusqu'à ${avancement.repriseA}` : '')
+  const sousLigne = enCoursDAnalyse
+    ? avancement
+      ? `Résumés · ${avancement.faits} sur ${avancement.total}` +
+        (avancement.repriseA ? `, en pause jusqu'à ${avancement.repriseA}` : '')
+      : 'Analyse IA en cours : lecture des newsletters...'
     : synthese
       ? `${synthese.publications} publication${synthese.publications > 1 ? 's' : ''} ` +
         `lue${synthese.publications > 1 ? 's' : ''} ${momentDit(synthese.produiteLe)}`
@@ -387,7 +395,7 @@ function Synthese({
 
   return (
     <div
-      className="overflow-hidden rounded-2xl border"
+      className="overflow-hidden rounded-2xl border transition-all duration-300"
       style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
     >
       <div
@@ -395,13 +403,21 @@ function Synthese({
         style={{ background: 'var(--accent-soft)' }}
       >
         <span
-          className="flex h-9 w-9 flex-none items-center justify-center rounded-xl"
+          className={`flex h-9 w-9 flex-none items-center justify-center rounded-xl transition-all duration-300 ${
+            enCoursDAnalyse ? 'scale-105 shadow-md' : ''
+          }`}
           style={{ background: 'var(--accent)' }}
         >
-          <Icone nom="auto_awesome" taille="1.125rem" rempli style={{ color: '#FFFFFF' }} />
+          <Icone
+            nom="auto_awesome"
+            taille="1.125rem"
+            rempli
+            className={enCoursDAnalyse ? 'etincelle-ia' : ''}
+            style={{ color: '#FFFFFF' }}
+          />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[0.875rem] font-semibold tracking-tight">
+          <span className="flex items-center gap-2 text-[0.875rem] font-semibold tracking-tight">
             {synthese ? (
               'Synthèse du jour'
             ) : (
@@ -410,42 +426,36 @@ function Synthese({
                 {numeros > groupes.length ? `, ${numeros} mails` : ''}
               </>
             )}
+            {enCoursDAnalyse && (
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 animate-pulse">
+                <span className="h-1.5 w-1.5 rounded-full bg-current animate-ping" />
+                Traitement
+              </span>
+            )}
           </span>
           <span className="block text-[0.7188rem]" style={{ color: 'var(--sub)' }}>
             {sousLigne}
           </span>
         </span>
-        <span className="flex flex-none items-center gap-2">
-          <span className="text-[0.8125rem] font-medium" style={{ color: 'var(--sub)' }}>
+        <span className="flex flex-none items-center gap-1">
+          <span className="pr-1 text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
             Sources
           </span>
-          <span className="flex items-center -space-x-1.5">
-            {sources.map((g, i) => {
-              const [fond, encre] = palette(i)
-              return (
-                <Pastille
-                  key={g.cle}
-                  texte={initiales(g.nom)}
-                  taille="1.625rem"
-                  fond={fond}
-                  couleur={encre}
-                  logo={logos[domaineDe(g.adresse)]}
-                  squircle
-                />
-              )
-            })}
-          </span>
+          {sources.map((g, i) => {
+            const [fond, encre] = palette(i)
+            return (
+              <Pastille
+                key={g.cle}
+                texte={initiales(g.nom)}
+                taille="1.375rem"
+                fond={fond}
+                couleur={encre}
+                logo={logos[domaineDe(g.adresse)]}
+              />
+            )
+          })}
         </span>
 
-        {/* L'analyse se lance au démarrage, mais rien ne permettait de la
-            relancer — or la clé se pose souvent *après* le premier lancement,
-            et la phase automatique était alors passée depuis longtemps. Ce
-            bouton est le seul moyen d'y revenir sans redémarrer. */}
-        {/* Le même emplacement pour les deux gestes : arrêter une analyse en
-            cours est le seul geste qui ait du sens tant qu'elle tourne, et il
-            n'a pas besoin d'une bande à lui pour être atteint. L'arrêt est
-            réel — le drapeau est lu entre deux messages côté Rust — mais il ne
-            coupe pas l'appel en vol, qui a déjà coûté son quota. */}
         {avancement && onArreter ? (
           <span className="flex-none pl-2">
             <Bouton
@@ -463,22 +473,39 @@ function Synthese({
               <Bouton
                 compact
                 icone="auto_awesome"
-                onClick={onAnalyser}
-                enAttente={Boolean(avancement)}
-                disabled={Boolean(avancement)}
+                onClick={gererAnalyser}
+                enAttente={enCoursDAnalyse}
+                disabled={enCoursDAnalyse}
                 titre="Faire résumer les newsletters qui ne le sont pas encore"
               >
-                Analyser
+                {enCoursDAnalyse ? 'Analyse...' : 'Analyser'}
               </Bouton>
             </span>
           )
         )}
       </div>
 
-      {/* Un rang par point : d'abord les pastilles des publications d'où il
-          vient, puis la phrase, puis leurs noms en clair. Les pastilles disent
-          « d'où » d'un coup d'œil ; les noms sont là pour qui veut vérifier —
-          une phrase de modèle sans source vérifiable ne vaut pas grand-chose. */}
+      {enCoursDAnalyse && (
+        <div className="relative h-1 w-full overflow-hidden bg-black/5 dark:bg-white/10">
+          {avancement && avancement.total > 0 ? (
+            <div
+              className="h-full transition-all duration-500 ease-out"
+              style={{
+                width: `${Math.max(6, (avancement.faits / avancement.total) * 100)}%`,
+                background: 'var(--accent)',
+              }}
+            />
+          ) : (
+            <div
+              className="barre-chargement-ia h-full w-1/3 rounded-full"
+              style={{
+                background: 'linear-gradient(90deg, transparent, var(--accent), transparent)',
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {points.length > 0 && (
         <ul>
           {points.map((point, i) => (
@@ -488,7 +515,7 @@ function Synthese({
               style={{ borderColor: 'var(--line)' }}
             >
               {point.citees.length > 0 && (
-                <span className="flex flex-none items-center -space-x-1 pt-px" aria-hidden>
+                <span className="flex flex-none items-center gap-1 pt-px" aria-hidden>
                   {point.citees.map(({ groupe, rang }) => {
                     const [fond, encre] = palette(rang)
                     return (
@@ -499,7 +526,6 @@ function Synthese({
                         fond={fond}
                         couleur={encre}
                         logo={logos[domaineDe(groupe.adresse)]}
-                        squircle
                       />
                     )
                   })}
@@ -857,11 +883,10 @@ function CarteGroupe({
         <div className="flex items-center gap-2.5 px-4 pt-4">
           <Pastille
             texte={initiales(groupe.nom)}
-            taille="2.25rem"
+            taille="2.125rem"
             fond={fond}
             couleur={encre}
             logo={logos[domaineDe(groupe.adresse)]}
-            squircle
           />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[0.875rem] font-semibold tracking-tight">

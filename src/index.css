@@ -871,6 +871,22 @@ textarea:focus-visible {
   animation: scintillement-ia 1.1s ease-in-out infinite;
 }
 
+@keyframes barre-glissante {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.barre-chargement-ia {
+  animation: barre-glissante 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 /* Ces deux-là portent une information et non un ornement : elles disent qu'un
    appel est en cours. Les couper laisserait deux bandes grises immobiles,
    impossibles à distinguer d'un affichage figé — c'est la doctrine posée plus
