@@ -28,6 +28,8 @@ const TAILLE_MAX_LIGNE: u64 = 8 * 1024;
 /// jusqu'au délai global.
 const DELAI_LECTURE: Duration = Duration::from_secs(5);
 
+use std::sync::Arc;
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum GenrePage {
     Succes,
@@ -49,18 +51,6 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
         ),
     };
 
-    let encart = if genre == GenrePage::Succes {
-        r##"<div class="card-hint">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-          <span>Connexion réussie ! Vous pouvez maintenant basculer sur l'application <strong>MailFlow</strong> ou fermer cet onglet.</span>
-        </div>"##
-    } else {
-        r##"<div class="card-hint">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>Vous pouvez fermer cet onglet et renouveler l'opération depuis l'application.</span>
-        </div>"##
-    };
-
     format!(
         r##"<!doctype html>
 <html lang="fr">
@@ -75,8 +65,6 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
       --card-border: #E0E2EC;
       --text: #1F1F1F;
       --subtext: #44474E;
-      --hint-bg: #F8FAFD;
-      --hint-border: #E3E8EF;
       --btn-bg: #0B57D0;
       --btn-text: #FFFFFF;
       --btn-hover: #0842A0;
@@ -93,8 +81,6 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
         --card-border: #33363D;
         --text: #E2E2E9;
         --subtext: #C4C6D0;
-        --hint-bg: #25282F;
-        --hint-border: #363A44;
         --btn-bg: #A8C7FA;
         --btn-text: #062E6F;
         --btn-hover: #D3E3FD;
@@ -192,31 +178,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
       font-size: 1.0625rem;
       line-height: 1.55;
       color: var(--subtext);
-      margin-bottom: 28px;
-    }}
-    .card-hint {{
-      display: flex;
-      align-items: flex-start;
-      gap: 14px;
-      background: var(--hint-bg);
-      border: 1px solid var(--hint-border);
-      border-radius: 18px;
-      padding: 16px 20px;
-      text-align: left;
-      font-size: 0.9375rem;
-      line-height: 1.55;
-      color: var(--subtext);
-      margin-bottom: 28px;
-      width: 100%;
-    }}
-    .card-hint strong {{
-      color: var(--text);
-      font-weight: 600;
-    }}
-    .card-hint svg {{
-      flex-shrink: 0;
-      margin-top: 2px;
-      color: var(--btn-bg);
+      margin-bottom: 32px;
     }}
     .btn {{
       display: inline-flex;
@@ -273,8 +235,6 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
     <h1>{titre}</h1>
     <p class="detail">{message}</p>
 
-    {encart}
-
     <button type="button" class="btn" id="closeBtn" onclick="revenir()">
       {bouton_texte}
     </button>
@@ -286,6 +246,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
   </div>
   <script>
     function revenir() {{
+      fetch('/focus').catch(function(){{}});
       try {{
         window.open('', '_self', '');
         window.close();
@@ -294,7 +255,7 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
       try {{ window.blur(); }} catch (e) {{}}
       var b = document.getElementById('closeBtn');
       if (b) {{
-        b.textContent = "MailFlow est prêt !";
+        b.textContent = "MailFlow est ouvert !";
         b.style.background = "var(--hero-stroke, #137333)";
         b.style.color = "#FFFFFF";
       }}
@@ -335,17 +296,56 @@ impl ServeurRedirection {
     }
 
     /// Attend la redirection et rend le code d'autorisation.
-    ///
-    /// Les requêtes qui ne sont pas la redirection attendue (le navigateur réclame
-    /// volontiers `/favicon.ico`) reçoivent un 404 et ne comptent pas : on continue
-    /// d'écouter jusqu'à `delai`.
-    pub async fn attendre_le_code(self, state_attendu: &str, delai: Duration) -> Resultat<String> {
-        tokio::time::timeout(delai, self.boucle(state_attendu))
-            .await
-            .map_err(|_| AppError::Auth("aucune redirection reçue avant le délai".into()))?
+    pub async fn attendre_le_code(
+        self,
+        state_attendu: &str,
+        delai: Duration,
+        on_focus: Option<Arc<dyn Fn() + Send + Sync>>,
+    ) -> Resultat<String> {
+        let (code, ecouteur) =
+            tokio::time::timeout(delai, self.boucle(state_attendu, on_focus.clone()))
+                .await
+                .map_err(|_| AppError::Auth("aucune redirection reçue avant le délai".into()))??;
+
+        if let Some(on_focus_cb) = on_focus {
+            tokio::spawn(async move {
+                let _ = tokio::time::timeout(Duration::from_secs(60), async move {
+                    loop {
+                        if let Ok((mut flux, _)) = ecouteur.accept().await {
+                            let (lecture, mut ecriture) = flux.split();
+                            let mut ligne = String::new();
+                            let mut lecteur = BufReader::new(lecture.take(TAILLE_MAX_LIGNE));
+                            if let Ok(Ok(n)) =
+                                tokio::time::timeout(DELAI_LECTURE, lecteur.read_line(&mut ligne))
+                                    .await
+                            {
+                                if n > 0 {
+                                    if ligne.starts_with("GET /focus")
+                                        || ligne.starts_with("GET /revenir")
+                                    {
+                                        on_focus_cb();
+                                        repondre(&mut ecriture, "200 OK", "OK").await;
+                                    } else {
+                                        repondre(&mut ecriture, "404 Not Found", "Non trouvé")
+                                            .await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })
+                .await;
+            });
+        }
+
+        Ok(code)
     }
 
-    async fn boucle(&self, state_attendu: &str) -> Resultat<String> {
+    async fn boucle(
+        self,
+        state_attendu: &str,
+        on_focus: Option<Arc<dyn Fn() + Send + Sync>>,
+    ) -> Resultat<(String, TcpListener)> {
         loop {
             let (mut flux, _) = self
                 .ecouteur
@@ -367,6 +367,14 @@ impl ServeurRedirection {
                 continue;
             }
 
+            if ligne.starts_with("GET /focus") || ligne.starts_with("GET /revenir") {
+                if let Some(ref cb) = on_focus {
+                    cb();
+                }
+                repondre(&mut ecriture, "200 OK", "OK").await;
+                continue;
+            }
+
             match analyser_redirection(ligne.trim_end()) {
                 Ok(RetourAutorisation::Succes { code, state }) => {
                     if !secrets_egaux(&state, state_attendu) {
@@ -384,6 +392,10 @@ impl ServeurRedirection {
                         return Err(AppError::Auth("state de la redirection incorrect".into()));
                     }
 
+                    if let Some(ref cb) = on_focus {
+                        cb();
+                    }
+
                     repondre(
                         &mut ecriture,
                         "200 OK",
@@ -394,7 +406,7 @@ impl ServeurRedirection {
                         ),
                     )
                     .await;
-                    return Ok(code);
+                    return Ok((code, self.ecouteur));
                 }
 
                 Ok(RetourAutorisation::Refus { motif }) => {
@@ -484,7 +496,7 @@ mod tests {
 
         let attente = tokio::spawn(async move {
             serveur
-                .attendre_le_code("etat-attendu", Duration::from_secs(5))
+                .attendre_le_code("etat-attendu", Duration::from_secs(5), None)
                 .await
         });
 
@@ -501,7 +513,7 @@ mod tests {
 
         let attente = tokio::spawn(async move {
             serveur
-                .attendre_le_code("etat-attendu", Duration::from_secs(5))
+                .attendre_le_code("etat-attendu", Duration::from_secs(5), None)
                 .await
         });
 
@@ -518,7 +530,7 @@ mod tests {
 
         let attente = tokio::spawn(async move {
             serveur
-                .attendre_le_code("etat-attendu", Duration::from_secs(5))
+                .attendre_le_code("etat-attendu", Duration::from_secs(5), None)
                 .await
         });
 
@@ -539,7 +551,7 @@ mod tests {
 
         let attente = tokio::spawn(async move {
             serveur
-                .attendre_le_code("etat-attendu", Duration::from_secs(5))
+                .attendre_le_code("etat-attendu", Duration::from_secs(5), None)
                 .await
         });
 
@@ -556,7 +568,7 @@ mod tests {
         let serveur = ServeurRedirection::ouvrir().await.unwrap();
 
         let erreur = serveur
-            .attendre_le_code("etat-attendu", Duration::from_millis(150))
+            .attendre_le_code("etat-attendu", Duration::from_millis(150), None)
             .await
             .unwrap_err();
 
@@ -570,7 +582,7 @@ mod tests {
 
         let attente = tokio::spawn(async move {
             serveur
-                .attendre_le_code("etat-attendu", Duration::from_secs(5))
+                .attendre_le_code("etat-attendu", Duration::from_secs(5), None)
                 .await
         });
 

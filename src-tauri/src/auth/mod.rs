@@ -110,18 +110,23 @@ use session::SessionAuth;
 /// l'URI de redirection annoncée à Google doit contenir le port réellement écouté.
 /// Construire l'URL d'abord obligerait à deviner un port, donc à en choisir un
 /// fixe — et un port fixe est un port qu'un autre programme peut avoir pris.
+use std::sync::Arc;
+
 pub async fn connecter<S: SecretStore>(
     client: &ClientOAuth,
     session: &mut SessionAuth<S>,
     ouvrir_navigateur: impl FnOnce(&url::Url) -> Resultat<()>,
     delai: Duration,
+    on_focus: Option<Arc<dyn Fn() + Send + Sync>>,
 ) -> Resultat<()> {
     let serveur = ServeurRedirection::ouvrir().await?;
     let demande = client.demarrer(serveur.uri_redirection())?;
 
     ouvrir_navigateur(demande.url())?;
 
-    let code = serveur.attendre_le_code(demande.state(), delai).await?;
+    let code = serveur
+        .attendre_le_code(demande.state(), delai, on_focus)
+        .await?;
     let reponse = client.echanger_le_code(&demande, &code).await?;
 
     session.ouvrir(reponse, Utc::now())
@@ -152,6 +157,7 @@ mod tests {
                 Err(AppError::Auth("navigateur indisponible".into()))
             },
             Duration::from_millis(50),
+            None,
         )
         .await;
 
@@ -185,6 +191,7 @@ mod tests {
             &mut session,
             |_| Err(AppError::Auth("navigateur indisponible".into())),
             Duration::from_millis(50),
+            None,
         )
         .await
         .unwrap_err();
@@ -203,6 +210,7 @@ mod tests {
             &mut session,
             |_| Ok(()),
             Duration::from_millis(100),
+            None,
         )
         .await
         .unwrap_err();

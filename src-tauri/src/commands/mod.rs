@@ -381,6 +381,21 @@ pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resu
     // simultanées écraseraient mutuellement leur `refresh_token`.
     let mut session = etat.session.lock().await;
 
+    let app_focus = app.clone();
+    let on_focus = std::sync::Arc::new(move || {
+        if let Some(fenetre) = app_focus.get_webview_window("main") {
+            let _ = fenetre.unminimize();
+            let _ = fenetre.show();
+            let _ = fenetre.set_always_on_top(true);
+            let _ = fenetre.set_focus();
+            let f = fenetre.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                let _ = f.set_always_on_top(false);
+            });
+        }
+    });
+
     connecter(
         client,
         &mut session,
@@ -392,6 +407,7 @@ pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resu
                 .map_err(|e| AppError::Auth(format!("ouverture du navigateur impossible : {e}")))
         },
         DELAI_AUTORISATION,
+        Some(on_focus.clone()),
     )
     .await
     .inspect_err(|e| log::warn!("connexion Google interrompue : {e}"))?;
@@ -399,13 +415,7 @@ pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resu
     log::info!("compte Gmail connecté");
 
     // Ramène la fenêtre MailFlow au premier plan
-    if let Some(fenetre) = app.get_webview_window("main") {
-        let _ = fenetre.unminimize();
-        let _ = fenetre.show();
-        let _ = fenetre.set_always_on_top(true);
-        let _ = fenetre.set_focus();
-        let _ = fenetre.set_always_on_top(false);
-    }
+    on_focus();
 
     Ok(())
 }
