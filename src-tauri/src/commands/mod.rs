@@ -401,27 +401,48 @@ pub async fn google_connecter(etat: State<'_, EtatAuth>) -> Resultat<()> {
 }
 
 /// Déconnecte le compte et révoque l'autorisation chez Google.
+///
+/// Si d'autres comptes restent enregistrés, bascule automatiquement sur le
+/// premier d'entre eux pour ne pas laisser l'application sur un état vide.
 #[tauri::command]
 pub async fn google_deconnecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<()> {
     let a_revoquer = etat.session.lock().await.fermer()?;
 
-    // Le compte quitte aussi l'annuaire : son autorisation est rendue à Google,
-    // le proposer encore dans la liste des comptes serait promettre une bascule
-    // qui échouerait.
+    let mut prochain_compte: Option<String> = None;
     if let Ok(dossier) = dossier_config(&app) {
         let mut annuaire = comptes::charger(&dossier);
         if let Some(actif) = annuaire.actif.clone() {
             annuaire.oublier(&actif);
+            // S'il reste des comptes connus, on retient le premier pour basculer dessus
+            if let Some(suivant) = annuaire.connus.first() {
+                prochain_compte = Some(suivant.adresse.clone());
+            }
             let _ = comptes::ecrire(&dossier, &annuaire);
         }
     }
 
-    // Le trousseau est déjà vide à ce stade : même si la révocation échoue
+    // Le trousseau est déjà vide pour ce compte : même si la révocation échoue
     // (machine hors ligne), l'utilisateur est bien déconnecté localement.
     if let (Some(jeton), Ok(client)) = (a_revoquer, etat.client())
         && let Err(e) = client.revoquer(&jeton).await
     {
         log::warn!("révocation côté Google impossible : {e}");
+    }
+
+    // Si un autre compte est disponible, on bascule dessus automatiquement
+    if let Some(cible) = prochain_compte {
+        if let Ok(dossier) = dossier_config(&app) {
+            let mut annuaire = comptes::charger(&dossier);
+            let mut session = etat.session.lock().await;
+            if let Err(e) =
+                session.basculer(|secrets| comptes::basculer(secrets, &mut annuaire, &cible))
+            {
+                log::warn!("impossible de basculer automatiquement sur {cible} : {e}");
+            } else {
+                let _ = comptes::ecrire(&dossier, &annuaire);
+                log::info!("bascule automatique sur le compte suivant : {cible}");
+            }
+        }
     }
 
     log::info!("compte Gmail déconnecté");

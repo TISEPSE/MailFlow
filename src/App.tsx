@@ -1021,20 +1021,27 @@ export default function App() {
     )
 
   const deconnecter = () =>
-    agir(async () => {
-      await googleDeconnecter()
-      setBoite([])
-      setArchives([])
-      setTableau({ tas: {}, messages: {} })
-      setResumes({})
-      setSynthese(null)
-      syntheseDemandee.current = null
-      setCorpsConnus(creerCache())
-      setProfil(null)
-      setLibelles([])
-      setPremierReleve(false)
-      return 'Compte déconnecté et autorisation révoquée.'
-    })
+    agir(
+      async () => {
+        await googleDeconnecter()
+        setBoite([])
+        setArchives([])
+        setTableau({ tas: {}, messages: {} })
+        setResumes({})
+        setSynthese(null)
+        syntheseDemandee.current = null
+        setCorpsConnus(creerCache())
+        const p = await compteProfil().catch(() => null)
+        setProfil(p)
+        setLibelles(await libellesLister().catch(() => []))
+        setArchives(await archivesLister().catch(() => []))
+        setPremierReleve(p !== null)
+        return p
+          ? `Compte déconnecté. Bascule sur ${p.nom ?? p.adresse}.`
+          : 'Compte déconnecté et autorisation révoquée.'
+      },
+      { rechargerTout: true },
+    )
 
   const ajouterUnCompte = () =>
     agir(
@@ -1117,18 +1124,17 @@ export default function App() {
    *
    *  Ici, le `default` ne reçoit que ce que les `case` n'ont pas pris. Ajouter
    *  une vue qui n'est pas une catégorie sans lui donner son `case` ne
-   *  compilera pas. */
+  /** Compte de messages à afficher dans la barre de navigation.
+   *
+   *  Vaut 0 quand aucun compte n'est connecté : afficher des chiffres alors
+   *  qu'on n'a pas de compte est trompeur. */
   const compte = (v: Vue): number => {
+    if (!etat?.compteConnecte) return 0
     switch (v) {
       case 'regles':
         return reglesAffichees.length
       case 'parametres':
         return 0
-      // Ce que la page montrera, et non ce que le registre contient : celui-ci
-      // porte les archives de **tous** les comptes, et le chiffre annonçait
-      // sous une adresse les tuiles rangées sous une autre. Sous « Tous les
-      // comptes », il vaut zéro parce que la table y est vide — elle est
-      // cloisonnée par compte jusque dans son fichier de disposition.
       case 'archives':
         return archivesVisibles.length
       default:
@@ -1136,20 +1142,9 @@ export default function App() {
     }
   }
 
-  /** Vrai tant que la boîte se relève : les compteurs ne veulent alors rien dire.
-   *
-   *  Le relevé demande un appel par message et dure une vingtaine de secondes.
-   *  Afficher « 0 » pendant ce temps affirme une boîte vide ; un compteur qui
-   *  tourne dit qu'on cherche encore. Les règles, elles, viennent du disque et
-   *  sont connues tout de suite : leur compte reste. */
   /** Vrai tant qu'un relevé tourne : chaque entrée de la barre montre alors un
-   *  anneau à la place de son décompte.
-   *
-   *  La page des règles en était exclue, au motif que ses règles ne viennent
-   *  pas du relevé. Mais l'anneau ne dit pas « cette page charge » : il dit
-   *  « l'application relève ». Une seule entrée qui garde son chiffre pendant
-   *  que les cinq autres tournent se lit comme une entrée figée. */
-  const releveEnCours = premierReleve || enRecherche || avancement !== null
+   *  anneau à la place de son décompte. */
+  const releveEnCours = Boolean(etat?.compteConnecte && (premierReleve || enRecherche || avancement !== null))
 
 
   return (

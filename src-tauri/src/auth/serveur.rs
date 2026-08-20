@@ -28,12 +28,249 @@ const TAILLE_MAX_LIGNE: u64 = 8 * 1024;
 /// jusqu'au délai global.
 const DELAI_LECTURE: Duration = Duration::from_secs(5);
 
-fn page(titre: &str, message: &str) -> String {
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum GenrePage {
+    Succes,
+    Refus,
+    Erreur,
+}
+
+fn page(genre: GenrePage, titre: &str, message: &str) -> String {
+    let (badge_bg, badge_icon_svg, bouton_texte) = match genre {
+        GenrePage::Succes => (
+            "#C4EED0",
+            r##"<svg width="36" height="36" viewBox="0 0 48 48" fill="none"><path d="M14 24.5L21 31.5L34 17.5" stroke="#137333" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>"##,
+            "Fermer cet onglet",
+        ),
+        GenrePage::Refus | GenrePage::Erreur => (
+            "#FCE8E6",
+            r##"<svg width="36" height="36" viewBox="0 0 48 48" fill="none"><path d="M24 16V26M24 32H24.02" stroke="#C5221F" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>"##,
+            "Fermer cet onglet",
+        ),
+    };
+
+    let encart = if genre == GenrePage::Succes {
+        r##"<div class="card-hint">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          <span>Vous pouvez maintenant fermer cet onglet en toute sécurité et revenir sur l'application <strong>MailFlow</strong>.</span>
+        </div>"##
+    } else {
+        r##"<div class="card-hint">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Vous pouvez fermer cet onglet et renouveler l'opération depuis l'application.</span>
+        </div>"##
+    };
+
     format!(
-        "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\">\
-         <title>MailFlow</title></head>\
-         <body style=\"font-family:system-ui,sans-serif;text-align:center;padding:4rem\">\
-         <h1>{titre}</h1><p>{message}</p></body></html>"
+        r##"<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MailFlow • {titre}</title>
+  <style>
+    :root {{
+      --bg: #F0F4F9;
+      --card-bg: #FFFFFF;
+      --card-border: #E0E2EC;
+      --text: #1F1F1F;
+      --subtext: #44474E;
+      --hint-bg: #F8FAFD;
+      --hint-border: #E3E8EF;
+      --btn-bg: #0B57D0;
+      --btn-text: #FFFFFF;
+      --btn-hover: #0842A0;
+      --shadow: 0 12px 36px rgba(0, 0, 0, 0.07);
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --bg: #111318;
+        --card-bg: #1E2025;
+        --card-border: #33363D;
+        --text: #E2E2E9;
+        --subtext: #C4C6D0;
+        --hint-bg: #25282F;
+        --hint-border: #363A44;
+        --btn-bg: #A8C7FA;
+        --btn-text: #062E6F;
+        --btn-hover: #D3E3FD;
+        --shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+      }}
+    }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Google Sans', 'Roboto', 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      -webkit-font-smoothing: antialiased;
+    }}
+    .card {{
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 28px;
+      padding: 36px 32px;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: var(--shadow);
+      text-align: center;
+      animation: appear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }}
+    @keyframes appear {{
+      from {{ opacity: 0; transform: scale(0.96) translateY(8px); }}
+      to {{ opacity: 1; transform: scale(1) translateY(0); }}
+    }}
+    .header-bar {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--hint-bg);
+      border: 1px solid var(--hint-border);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      margin-bottom: 24px;
+    }}
+    .brand-logo {{
+      width: 20px;
+      height: 20px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #2F6BFF, #4C3BCF);
+      color: #FFF;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 11px;
+    }}
+    .brand-name {{
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text);
+    }}
+    .brand-dot {{
+      color: var(--subtext);
+      font-size: 0.75rem;
+    }}
+    .google-pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--subtext);
+    }}
+    .icon-hero {{
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: {badge_bg};
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+    }}
+    h1 {{
+      font-size: 1.375rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
+      color: var(--text);
+    }}
+    p.detail {{
+      font-size: 0.875rem;
+      line-height: 1.5;
+      color: var(--subtext);
+      margin-bottom: 24px;
+    }}
+    .card-hint {{
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      background: var(--hint-bg);
+      border: 1px solid var(--hint-border);
+      border-radius: 16px;
+      padding: 14px;
+      text-align: left;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      color: var(--subtext);
+      margin-bottom: 24px;
+    }}
+    .card-hint svg {{
+      flex-shrink: 0;
+      margin-top: 2px;
+      color: var(--btn-bg);
+    }}
+    .btn {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      height: 44px;
+      border-radius: 22px;
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      font-size: 0.875rem;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }}
+    .btn:hover {{
+      background: var(--btn-hover);
+    }}
+    .btn:active {{
+      transform: scale(0.98);
+    }}
+    .footer {{
+      margin-top: 20px;
+      font-size: 0.6875rem;
+      color: var(--subtext);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header-bar">
+      <div class="brand-logo">M</div>
+      <span class="brand-name">MailFlow</span>
+      <span class="brand-dot">•</span>
+      <div class="google-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+        <span>Google Workspace</span>
+      </div>
+    </div>
+
+    <div class="icon-hero">
+      {badge_icon_svg}
+    </div>
+
+    <h1>{titre}</h1>
+    <p class="detail">{message}</p>
+
+    {encart}
+
+    <button type="button" class="btn" id="closeBtn" onclick="window.close()">
+      {bouton_texte}
+    </button>
+
+    <div class="footer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span>Autorisation sécurisée OAuth 2.0 PKCE • MailFlow</span>
+    </div>
+  </div>
+</body>
+</html>"##
     )
 }
 
@@ -107,6 +344,7 @@ impl ServeurRedirection {
                             &mut ecriture,
                             "400 Bad Request",
                             &page(
+                                GenrePage::Erreur,
                                 "Connexion refusée",
                                 "Cette demande ne correspond pas à celle lancée par MailFlow.",
                             ),
@@ -119,9 +357,9 @@ impl ServeurRedirection {
                         &mut ecriture,
                         "200 OK",
                         &page(
-                            "C'est bon",
-                            "Votre compte Gmail est connecté. Vous pouvez fermer cet onglet et \
-                             revenir à MailFlow.",
+                            GenrePage::Succes,
+                            "Compte connecté !",
+                            "Votre compte Gmail a été relié avec succès.",
                         ),
                     )
                     .await;
@@ -133,6 +371,7 @@ impl ServeurRedirection {
                         &mut ecriture,
                         "200 OK",
                         &page(
+                            GenrePage::Refus,
                             "Connexion abandonnée",
                             "Aucun accès n'a été accordé. Vous pouvez fermer cet onglet.",
                         ),
@@ -148,7 +387,7 @@ impl ServeurRedirection {
                     repondre(
                         &mut ecriture,
                         "404 Not Found",
-                        &page("MailFlow", "Rien ici."),
+                        &page(GenrePage::Erreur, "MailFlow", "Rien ici."),
                     )
                     .await;
                 }
