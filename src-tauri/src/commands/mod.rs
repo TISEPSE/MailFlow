@@ -402,7 +402,9 @@ pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resu
     if let Some(fenetre) = app.get_webview_window("main") {
         let _ = fenetre.unminimize();
         let _ = fenetre.show();
+        let _ = fenetre.set_always_on_top(true);
         let _ = fenetre.set_focus();
+        let _ = fenetre.set_always_on_top(false);
     }
 
     Ok(())

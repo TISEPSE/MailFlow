@@ -139,10 +139,6 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      background: var(--hint-bg);
-      border: 1px solid var(--hint-border);
-      padding: 8px 18px;
-      border-radius: 9999px;
       margin-bottom: 28px;
     }}
     .brand-logo {{
@@ -290,10 +286,15 @@ fn page(genre: GenrePage, titre: &str, message: &str) -> String {
   </div>
   <script>
     function revenir() {{
+      try {{
+        window.open('', '_self', '');
+        window.close();
+      }} catch (e) {{}}
       try {{ window.close(); }} catch (e) {{}}
+      try {{ window.blur(); }} catch (e) {{}}
       var b = document.getElementById('closeBtn');
       if (b) {{
-        b.textContent = "MailFlow est prêt ! Basculez sur votre application";
+        b.textContent = "MailFlow est prêt !";
         b.style.background = "var(--hero-stroke, #137333)";
         b.style.color = "#FFFFFF";
       }}
