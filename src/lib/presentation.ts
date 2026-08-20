@@ -10,12 +10,12 @@ import type { CategorieMessage } from '../types/backend'
 
 /** Palette des pastilles, assignée par position dans la liste. */
 const PALETTE: readonly (readonly [string, string])[] = [
-  ['#DCE6FF', '#2455CC'],
-  ['#E4DDFA', '#5B45B8'],
-  ['#FDE3DC', '#B3502F'],
-  ['#DDEFE2', '#25714A'],
-  ['#FBE8C6', '#8A6414'],
-  ['#E6E6EC', '#4A4A55'],
+  ['#1F2430', '#5AF7C6'], // Dark navy & mint cyan (TL)
+  ['#F6E7CA', '#7A4B10'], // Warm golden cream & rich brown (LE)
+  ['#EADBFF', '#5C28B5'], // Soft lavender & deep purple (DW)
+  ['#D8EEDC', '#1E5E35'], // Soft mint/sage & deep forest green (FC)
+  ['#DCE6FF', '#2455CC'], // Soft periwinkle & cobalt blue
+  ['#FDE3DC', '#B3502F'], // Soft peach & terracotta
 ]
 
 export function palette(index: number): readonly [string, string] {

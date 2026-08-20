@@ -415,23 +415,26 @@ function Synthese({
             {sousLigne}
           </span>
         </span>
-        <span className="flex flex-none items-center gap-1">
-          <span className="pr-1 text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+        <span className="flex flex-none items-center gap-2">
+          <span className="text-[0.8125rem] font-medium" style={{ color: 'var(--sub)' }}>
             Sources
           </span>
-          {sources.map((g, i) => {
-            const [fond, encre] = palette(i)
-            return (
-              <Pastille
-                key={g.cle}
-                texte={initiales(g.nom)}
-                taille="1.375rem"
-                fond={fond}
-                couleur={encre}
-                logo={logos[domaineDe(g.adresse)]}
-              />
-            )
-          })}
+          <span className="flex items-center -space-x-1.5">
+            {sources.map((g, i) => {
+              const [fond, encre] = palette(i)
+              return (
+                <Pastille
+                  key={g.cle}
+                  texte={initiales(g.nom)}
+                  taille="1.625rem"
+                  fond={fond}
+                  couleur={encre}
+                  logo={logos[domaineDe(g.adresse)]}
+                  squircle
+                />
+              )
+            })}
+          </span>
         </span>
 
         {/* L'analyse se lance au démarrage, mais rien ne permettait de la
@@ -485,7 +488,7 @@ function Synthese({
               style={{ borderColor: 'var(--line)' }}
             >
               {point.citees.length > 0 && (
-                <span className="flex flex-none items-center gap-1 pt-px" aria-hidden>
+                <span className="flex flex-none items-center -space-x-1 pt-px" aria-hidden>
                   {point.citees.map(({ groupe, rang }) => {
                     const [fond, encre] = palette(rang)
                     return (
@@ -496,6 +499,7 @@ function Synthese({
                         fond={fond}
                         couleur={encre}
                         logo={logos[domaineDe(groupe.adresse)]}
+                        squircle
                       />
                     )
                   })}
@@ -853,10 +857,11 @@ function CarteGroupe({
         <div className="flex items-center gap-2.5 px-4 pt-4">
           <Pastille
             texte={initiales(groupe.nom)}
-            taille="2.125rem"
+            taille="2.25rem"
             fond={fond}
             couleur={encre}
             logo={logos[domaineDe(groupe.adresse)]}
+            squircle
           />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[0.875rem] font-semibold tracking-tight">

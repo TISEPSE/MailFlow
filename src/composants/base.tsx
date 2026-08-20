@@ -69,34 +69,48 @@ export function Pastille({
   fond,
   couleur,
   logo,
+  squircle,
 }: {
   texte: string
   taille?: string
   fond: string
   couleur: string
   logo?: string
+  squircle?: boolean
 }) {
+  const radius = squircle ? `calc(${taille} * 0.32)` : '9999px'
+  const contour = squircle ? '2px solid var(--carte, #FFFFFF)' : undefined
+
   if (logo) {
     return (
       <img
         src={logo}
         alt=""
-        className="flex-none rounded-full object-cover"
-        style={{ width: taille, height: taille, background: fond }}
+        className="flex-none object-cover"
+        style={{
+          width: taille,
+          height: taille,
+          borderRadius: radius,
+          border: contour,
+          background: fond,
+        }}
       />
     )
   }
 
   return (
     <div
-      className="flex flex-none items-center justify-center rounded-full font-medium"
+      className="flex flex-none items-center justify-center font-bold"
       style={{
         width: taille,
         height: taille,
+        borderRadius: radius,
+        border: contour,
         background: fond,
         color: couleur,
-        fontSize: `calc(${taille} * 0.38)`,
+        fontSize: `calc(${taille} * 0.44)`,
         lineHeight: 1,
+        letterSpacing: '-0.02em',
       }}
     >
       <span>{texte}</span>
