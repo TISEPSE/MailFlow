@@ -52,11 +52,17 @@ pub mod loopback;
 pub mod serveur;
 pub mod session;
 
-/// Lecture des messages, gestion des libellés, mise à la corbeille.
+/// Lecture des messages, gestion des libellés, mise à la corbeille, envoi.
 ///
-/// Volontairement sans `gmail.send` : le bouton « Repondre » de la vue 1 ouvrira
-/// un brouillon dans le client par défaut plutôt que d'obtenir le droit d'envoyer
-/// du courrier au nom de l'utilisateur.
+/// Toujours sans `gmail.send` ni `gmail.compose` — mais non parce que MailFlow
+/// s'interdirait d'envoyer : `users.messages.send` accepte `gmail.modify`, et
+/// c'est par là que passe la fenêtre de rédaction. Demander `gmail.send` en
+/// plus n'ajouterait aucun pouvoir et élargirait l'écran de consentement pour
+/// rien.
+///
+/// Le bouton « Répondre » de la vue 1, lui, ouvre toujours un brouillon dans le
+/// client du système. Ce n'est plus une nécessité, c'est une habitude qu'on n'a
+/// pas défaite en même temps que le reste.
 pub const SCOPE_GMAIL: &str = "https://www.googleapis.com/auth/gmail.modify";
 
 /// Adresse du compte connecté, pour l'afficher dans l'interface.

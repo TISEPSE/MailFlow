@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adresseValide, identifiant, nouvelleRegle, phrase } from './regles'
+import { adresseValide, identifiant, nouvelleRegle, phrase, quand } from './regles'
 import type { Regle } from '../types/backend'
 
 function regle(champs: Partial<Regle> = {}): Regle {
@@ -47,7 +47,7 @@ describe('phrase', () => {
     const p = phrase(
       regle({
         action: 'archiver_automatique',
-        frequence: 'tous_les_vendredis',
+        frequence: 'vendredi',
         heure_execution: '18:00',
         nom_affichage: 'OpenClassrooms',
       }),
@@ -127,16 +127,62 @@ describe('nouvelleRegle', () => {
     expect(r.nom_affichage).toBe('Offres Tech')
   })
 
-  it('ne planifie un vendredi que pour un archivage', () => {
+  it('ne programme rien tant que rien n a été demandé', () => {
+    // La règle imposait « vendredi 18 h » sans le dire : une adresse ajoutée un
+    // lundi restait quatre jours en boîte, et rien à l'écran ne l'expliquait.
+    const archive = nouvelleRegle({ adresse: 'a@x.fr', action: 'archiver_automatique' })
+
+    expect(archive.frequence).toBeUndefined()
+    expect(archive.heure_execution).toBeUndefined()
+  })
+
+  it('programme ce qu on lui demande, et rien de plus', () => {
+    const r = nouvelleRegle({
+      adresse: 'a@x.fr',
+      action: 'archiver_automatique',
+      frequence: 'mardi',
+      heure: '07:30',
+    })
+
+    expect(r.frequence).toBe('mardi')
+    expect(r.heure_execution).toBe('07:30')
+  })
+
+  it('ne planifie rien sur une action qui ne range pas', () => {
     // `phrase` annonce le jour et l'heure dès qu'ils existent : les poser sur
     // une suppression ferait dire à l'interface ce qui n'arrivera pas.
-    const archive = nouvelleRegle({ adresse: 'a@x.fr', action: 'archiver_automatique' })
-    const supprime = nouvelleRegle({ adresse: 'a@x.fr', action: 'supprimer_toujours' })
+    const supprime = nouvelleRegle({
+      adresse: 'a@x.fr',
+      action: 'supprimer_toujours',
+      frequence: 'vendredi',
+      heure: '18:00',
+    })
 
-    expect(archive.frequence).toBe('tous_les_vendredis')
-    expect(archive.heure_execution).toBe('18:00')
     expect(supprime.frequence).toBeUndefined()
     expect(supprime.heure_execution).toBeUndefined()
+  })
+
+  it('retombe sur une heure raisonnable quand seule la fréquence est donnée', () => {
+    const r = nouvelleRegle({
+      adresse: 'a@x.fr',
+      action: 'archiver_automatique',
+      frequence: 'quotidienne',
+    })
+
+    expect(r.heure_execution).toBe('18:00')
+  })
+})
+
+describe('quand', () => {
+  it('nomme la cadence et l heure', () => {
+    expect(quand('quotidienne', '07:30')).toBe('tous les jours à 07 h 30')
+    expect(quand('mercredi', '18:00')).toBe('tous les mercredis à 18 h 00')
+  })
+
+  it('n invente pas une heure qui n a pas été choisie', () => {
+    // Le moteur, sans heure, agit au premier passage du bon jour. Écrire
+    // « à 18 h » ferait attendre devant une heure qui n'existe pas.
+    expect(quand('vendredi')).toBe('tous les vendredis')
   })
 })
 

@@ -54,9 +54,20 @@ import type {
   CorpsMessage,
   MessageAffiche,
   Resume,
-  SyntheseDuJour,
+  ResultatSynthese,
 } from '../types/backend'
 import { LecteurEnGrand } from '../composants/LecteurEnGrand'
+
+/**
+ * Ce que le bandeau de synthèse a à montrer.
+ *
+ * Les quatre états du backend, plus `chargement` — le seul que le backend ne
+ * puisse pas connaître, puisqu'il décrit l'attente de sa propre réponse.
+ *
+ * Il vit ici et non dans `types/backend` parce que ce n'est pas un miroir de
+ * Rust : c'est ce que l'écran doit savoir pour ne jamais rester muet.
+ */
+export type EtatSynthese = ResultatSynthese | { quoi: 'chargement' }
 
 /**
  * Durée minimale de l'attente affichée, en millisecondes.
@@ -130,6 +141,7 @@ export function Newsletters({
   onResumerGroupe,
   sansTexte,
   synthese,
+  onTransferer,
 }: {
   messages: MessageAffiche[]
   vide: { icone: NomIcone; titre: string; detail: string }
@@ -161,13 +173,16 @@ export function Newsletters({
    */
   sansTexte?: ReadonlySet<string>
   /**
-   * Ce que la journée a apporté, en trois points au plus.
+   * Ce que la journée a apporté — ou la raison pour laquelle il n'y a rien.
    *
-   * Absente tant qu'aucune clé n'est posée : le bandeau garde alors exactement
-   * l'allure qu'il a toujours eue, décompte et pastilles, sans corps ni
-   * étiquettes. La page ne bouge pas d'un pixel selon que l'IA est là ou non.
+   * Le bandeau garde en toute circonstance l'allure qu'il a toujours eue,
+   * décompte et pastilles. Ce qui change, c'est ce qu'il écrit dessous : les
+   * trois points quand ils existent, une attente quand elle a lieu, et sinon la
+   * phrase qui dit quoi faire pour en obtenir.
    */
-  synthese?: SyntheseDuJour | null
+  synthese?: EtatSynthese
+  /** Ouvre la fenêtre de rédaction sur un transfert du message lu. */
+  onTransferer?: (message: MessageAffiche) => void
 }) {
   const [ouvert, setOuvert] = useState<MessageAffiche | null>(null)
 
@@ -197,7 +212,12 @@ export function Newsletters({
   const [etiquette, setEtiquette] = useState<string | null>(null)
 
   const etiquettes = useMemo(
-    () => etiquettesUtiles(synthese?.hashtags ?? [], groupes, resumes),
+    () =>
+      etiquettesUtiles(
+        synthese?.quoi === 'faite' ? synthese.hashtags : [],
+        groupes,
+        resumes,
+      ),
     [synthese, groupes, resumes],
   )
 
@@ -240,7 +260,7 @@ export function Newsletters({
           onAnalyser={onAnalyser}
           avancement={attente}
           onArreter={onArreterResumes}
-          synthese={synthese ?? null}
+          synthese={synthese ?? { quoi: 'chargement' }}
           etiquettes={etiquettes}
           etiquette={etiquette}
           onEtiquette={setEtiquette}
@@ -298,6 +318,21 @@ export function Newsletters({
           corps={corpsConnus.get(ouvert.id) ?? null}
           onCorpsCharge={onCorpsCharge}
           onFermer={() => setOuvert(null)}
+          actions={
+            onTransferer && (
+              <Bouton
+                icone="forward"
+                onClick={() => {
+                  const cible = ouvert
+                  setOuvert(null)
+                  onTransferer(cible)
+                }}
+                titre="Faire suivre ce numéro. Les fichiers joints ne partent pas avec."
+              >
+                Transférer
+              </Bouton>
+            )
+          }
         />
       )}
     </div>
@@ -342,7 +377,7 @@ function Synthese({
   /** Avancement de l'analyse en cours, ou `null` quand elle ne tourne pas. */
   avancement: AvancementResumes | null
   onArreter?: () => void
-  synthese: SyntheseDuJour | null
+  synthese: EtatSynthese
   /** Celles qui retiennent au moins une publication. Voir `etiquettesUtiles`. */
   etiquettes: string[]
   etiquette: string | null
@@ -379,14 +414,16 @@ function Synthese({
       ? `Résumés · ${avancement.faits} sur ${avancement.total}` +
         (avancement.repriseA ? `, en pause jusqu'à ${avancement.repriseA}` : '')
       : 'Analyse IA en cours : lecture des newsletters...'
-    : synthese
+    : synthese.quoi === 'faite'
       ? `${synthese.publications} publication${synthese.publications > 1 ? 's' : ''} ` +
         `lue${synthese.publications > 1 ? 's' : ''} ${momentDit(synthese.produiteLe)}`
-      : derniere
-        ? `Dernier reçu à ${heureCourte(derniere)}`
-        : 'En attente du relevé'
+      : synthese.quoi === 'chargement'
+        ? 'Synthèse en cours…'
+        : derniere
+          ? `Dernier reçu à ${heureCourte(derniere)}`
+          : 'En attente du relevé'
 
-  const points = (synthese?.points ?? []).map((point) => ({
+  const points = (synthese.quoi === 'faite' ? synthese.points : []).map((point) => ({
     texte: point.texte,
     citees: point.sources
       .map((cle) => parCle.get(cle))
@@ -468,7 +505,14 @@ function Synthese({
             </Bouton>
           </span>
         ) : (
-          onAnalyser && (
+          // Le bouton n'est ici que lorsqu'il n'est nulle part ailleurs.
+          //
+          // Quand la synthèse manque, c'est le bandeau du dessous qui le porte
+          // — avec, à côté, la phrase qui dit pourquoi il faut cliquer. Les
+          // deux à la fois posaient la même question deux fois sur la même
+          // carte, et la seconde était la seule des deux à être compréhensible.
+          onAnalyser &&
+          points.length > 0 && (
             <span className="flex-none pl-2">
               <Bouton
                 compact
@@ -476,7 +520,7 @@ function Synthese({
                 onClick={gererAnalyser}
                 enAttente={enCoursDAnalyse}
                 disabled={enCoursDAnalyse}
-                titre="Faire résumer les newsletters qui ne le sont pas encore"
+                titre="Refaire les résumés et la synthèse"
               >
                 {enCoursDAnalyse ? 'Analyse...' : 'Analyser'}
               </Bouton>
@@ -504,6 +548,14 @@ function Synthese({
             />
           )}
         </div>
+      )}
+
+      {/* Ce que le bandeau montre quand il n'a pas de points à montrer.
+          Auparavant : rien. Une bande de titre et un décompte, sans un mot sur
+          ce qui se passait ni sur ce qu'il aurait fallu faire — on attendait
+          donc devant, parfois longtemps, pour rien. */}
+      {points.length === 0 && !enCoursDAnalyse && (
+        <SansSynthese etat={synthese} onAnalyser={onAnalyser && gererAnalyser} />
       )}
 
       {points.length > 0 && (
@@ -570,6 +622,109 @@ function Synthese({
             </ChoixEtiquette>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Ce que le bandeau écrit quand il n'a pas de synthèse à écrire.
+ *
+ * Trois phrases pour trois causes, et jamais la même conclusion : lancer
+ * l'analyse, enregistrer une clé, réessayer. C'est la seule raison d'être de
+ * [`EtatSynthese`] — un vide unique aurait pu se contenter d'un vide unique.
+ *
+ * L'attente, elle, se montre plutôt qu'elle ne s'écrit : trois barres aux
+ * proportions des trois points à venir. Elles portent `mouvement-utile`, ce qui
+ * les exempte de la neutralisation générale des animations : une barre grise
+ * immobile ne se distingue pas d'un affichage figé, et c'est précisément
+ * l'ambiguïté qu'on cherche à lever.
+ */
+function SansSynthese({
+  etat,
+  onAnalyser,
+}: {
+  etat: EtatSynthese
+  /** Absent quand la page ne sait pas lancer l'analyse. */
+  onAnalyser?: () => void
+}) {
+  if (etat.quoi === 'chargement') {
+    return (
+      <div
+        className="flex flex-col gap-2.5 border-t px-4 py-3.5"
+        style={{ borderColor: 'var(--line)' }}
+        aria-live="polite"
+      >
+        <span className="sr-only">Synthèse en cours</span>
+        {[86, 94, 62].map((largeur, i) => (
+          <span
+            key={i}
+            aria-hidden
+            className="mouvement-utile squelette h-3"
+            style={{ width: `${largeur}%` }}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  const [phrase, geste] =
+    etat.quoi === 'sans_cle'
+      ? [
+          "Aucune clé Gemini n'est enregistrée : la synthèse ne peut pas être écrite.",
+          'Ouvrez les Paramètres pour en poser une.',
+        ]
+      : etat.quoi === 'echec'
+        ? [
+            "Le modèle n'a pas répondu.",
+            'Rien n’est perdu : les résumés déjà faits sont gardés.',
+          ]
+        : etat.quoi === 'faite'
+          ? // La synthèse a bien été produite, mais aucun de ses points n'a
+            // survécu : le modèle a cité des publications qui n'existent pas
+            // dans la liste envoyée, et le tri les a tous écartés. Rare, mais
+            // il ne faut pas que ça laisse une carte muette.
+            [
+              "La synthèse n'a rien retenu de ces publications.",
+              'Refaire l’analyse donne souvent un autre résultat.',
+            ]
+          : [
+              "Aucune publication n'a encore été résumée.",
+              'La synthèse se fait à partir des résumés : lancez l’analyse d’abord.',
+            ]
+
+  return (
+    <div
+      className="flex items-start gap-2.5 border-t px-4 py-3.5"
+      style={{ borderColor: 'var(--line)' }}
+    >
+      <Icone
+        nom={etat.quoi === 'echec' ? 'error' : 'info'}
+        taille="1rem"
+        style={{ color: 'var(--sub)' }}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[0.8125rem] leading-relaxed font-medium">{phrase}</span>
+        <span className="block pt-0.5 text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+          {geste}
+        </span>
+      </span>
+      {/* Le bouton n'est proposé que là où il changerait quelque chose. Sur
+          « sans clé », relancer l’analyse rejouerait le même refus. */}
+      {onAnalyser && etat.quoi !== 'sans_cle' && (
+        <span className="flex-none">
+          <Bouton
+            compact
+            icone={etat.quoi === 'aucun_resume' ? 'auto_awesome' : 'refresh'}
+            onClick={onAnalyser}
+          >
+            {/* « Analyser » quand rien n'a encore été fait ; « Réessayer »
+                quand quelque chose a été tenté et n'a pas abouti. Le mot dit
+                lequel des deux, sans quoi on ne sait pas si l'on répète ou si
+                l'on commence. */}
+            {etat.quoi === 'aucun_resume' ? 'Analyser' : 'Réessayer'}
+          </Bouton>
+        </span>
       )}
     </div>
   )

@@ -13,6 +13,13 @@ import { Courrier, type Proposition } from './vues/Courrier'
 import { Parametres } from './vues/Parametres'
 import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
+import type { EtatSynthese } from './vues/Newsletters'
+import { Redaction } from './composants/Redaction'
+import {
+  brouillonDeTransfert,
+  brouillonVierge,
+  type Brouillon,
+} from './lib/redaction'
 import { Archives } from './vues/Archives'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
@@ -51,6 +58,7 @@ import {
   type Avancement,
   comptesLister,
   gmailSynchroniser,
+  messageCorps,
   googleConnecter,
   googleDeconnecter,
   messageDErreur,
@@ -87,7 +95,6 @@ import type {
   ReglesDuCompte,
   RapportResumes,
   Resume,
-  SyntheseDuJour,
   Tableau,
 } from './types/backend'
 
@@ -263,13 +270,25 @@ export default function App() {
   const [sansTexte, setSansTexte] = useState<ReadonlySet<string>>(new Set())
 
   /**
-   * Ce que la journée a apporté, en trois points — ou `null`.
+   * Ce que la journée a apporté, en trois points — ou la raison nommée pour
+   * laquelle il n'y en a pas.
    *
-   * `null` n'est pas une panne : c'est l'état d'une machine sans clé, ou d'une
-   * page dont aucune publication n'est encore résumée. Le bandeau garde alors
-   * son décompte, et personne n'apprend qu'une IA aurait pu parler.
+   * Aucun de ces états n'est une panne de MailFlow : une machine sans clé, une
+   * page dont aucune publication n'est encore résumée, un modèle qui n'a pas
+   * répondu. Mais ils appellent trois gestes différents, et le bandeau ne peut
+   * les proposer que s'il sait lequel il regarde. Un `null` unique le
+   * condamnait à se taire — et l'on attendait devant lui sans savoir quoi.
    */
-  const [synthese, setSynthese] = useState<SyntheseDuJour | null>(null)
+  const [synthese, setSynthese] = useState<EtatSynthese>({ quoi: 'chargement' })
+
+  /**
+   * Le message en cours d'écriture, ou `null` quand la fenêtre est fermée.
+   *
+   * Un seul état pour les deux gestes — écrire et transférer — parce que ce
+   * sont la même fenêtre avec un contenu de départ différent. Deux états
+   * auraient permis d'ouvrir les deux à la fois, ce qui n'a aucun sens.
+   */
+  const [redaction, setRedaction] = useState<Brouillon | null>(null)
 
   /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas.
    *
@@ -505,7 +524,7 @@ export default function App() {
   const rafraichirLaSynthese = useCallback(async (messages: MessageAffiche[]) => {
     const newsletters = messages.filter((m) => m.categorie === 'newsletter')
     if (!newsletters.length) {
-      setSynthese(null)
+      setSynthese({ quoi: 'aucun_resume' })
       return
     }
 
@@ -515,10 +534,15 @@ export default function App() {
       .map((g) => ({ cle: g.cle, nom: g.nom, idRecent: g.messages[0]?.id ?? '' }))
       .filter((p) => p.idRecent)
 
+    setSynthese({ quoi: 'chargement' })
+
     try {
       setSynthese(await syntheseProduire(publications))
     } catch (e) {
+      // L'échec cesse de finir dans la console. Il n'y avait que là qu'il se
+      // disait, et le bandeau restait vide sans que rien ne l'explique.
       console.warn('synthèse du jour non produite', messageDErreur(e))
+      setSynthese({ quoi: 'echec' })
     }
   }, [])
 
@@ -534,7 +558,7 @@ export default function App() {
   // son cache et n'appelle personne tant que les mêmes publications portent les
   // mêmes derniers numéros. On ne redemande que si rien n'est affiché.
   useEffect(() => {
-    if (vue !== 'newsletter' || synthese) return
+    if (vue !== 'newsletter' || synthese.quoi === 'faite') return
 
     const liste = boite
       .filter((m) => m.categorie === 'newsletter')
@@ -763,7 +787,7 @@ export default function App() {
     setArchives([])
     setCorpsConnus(creerCache)
     setResumes({})
-    setSynthese(null)
+    setSynthese({ quoi: 'chargement' })
     syntheseDemandee.current = null
     oublierLesLogos()
     setPremierReleve(true)
@@ -851,6 +875,24 @@ export default function App() {
         const enCours = avancement.total > 0 && avancement.faits < avancement.total
         setAvancementResumes(enCours ? avancement : null)
         void relireLesResumes(idsDesNewsletters.current)
+
+        // La synthèse se refait quand le passage est terminé, et seulement là.
+        //
+        // C'est ce qui manquait, et c'est ce qui donnait le tableau absurde
+        // d'une page où chaque carte portait son résumé pendant que le bandeau
+        // du haut affirmait qu'aucune publication n'était résumée : la synthèse
+        // avait été demandée **avant** l'analyse, la réponse « aucun résumé »
+        // avait été retenue, et `syntheseDemandee` — dont le rôle est
+        // justement d'empêcher de redemander pour rien — interdisait de
+        // reposer la question. Rien, ensuite, ne la reposait jamais.
+        //
+        // Le test porte sur un passage réellement achevé et non sur `!enCours` :
+        // la file annonce aussi `total: 0` à l'arrêt et au démarrage, et ces
+        // deux-là ne valent pas une fin.
+        if (avancement.total > 0 && avancement.faits >= avancement.total) {
+          syntheseDemandee.current = null
+          setSynthese({ quoi: 'chargement' })
+        }
       }),
     ]
     return () => {
@@ -901,16 +943,63 @@ export default function App() {
     void chargerLesArchives()
   }, [vue, etat, chargerLesArchives])
 
-  /** Relevé périodique. La fréquence est un réglage, pas une constante : le
-   *  minuteur se reconstruit quand elle change. */
+  /**
+   * Relevé périodique, règles comprises.
+   *
+   * La fréquence est un réglage, pas une constante : le minuteur se reconstruit
+   * quand elle change.
+   *
+   * # Pourquoi les règles passent aussi par ici
+   *
+   * Le minuteur ne faisait que relister la boîte. Les règles, elles, ne
+   * s'appliquaient qu'au lancement, et seulement si « synchroniser au
+   * lancement » était coché. Une règle programmée à 18 h ne se déclenchait donc
+   * jamais tant que l'application restait ouverte — c'est-à-dire précisément
+   * dans le cas où l'on est devant elle à 18 h. Choisir une heure aurait été
+   * une promesse que rien ne tenait.
+   *
+   * L'échec ne remonte pas à l'écran : c'est un travail de fond, et un bandeau
+   * rouge toutes les cinq minutes sur une coupure réseau passagère serait pire
+   * que le silence. Le journal Rust, lui, garde tout.
+   */
   useEffect(() => {
     if (!interrogeable(etat)) return
-    const minuteur = window.setInterval(
-      () => void relever(),
-      MINUTES[prefs.frequence] * 60_000,
-    )
+
+    const minuteur = window.setInterval(() => {
+      void gmailSynchroniser()
+        .catch(() => null)
+        .then(() => relever())
+    }, MINUTES[prefs.frequence] * 60_000)
+
     return () => window.clearInterval(minuteur)
   }, [etat, prefs.frequence, relever])
+
+  /**
+   * Ouvre la fenêtre de rédaction sur un transfert.
+   *
+   * Le corps est pris dans le cache quand il y est — c'est le cas dès qu'on a
+   * ouvert le message, donc presque toujours. Sinon il est demandé, et la
+   * fenêtre attend : l'ouvrir sur l'extrait de deux lignes de Gmail ferait
+   * transférer un message tronqué à quelqu'un, et rien ne le signalerait.
+   *
+   * Un échec n'empêche pas le transfert : la fenêtre s'ouvre alors sur ce que
+   * l'on a — l'extrait — plutôt que de refuser un geste que l'utilisateur
+   * pourra compléter à la main.
+   */
+  const transferer = useCallback(
+    async (message: MessageAffiche) => {
+      const connu = corpsConnus.get(message.id)
+      if (connu) {
+        setRedaction(brouillonDeTransfert(message, connu))
+        return
+      }
+
+      const charge = await messageCorps(message.id).catch(() => null)
+      if (charge) setCorpsConnus((connus) => ranger(connus, message.id, charge))
+      setRedaction(brouillonDeTransfert(message, charge))
+    },
+    [corpsConnus],
+  )
 
   /** Toute action qui touche au backend passe par ici : un seul endroit gère
    *  l'état « occupé », les erreurs et le rafraîchissement qui suit. */
@@ -1002,7 +1091,7 @@ export default function App() {
         setArchives([])
         setTableau({ tas: {}, messages: {} })
         setResumes({})
-        setSynthese(null)
+        setSynthese({ quoi: 'chargement' })
         syntheseDemandee.current = null
         setPremierReleve(true)
         setCorpsConnus(creerCache())
@@ -1028,7 +1117,7 @@ export default function App() {
         setArchives([])
         setTableau({ tas: {}, messages: {} })
         setResumes({})
-        setSynthese(null)
+        setSynthese({ quoi: 'chargement' })
         syntheseDemandee.current = null
         setCorpsConnus(creerCache())
         const p = await compteProfil().catch(() => null)
@@ -1248,6 +1337,27 @@ export default function App() {
               <Icone nom={repliee ? 'left_panel_open' : 'left_panel_close'} taille="1.125rem" />
             </button>
           </div>
+
+          {/* Écrire vient avant lire. Le bouton est en haut de la barre et non
+              dans une vue : on écrit à quelqu'un depuis n'importe où, et
+              chercher le geste dans la page où l'on se trouve reviendrait à le
+              cacher partout ailleurs. */}
+          {interrogeable(etat) && (
+            <div className={`pb-2 ${repliee ? 'flex justify-center' : ''}`}>
+              <button
+                type="button"
+                onClick={() => setRedaction(brouillonVierge())}
+                title={repliee ? 'Nouveau mail' : undefined}
+                aria-label="Écrire un nouveau message"
+                className={`bouton bouton-principal flex items-center gap-2.5 rounded-full font-medium transition-all ${
+                  repliee ? 'h-10 w-10 justify-center px-0' : 'h-10 w-full px-4 text-[0.8125rem]'
+                }`}
+              >
+                <Icone nom="edit" taille="1.125rem" />
+                {!repliee && <span>Nouveau mail</span>}
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             {NAV.map(({ vue: v, libelle, glyphe }) => {
@@ -1472,6 +1582,18 @@ export default function App() {
           </div>
         </nav>
 
+        {/* La fenêtre de rédaction vit à la racine et non dans une vue : elle
+            s'ouvre depuis la barre latérale comme depuis un message, et deux
+            montages auraient donné deux fenêtres à tenir d'accord. */}
+        {redaction && (
+          <Redaction
+            depart={redaction}
+            de={profil?.adresse ?? null}
+            onFermer={() => setRedaction(null)}
+            onEnvoye={(m) => annoncer(m)}
+          />
+        )}
+
         <main
           className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border"
           style={{
@@ -1588,6 +1710,7 @@ export default function App() {
               onCorpsCharge={(id, corps) =>
                 setCorpsConnus((connus) => ranger(connus, id, corps))
               }
+              onTransferer={(m) => void transferer(m)}
               gestes={{
                 onRelever: () => void chargerLesArchives(),
                 onErreur: (m) => annoncer(m, true),
@@ -1675,6 +1798,7 @@ export default function App() {
               onResumerGroupe={resumerUnGroupe}
               sansTexte={sansTexte}
               synthese={synthese}
+              onTransferer={(m) => void transferer(m)}
               vise={messageVise}
               onVise={() => setMessageVise(null)}
               logos={logos}
@@ -1727,6 +1851,7 @@ export default function App() {
                       })
                   : undefined
               }
+              onTransferer={(m) => void transferer(m)}
               onCreerLibelle={
                 vue === 'humain'
                   ? async (nom) => {

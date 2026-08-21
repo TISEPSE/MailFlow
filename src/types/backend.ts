@@ -151,10 +151,38 @@ export interface Regle {
   date_ajout: string
   /** Identifiant du libellé Gmail de destination, pour un archivage. */
   libelle?: string
-  frequence?: 'tous_les_vendredis'
-  /** `HH:MM`. */
+  /**
+   * Quand l'archivage passe à l'acte. Absente : dès que le message est vu.
+   *
+   * Miroir de `rules::model::Frequence`. `tous_les_vendredis` n'y figure plus :
+   * l'ancienne valeur est relue côté Rust comme `vendredi`, et le fichier se
+   * réécrit sous la forme neuve à la première modification.
+   */
+  frequence?: FrequenceRegle
+  /** `HH:MM`. Sans objet quand `frequence` est absente. */
   heure_execution?: string
 }
+
+/**
+ * Les jours où une règle d'archivage peut passer à l'acte.
+ *
+ * Miroir de `rules::model::Frequence`. Nommée `FrequenceRegle` et non
+ * `Frequence` : ce nom-là désigne déjà, dans `lib/preferences`, la cadence du
+ * relevé — deux notions voisines qu'il vaut mieux ne pas confondre à l'import.
+ *
+ * Une énumération plate plutôt qu'un couple fréquence/jour : « tous les jours » et « tous les mardis » répondent à
+ * la même question, et les tenir dans un seul champ interdit d'écrire un
+ * hebdomadaire sans jour.
+ */
+export type FrequenceRegle =
+  | 'quotidienne'
+  | 'lundi'
+  | 'mardi'
+  | 'mercredi'
+  | 'jeudi'
+  | 'vendredi'
+  | 'samedi'
+  | 'dimanche'
 
 /** Miroir de `rules::model::RuleSet`. */
 export interface JeuDeRegles {
@@ -239,6 +267,27 @@ export interface SyntheseDuJour {
   /** Combien de publications l'ont nourrie. */
   publications: number
 }
+
+/**
+ * Ce que la synthèse du jour a donné — y compris quand elle n'a rien donné.
+ *
+ * Miroir de `commands::resumes::ResultatSynthese`, union discriminée par `quoi`
+ * comme l'énumération Rust.
+ *
+ * Les trois silences portent chacun son nom parce qu'ils appellent trois gestes
+ * différents : lancer l'analyse, enregistrer une clé, ou réessayer. Tant qu'ils
+ * arrivaient sous la forme d'un même `null`, le bandeau ne pouvait qu'afficher
+ * un même vide, et l'on attendait devant un écran qui ne devait aucune
+ * explication.
+ */
+export type ResultatSynthese =
+  | ({ quoi: 'faite' } & SyntheseDuJour)
+  /** Aucune publication n'a encore de résumé : les résumés d'abord. */
+  | { quoi: 'aucun_resume' }
+  /** Pas de clé Gemini enregistrée. Le remède est dans les Paramètres. */
+  | { quoi: 'sans_cle' }
+  /** Le modèle a été appelé et n'a pas abouti. Réessayer a un sens. */
+  | { quoi: 'echec' }
 
 /**
  * Ce qu'un passage de résumés a mis en route.

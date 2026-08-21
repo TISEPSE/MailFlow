@@ -6,7 +6,7 @@
  * date. Pas de corps de message — c'est du HTML écrit par un inconnu, et il ne
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   HAUTEUR_LIGNE,
   Icone,
@@ -24,6 +24,7 @@ import {
 import { ApercuPieceJointe } from './ApercuPieceJointe'
 import { lienOuvrir, messageDErreur, pieceJointeVignette } from '../lib/tauri'
 import { signalerUneErreur } from '../lib/crochets'
+import { decouperLesLiens } from '../lib/liens'
 import { lirePreferences } from '../lib/preferences'
 import type {
   CompteConnu,
@@ -749,10 +750,51 @@ export function CorpsIsole({
     <>
       <div className="px-9 py-6">
         <pre className="selectionnable font-sans text-[0.8438rem] leading-relaxed whitespace-pre-wrap">
-          {texte}
+          <TexteAvecLiens texte={texte} />
         </pre>
       </div>
       {!corps?.texte && <Avertissement />}
+    </>
+  )
+}
+
+/**
+ * Du texte brut dont les adresses sont cliquables.
+ *
+ * Un message sans HTML s'affichait tel quel : les adresses y étaient du texte
+ * mort, et il fallait les recopier à la main dans un navigateur. C'est le
+ * format des confirmations de commande et des liens de connexion à usage
+ * unique — précisément les messages dont on vient chercher le lien.
+ *
+ * Le clic passe par le même chemin que dans le HTML : `lienOuvrir`, donc la
+ * commande Rust, donc la liste blanche de schémas. Rien n'est décidé ici.
+ */
+function TexteAvecLiens({ texte }: { texte: string }) {
+  const morceaux = useMemo(() => decouperLesLiens(texte), [texte])
+
+  return (
+    <>
+      {morceaux.map((morceau, i) =>
+        morceau.genre === 'texte' ? (
+          <span key={i}>{morceau.contenu}</span>
+        ) : (
+          <a
+            key={i}
+            href={morceau.adresse}
+            onClick={(e) => {
+              // Sans cela, le webview quitterait l'application pour le site.
+              e.preventDefault()
+              void lienOuvrir(morceau.adresse).catch((erreur) =>
+                signalerUneErreur(messageDErreur(erreur)),
+              )
+            }}
+            className="underline decoration-1 underline-offset-2"
+            style={{ color: 'var(--accent-fg)' }}
+          >
+            {morceau.contenu}
+          </a>
+        ),
+      )}
     </>
   )
 }
@@ -855,6 +897,8 @@ function CadreIsole({ html }: { html: string }) {
       // qui n'ouvrait rien restait donc indistinguable d'un lien mort : c'est
       // ce silence qui a fait croire la fonctionnalité absente alors qu'elle
       // était seulement empêchée.
+      // TEMPORAIRE — voir plus haut.
+      console.error('[MailFlow] lien du message intercepté, remis au système')
       void lienOuvrir(adresse).catch((e) => signalerUneErreur(messageDErreur(e)))
     }
 
@@ -880,10 +924,24 @@ function CadreIsole({ html }: { html: string }) {
       let document: Document | null
       try {
         document = element.contentDocument
-      } catch {
+      } catch (e) {
         // Le moteur refuse la lecture : le cadre reprend toute la place
         // disponible, comme autrefois, plutôt que de tronquer le message.
         // Seuls les fichiers joints passent alors sous la ligne de flottaison.
+        //
+        // Et surtout : l'écoute des clics ne peut pas être posée, donc **aucun
+        // lien du message ne s'ouvrira**. C'est la seule branche du code où la
+        // fonctionnalité disparaît entièrement, et elle le faisait sans un mot
+        // — un lien mort y était indiscernable d'un lien qui ne mène nulle
+        // part. La trace n'est pas décorative : c'est elle qui distingue ce cas
+        // d'un échec du lanceur système, qui se règle ailleurs.
+        // TEMPORAIRE — `error` et non `warn` le temps du diagnostic : la
+        // console du webview est filtrée sur les erreurs, et un avertissement
+        // n'y arrive pas.
+        console.error(
+          '[MailFlow] document du cadre inaccessible : les liens du message ne peuvent pas être interceptés',
+          e,
+        )
         setHauteur(null)
         return true
       }
@@ -895,6 +953,29 @@ function CadreIsole({ html }: { html: string }) {
       document.removeEventListener('click', surClic, true)
       document.addEventListener('click', surClic, true)
       documentEcoute = document
+
+      // TEMPORAIRE — diagnostic.
+      //
+      // Deux cas que rien ne distinguait jusqu'ici : l'écoute n'a jamais été
+      // posée, ou elle l'a été et le moteur ne la sert pas. Le second est le
+      // cas d'un document dont le bac à sable a désactivé le script : la
+      // spécification veut alors qu'aucun écouteur ne soit appelé sur ce
+      // document, y compris ceux qu'un autre cadre y a posés.
+      //
+      // La sonde tranche sans dépendre d'un clic bien visé : on pose un
+      // écouteur, on lui envoie un événement, on regarde s'il revient.
+      let sondeRecue = false
+      const sonde = () => {
+        sondeRecue = true
+      }
+      document.addEventListener('mailflow:sonde', sonde, true)
+      document.dispatchEvent(new Event('mailflow:sonde'))
+      document.removeEventListener('mailflow:sonde', sonde, true)
+
+      console.error(
+        `[MailFlow] cadre branché — ${document.querySelectorAll('a[href]').length} lien(s) ;` +
+          ` les écouteurs du document ${sondeRecue ? 'RÉPONDENT' : 'NE RÉPONDENT PAS'}`,
+      )
 
       mesurer(document)
       observateur?.disconnect()

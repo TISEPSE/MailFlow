@@ -4,7 +4,7 @@
 //! décrit au cahier des charges : le fichier reste lisible et éditable à la main
 //! par un utilisateur technique (mode avancé de la vue 5).
 
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 
 /// Version du format de fichier. À incrémenter à chaque changement cassant,
@@ -239,10 +239,57 @@ pub enum Action {
     ClasserSeulement,
 }
 
+/// Quand une règle d'archivage passe à l'acte.
+///
+/// # Une énumération plate plutôt qu'une fréquence et un jour séparés
+///
+/// « Tous les jours » et « tous les mardis » sont deux réponses à la même
+/// question — quel jour ? — et les tenir dans un seul champ interdit d'écrire
+/// l'état absurde d'un hebdomadaire sans jour, ou d'un quotidien qui en
+/// désigne un. L'heure, elle, reste à part : elle a un sens dans tous les cas.
+///
+/// # Sur `tous_les_vendredis`
+///
+/// C'était la seule valeur possible, et elle est écrite dans les `regles.json`
+/// déjà sur les disques. L'alias la relit comme [`Frequence::Vendredi`], qui
+/// veut dire exactement la même chose ; la prochaine écriture du fichier la
+/// remplacera d'elle-même par la forme neuve. Sans cet alias, un utilisateur
+/// mis à jour aurait retrouvé ses règles refusées à la lecture — c'est-à-dire
+/// disparues.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Frequence {
-    TousLesVendredis,
+    /// Chaque jour, à l'heure dite.
+    Quotidienne,
+    Lundi,
+    Mardi,
+    Mercredi,
+    Jeudi,
+    #[serde(alias = "tous_les_vendredis")]
+    Vendredi,
+    Samedi,
+    Dimanche,
+}
+
+impl Frequence {
+    /// Le jour visé, ou `None` pour une règle quotidienne.
+    fn jour(self) -> Option<Weekday> {
+        match self {
+            Self::Quotidienne => None,
+            Self::Lundi => Some(Weekday::Mon),
+            Self::Mardi => Some(Weekday::Tue),
+            Self::Mercredi => Some(Weekday::Wed),
+            Self::Jeudi => Some(Weekday::Thu),
+            Self::Vendredi => Some(Weekday::Fri),
+            Self::Samedi => Some(Weekday::Sat),
+            Self::Dimanche => Some(Weekday::Sun),
+        }
+    }
+
+    /// Le jour d'aujourd'hui est-il celui que la règle vise ?
+    pub fn concerne(self, jour: Weekday) -> bool {
+        self.jour().is_none_or(|vise| vise == jour)
+    }
 }
 
 /// Extrait l'adresse comparable d'un en-tête `From`.
@@ -667,7 +714,10 @@ mod tests {
 
         assert_eq!(r.categorie, Categorie::Formation);
         assert_eq!(r.action, Action::ArchiverAutomatique);
-        assert_eq!(r.frequence, Some(Frequence::TousLesVendredis));
+        // L'ancienne valeur se relit comme le jour qu'elle désignait : c'est
+        // l'alias de sérialisation qui joue, et c'est lui qui évite qu'une mise
+        // à jour fasse disparaître les règles déjà écrites.
+        assert_eq!(r.frequence, Some(Frequence::Vendredi));
         assert_eq!(r.heure_execution, NaiveTime::from_hms_opt(18, 0, 0));
     }
 

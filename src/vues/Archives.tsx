@@ -113,6 +113,7 @@ export function Archives({
   melange,
   corpsConnus,
   onCorpsCharge,
+  onTransferer,
   gestes,
 }: {
   archives: MessageAffiche[]
@@ -129,6 +130,8 @@ export function Archives({
   melange: boolean
   corpsConnus: ReadonlyMap<string, CorpsMessage>
   onCorpsCharge: (id: string, corps: CorpsMessage) => void
+  /** Ouvre la fenêtre de rédaction sur un transfert du message lu. */
+  onTransferer?: (message: MessageAffiche) => void
   gestes: GestesDeLaTable
 }) {
   const [deplie, setDeplie] = useState<string | null>(null)
@@ -321,17 +324,32 @@ export function Archives({
             onCorpsCharge={onCorpsCharge}
             onFermer={() => setLu(null)}
             actions={
-              <Bouton
-                variante="danger"
-                icone="delete"
-                onClick={() => {
-                  const cible = lu
-                  setLu(null)
-                  setASupprimer(cible)
-                }}
-              >
-                Supprimer
-              </Bouton>
+              <>
+                {onTransferer && (
+                  <Bouton
+                    icone="forward"
+                    onClick={() => {
+                      const cible = lu
+                      setLu(null)
+                      onTransferer(cible)
+                    }}
+                    titre="Faire suivre ce message. Les fichiers joints ne partent pas avec."
+                  >
+                    Transférer
+                  </Bouton>
+                )}
+                <Bouton
+                  variante="danger"
+                  icone="delete"
+                  onClick={() => {
+                    const cible = lu
+                    setLu(null)
+                    setASupprimer(cible)
+                  }}
+                >
+                  Supprimer
+                </Bouton>
+              </>
             }
           />
         )}
@@ -452,17 +470,32 @@ export function Archives({
           onCorpsCharge={onCorpsCharge}
           onFermer={() => setLu(null)}
           actions={
-            <Bouton
-              variante="danger"
-              icone="delete"
-              onClick={() => {
-                const cible = lu
-                setLu(null)
-                setASupprimer(cible)
-              }}
-            >
-              Supprimer
-            </Bouton>
+            <>
+              {onTransferer && (
+                <Bouton
+                  icone="forward"
+                  onClick={() => {
+                    const cible = lu
+                    setLu(null)
+                    onTransferer(cible)
+                  }}
+                  titre="Faire suivre ce message. Les fichiers joints ne partent pas avec."
+                >
+                  Transférer
+                </Bouton>
+              )}
+              <Bouton
+                variante="danger"
+                icone="delete"
+                onClick={() => {
+                  const cible = lu
+                  setLu(null)
+                  setASupprimer(cible)
+                }}
+              >
+                Supprimer
+              </Bouton>
+            </>
           }
         />
       )}

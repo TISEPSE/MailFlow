@@ -1,9 +1,9 @@
 //! Moteur d'application des règles.
 
-use chrono::{DateTime, Datelike, Local, Weekday};
+use chrono::{DateTime, Datelike, Local};
 
 use crate::gmail::libelles;
-use crate::rules::model::{Action, Frequence, Rule, RuleSet};
+use crate::rules::model::{Action, Rule, RuleSet};
 
 /// Le strict nécessaire au tri : le moteur n'a jamais besoin du corps d'un
 /// message, ce qui évite de le télécharger et de le faire transiter.
@@ -71,29 +71,33 @@ pub struct EntreePlan {
 
 /// Une règle récurrente n'agit que dans sa fenêtre d'exécution.
 ///
-/// Pour `tous_les_vendredis` à 18 h, la fenêtre couvre le vendredi de 18 h à
-/// minuit : l'utilisateur qui ouvre l'application à 21 h doit voir ses e-mails
-/// archivés, conformément au « ou à la réouverture de l'application » du cahier
-/// des charges.
+/// La fenêtre court de l'heure dite à minuit, le jour visé. Pour « le vendredi
+/// à 18 h », elle couvre donc le vendredi de 18 h à minuit : l'utilisateur qui
+/// ouvre l'application à 21 h doit voir ses e-mails archivés, conformément au
+/// « ou à la réouverture de l'application » du cahier des charges.
 ///
-/// Limite connue : une semaine où l'application n'est pas ouverte le vendredi
-/// soir est simplement sautée. Rattraper demanderait de mémoriser la date de
+/// Une règle sans fréquence archive dès qu'elle voit le message — c'est le
+/// « Immédiatement » du formulaire, et c'est ce que fait toute règle qui n'a
+/// jamais choisi d'heure.
+///
+/// Limite connue : un jour où l'application n'est pas ouverte après l'heure
+/// dite est simplement sauté. Rattraper demanderait de mémoriser la date de
 /// dernière exécution, ce qui n'est pas encore fait.
 fn fenetre_ouverte(regle: &Rule, maintenant: DateTime<Local>) -> bool {
     let Some(frequence) = regle.frequence else {
         return true;
     };
 
-    match frequence {
-        Frequence::TousLesVendredis => {
-            if maintenant.weekday() != Weekday::Fri {
-                return false;
-            }
-            match regle.heure_execution {
-                Some(heure) => maintenant.time() >= heure,
-                None => true,
-            }
-        }
+    if !frequence.concerne(maintenant.weekday()) {
+        return false;
+    }
+
+    // Une fréquence sans heure vaut pour la journée entière : mieux vaut
+    // archiver au premier passage du bon jour que de ne rien faire du tout
+    // parce qu'un champ manque.
+    match regle.heure_execution {
+        Some(heure) => maintenant.time() >= heure,
+        None => true,
     }
 }
 
@@ -506,7 +510,7 @@ mod tests {
 
     fn regles_du_vendredi() -> RuleSet {
         let mut r = regle("rule_ocr", "f@ocr.com", Action::ArchiverAutomatique);
-        r.frequence = Some(Frequence::TousLesVendredis);
+        r.frequence = Some(Frequence::Vendredi);
         r.heure_execution = NaiveTime::from_hms_opt(18, 0, 0);
 
         RuleSet {
@@ -527,5 +531,103 @@ mod tests {
             .with_ymd_and_hms(2026, 8, 14, heure, minute, 0)
             .single()
             .expect("horodatage de test valide")
+    }
+
+    fn lundi_a(heure: u32, minute: u32) -> DateTime<Local> {
+        Local
+            .with_ymd_and_hms(2026, 8, 10, heure, minute, 0)
+            .single()
+            .expect("horodatage de test valide")
+    }
+
+    /// Une règle avec la fréquence et l'heure demandées.
+    fn regles_programmees(frequence: Frequence, heure: (u32, u32)) -> RuleSet {
+        let mut r = regle("rule_ocr", "f@ocr.com", Action::ArchiverAutomatique);
+        r.frequence = Some(frequence);
+        r.heure_execution = NaiveTime::from_hms_opt(heure.0, heure.1, 0);
+
+        RuleSet {
+            automations: vec![r],
+            ..Default::default()
+        }
+    }
+
+    fn un_message() -> Vec<MessageResume> {
+        vec![message("msg_1", "f@ocr.com")]
+    }
+
+    #[test]
+    fn une_regle_quotidienne_attend_son_heure_puis_agit_le_meme_jour() {
+        let regles = regles_programmees(Frequence::Quotidienne, (18, 0));
+
+        // Un lundi matin : l'heure n'est pas venue.
+        assert!(planifier(&regles, &un_message(), lundi_a(9, 0)).is_empty());
+
+        // Le même lundi, après l'heure : la fenêtre court jusqu'à minuit.
+        assert_eq!(planifier(&regles, &un_message(), lundi_a(21, 30)).len(), 1);
+    }
+
+    #[test]
+    fn une_regle_quotidienne_ne_saute_aucun_jour_de_la_semaine() {
+        let regles = regles_programmees(Frequence::Quotidienne, (8, 0));
+
+        // Le vendredi comme le lundi : c'est ce qui la distingue d'un
+        // hebdomadaire, et c'est exactement ce que l'ancienne énumération ne
+        // savait pas exprimer.
+        assert_eq!(planifier(&regles, &un_message(), lundi_a(9, 0)).len(), 1);
+        assert_eq!(planifier(&regles, &un_message(), vendredi_a(9, 0)).len(), 1);
+    }
+
+    #[test]
+    fn une_regle_du_mardi_ne_se_declenche_pas_un_lundi() {
+        let regles = regles_programmees(Frequence::Mardi, (8, 0));
+
+        assert!(planifier(&regles, &un_message(), lundi_a(23, 0)).is_empty());
+    }
+
+    #[test]
+    fn chaque_jour_de_la_semaine_est_atteignable() {
+        // Le 10 août 2026 est un lundi : sept jours consécutifs couvrent la
+        // semaine entière. Une correspondance décalée d'un cran ferait archiver
+        // le mauvais jour sans que rien ne le signale.
+        let jours = [
+            Frequence::Lundi,
+            Frequence::Mardi,
+            Frequence::Mercredi,
+            Frequence::Jeudi,
+            Frequence::Vendredi,
+            Frequence::Samedi,
+            Frequence::Dimanche,
+        ];
+
+        for (decalage, frequence) in jours.into_iter().enumerate() {
+            let regles = regles_programmees(frequence, (0, 0));
+            let jour = Local
+                .with_ymd_and_hms(2026, 8, 10 + decalage as u32, 12, 0, 0)
+                .single()
+                .expect("horodatage de test valide");
+
+            assert_eq!(
+                planifier(&regles, &un_message(), jour).len(),
+                1,
+                "{frequence:?} devrait s'appliquer le jour qu'elle désigne"
+            );
+        }
+    }
+
+    #[test]
+    fn une_frequence_sans_heure_vaut_pour_la_journee_entiere() {
+        let mut r = regle("rule_ocr", "f@ocr.com", Action::ArchiverAutomatique);
+        r.frequence = Some(Frequence::Lundi);
+        r.heure_execution = None;
+
+        let regles = RuleSet {
+            automations: vec![r],
+            ..Default::default()
+        };
+
+        // Mieux vaut archiver au premier passage du bon jour que de ne rien
+        // faire parce qu'un champ manque.
+        assert_eq!(planifier(&regles, &un_message(), lundi_a(0, 1)).len(), 1);
     }
 }

@@ -121,6 +121,7 @@ pub fn run() {
             commands::tableau_lire,
             commands::tableau_ecrire,
             commands::repondre_au_message,
+            commands::message_envoyer,
             commands::message_corbeille,
             commands::message_marquer_lu,
             commands::compte_adresse,

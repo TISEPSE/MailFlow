@@ -543,6 +543,33 @@ pub struct SyntheseAffichee {
     pub publications: usize,
 }
 
+/// Ce que la synthèse du jour a donné — y compris quand elle n'a rien donné.
+///
+/// # Pourquoi ce n'est plus un `Option`
+///
+/// La commande rendait `None` dans trois situations qui n'ont rien à voir :
+/// aucune publication n'avait encore de résumé, aucune clé Gemini n'était
+/// enregistrée, ou le modèle n'avait pas répondu. L'interface recevait le même
+/// vide dans les trois cas et ne pouvait donc qu'afficher le même vide, sans
+/// rien dire. Un utilisateur qui attend cinq minutes devant un bandeau muet n'a
+/// aucun moyen de savoir s'il doit patienter, lancer l'analyse, ou aller poser
+/// une clé dans les Paramètres.
+///
+/// Trois causes, trois noms, trois phrases à l'écran.
+#[derive(Debug, Serialize)]
+#[serde(tag = "quoi", rename_all = "snake_case")]
+pub enum ResultatSynthese {
+    /// La synthèse est là.
+    Faite(SyntheseAffichee),
+    /// Aucune publication n'a encore de résumé : il n'y a rien à synthétiser.
+    /// Ce n'est pas une panne, c'est un ordre de marche — les résumés d'abord.
+    AucunResume,
+    /// Pas de clé Gemini enregistrée. Le remède est dans les Paramètres.
+    SansCle,
+    /// Le modèle a été appelé et n'a pas abouti. Réessayer a un sens.
+    Echec,
+}
+
 /// Ce qu'on range sur le disque : la synthèse brute et l'heure de sa production.
 ///
 /// La synthèse est gardée avec ses **rangs**, pas ses clés, parce que c'est
@@ -600,14 +627,15 @@ fn empreinte(publications: &[&PublicationASynthetiser]) -> String {
 /// partir de contenus déjà nettoyés de leurs liens et de l'adresse de
 /// l'utilisateur ([`crate::llm::gemini::expurger`]).
 ///
-/// Rend `None` — et non une erreur — sans clé configurée ou sans aucun résumé en
-/// main : le bandeau garde alors ce qu'il affiche déjà, et la page ne bouge pas
-/// d'un pixel selon que l'IA est là ou non.
+/// Rend un [`ResultatSynthese`] — et non une erreur — quand rien ne sort : sans
+/// clé configurée, sans aucun résumé en main, ou sur un modèle qui n'a pas
+/// répondu. Ce ne sont pas des pannes de MailFlow, mais l'interface doit
+/// pouvoir les distinguer pour dire quoi faire ensuite.
 #[tauri::command]
 pub async fn synthese_produire(
     app: AppHandle,
     publications: Vec<PublicationASynthetiser>,
-) -> Resultat<Option<SyntheseAffichee>> {
+) -> Resultat<ResultatSynthese> {
     let dossier = corps::dossier_cache_dans(&app);
 
     // Seules celles qui ont déjà un résumé, dans l'ordre de la page. L'ordre
@@ -620,7 +648,7 @@ pub async fn synthese_produire(
         .collect();
 
     if nourries.is_empty() {
-        return Ok(None);
+        return Ok(ResultatSynthese::AucunResume);
     }
 
     let retenues: Vec<&PublicationASynthetiser> = nourries.iter().map(|(p, _)| *p).collect();
@@ -629,11 +657,15 @@ pub async fn synthese_produire(
 
     if let Some(cache) = lire_la_synthese_en_cache(&chemin) {
         log::info!("synthèse du jour reprise du cache, aucun appel");
-        return Ok(Some(afficher(cache.synthese, &retenues, cache.produite_le)));
+        return Ok(ResultatSynthese::Faite(afficher(
+            cache.synthese,
+            &retenues,
+            cache.produite_le,
+        )));
     }
 
     let Some(cle) = cle_enregistree() else {
-        return Ok(None);
+        return Ok(ResultatSynthese::SansCle);
     };
 
     let entrees: Vec<(String, String)> = nourries
@@ -647,7 +679,7 @@ pub async fn synthese_produire(
             // Une synthèse manquante n'est pas une panne : le bandeau garde son
             // décompte, et les cartes leurs résumés.
             log::info!("synthèse du jour non produite : {e}");
-            return Ok(None);
+            return Ok(ResultatSynthese::Echec);
         }
     };
 
@@ -659,7 +691,11 @@ pub async fn synthese_produire(
         synthese.points.len(),
         retenues.len()
     );
-    Ok(Some(afficher(synthese, &retenues, produite_le)))
+    Ok(ResultatSynthese::Faite(afficher(
+        synthese,
+        &retenues,
+        produite_le,
+    )))
 }
 
 /// Le résumé d'une publication : celui du groupe, à défaut celui du numéro.
@@ -850,5 +886,49 @@ mod tests {
         let heure = heure_dans(120);
         assert_eq!(heure.len(), 5);
         assert_eq!(&heure[2..3], ":");
+    }
+
+    /// L'interface doit pouvoir distinguer les trois silences.
+    ///
+    /// C'est tout l'objet de [`ResultatSynthese`] : tant que les trois cas
+    /// arrivaient sous la forme d'un même `null`, le bandeau ne pouvait
+    /// qu'afficher un même vide, et l'utilisateur attendait devant un écran qui
+    /// ne lui devait aucune explication.
+    #[test]
+    fn les_trois_silences_de_la_synthese_portent_chacun_son_nom() {
+        let noms = [
+            (ResultatSynthese::AucunResume, "aucun_resume"),
+            (ResultatSynthese::SansCle, "sans_cle"),
+            (ResultatSynthese::Echec, "echec"),
+        ];
+
+        for (resultat, attendu) in noms {
+            let json = serde_json::to_value(&resultat).unwrap();
+            assert_eq!(json["quoi"], attendu);
+        }
+    }
+
+    /// La synthèse réussie porte son étiquette **et** son contenu au même
+    /// niveau : l'interface lit `quoi` puis les champs, sans déballer un objet
+    /// imbriqué de plus.
+    #[test]
+    fn une_synthese_faite_porte_son_etiquette_et_ses_points() {
+        let faite = ResultatSynthese::Faite(SyntheseAffichee {
+            points: vec![PointAffiche {
+                texte: "Trois lettres parlent du même sujet.".into(),
+                sources: vec!["pub_1".into()],
+            }],
+            hashtags: vec!["#ia".into()],
+            produite_le: "2026-08-21T07:10:00+02:00".into(),
+            publications: 3,
+        });
+
+        let json = serde_json::to_value(&faite).unwrap();
+
+        assert_eq!(json["quoi"], "faite");
+        assert_eq!(json["publications"], 3);
+        assert_eq!(json["points"][0]["sources"][0], "pub_1");
+        // `camelCase` : c'est ce que le miroir TypeScript attend.
+        assert!(json.get("produiteLe").is_some());
     }
 }

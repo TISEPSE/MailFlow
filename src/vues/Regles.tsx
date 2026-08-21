@@ -30,10 +30,18 @@ import {
 } from '../composants/base'
 import { ChampAdresse } from '../composants/ChampAdresse'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
-import { adresseValide, nouvelleRegle, phrase } from '../lib/regles'
+import {
+  FREQUENCES_REGLE,
+  HEURE_PAR_DEFAUT,
+  LIBELLE_FREQUENCE,
+  adresseValide,
+  nouvelleRegle,
+  phrase,
+} from '../lib/regles'
 import type {
   ActionRegle,
   Categorie,
+  FrequenceRegle,
   LibelleGmail,
   MessageAffiche,
   Regle,
@@ -426,6 +434,9 @@ function FormulaireAjout({
     depuis ? nomAction(depuis.action) : actionParDefaut(depart),
   )
   const [destination, setDestination] = useState(depuis?.libelle ?? '')
+  /** `''` vaut « Immédiatement » : la règle n'a alors aucune fréquence. */
+  const [frequence, setFrequence] = useState<FrequenceRegle | ''>(depuis?.frequence ?? '')
+  const [heure, setHeure] = useState(depuis?.heure_execution ?? HEURE_PAR_DEFAUT)
   const [enCours, setEnCours] = useState(false)
 
   /** Change la catégorie, et l'action avec elle tant qu'on n'y a pas touché. */
@@ -442,6 +453,10 @@ function FormulaireAjout({
       adresse: valide ? adresse : 'exemple@domaine.fr',
       categorie: CATEGORIE_ONGLET[categorie],
       action: ACTION[libelleAction],
+      // `''` — « Immédiatement » — ne pose aucune fréquence : la règle agit
+      // alors dès que le message est vu, ce qui est le comportement historique.
+      frequence: frequence || undefined,
+      heure: frequence ? heure : undefined,
     }),
     // Une règle modifiée garde son identifiant et sa date : c'est la même
     // règle, corrigée. En changer ferait apparaître une nouvelle venue et
@@ -547,6 +562,62 @@ function FormulaireAjout({
             libelle="Libellé de destination"
             className="w-full"
           />
+        </Champ>
+      )}
+
+      {/* La programmation n'apparaît que pour un archivage : une mise à la
+          corbeille différée promettrait un délai de grâce qui n'existe pas, et
+          « Classer seulement » ne touche à rien chez Gmail.
+
+          Le moteur savait déjà tenir un jour et une heure ; rien dans
+          l'interface ne permettait de les choisir, et toute règle neuve partait
+          en douce sur « vendredi 18 h ». Les deux champs sont donc autant une
+          fonctionnalité qu'un aveu. */}
+      {archive && (
+        <Champ titre="Quand archiver">
+          <div className="flex items-center gap-2">
+            <Selecteur
+              valeurs={[
+                { valeur: '', texte: 'Immédiatement' },
+                ...FREQUENCES_REGLE.map((f) => ({
+                  valeur: f,
+                  texte: LIBELLE_FREQUENCE[f],
+                })),
+              ]}
+              valeur={frequence}
+              onChange={(v) => setFrequence(v as FrequenceRegle | '')}
+              libelle="Quand la règle archive"
+              className="min-w-0 flex-1"
+            />
+
+            {/* L'heure n'apparaît qu'une fois la cadence choisie : proposer
+                « à quelle heure » sous « Immédiatement » serait une question
+                sans réponse possible. */}
+            {frequence && (
+              <label className="flex flex-none items-center gap-2">
+                <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+                  à
+                </span>
+                <input
+                  type="time"
+                  value={heure}
+                  onChange={(e) => setHeure(e.target.value || HEURE_PAR_DEFAUT)}
+                  aria-label="Heure de l'archivage"
+                  className="champ-de-saisie selectionnable rounded-xl border px-3 py-2 text-xs outline-none"
+                  style={{
+                    background: 'var(--sunk)',
+                    borderColor: 'var(--line)',
+                    color: 'var(--fg)',
+                  }}
+                />
+              </label>
+            )}
+          </div>
+          <p className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+            {frequence
+              ? "L'archivage a lieu au premier relevé qui suit l'heure dite."
+              : 'Les messages quittent la boîte dès que MailFlow les voit.'}
+          </p>
         </Champ>
       )}
 

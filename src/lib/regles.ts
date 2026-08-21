@@ -1,4 +1,4 @@
-import type { ActionRegle, Categorie, Regle } from '../types/backend'
+import type { ActionRegle, Categorie, FrequenceRegle, Regle } from '../types/backend'
 
 /**
  * Met une règle en français.
@@ -37,10 +37,61 @@ export function phrase(r: Regle): string {
     return `Résumer puis archiver automatiquement la newsletter ${cible}.`
   }
 
-  const heure = (r.heure_execution ?? '18:00').replace(':', ' h ')
   return r.frequence
-    ? `Archiver les messages de ${cible} tous les vendredis à ${heure}.`
+    ? `Archiver les messages de ${cible} ${quand(r.frequence, r.heure_execution)}.`
     : `Archiver automatiquement les messages de ${cible}.`
+}
+
+/** Le nom que porte chaque fréquence dans la phrase d'une règle. */
+const CADENCE: Record<FrequenceRegle, string> = {
+  quotidienne: 'tous les jours',
+  lundi: 'tous les lundis',
+  mardi: 'tous les mardis',
+  mercredi: 'tous les mercredis',
+  jeudi: 'tous les jeudis',
+  vendredi: 'tous les vendredis',
+  samedi: 'tous les samedis',
+  dimanche: 'tous les dimanches',
+}
+
+/** Le nom que porte chaque fréquence dans un menu, où le sujet est déjà connu. */
+export const LIBELLE_FREQUENCE: Record<FrequenceRegle, string> = {
+  quotidienne: 'Tous les jours',
+  lundi: 'Tous les lundis',
+  mardi: 'Tous les mardis',
+  mercredi: 'Tous les mercredis',
+  jeudi: 'Tous les jeudis',
+  vendredi: 'Tous les vendredis',
+  samedi: 'Tous les samedis',
+  dimanche: 'Tous les dimanches',
+}
+
+/** Les fréquences dans l'ordre du menu : la quotidienne, puis la semaine. */
+export const FREQUENCES_REGLE: FrequenceRegle[] = [
+  'quotidienne',
+  'lundi',
+  'mardi',
+  'mercredi',
+  'jeudi',
+  'vendredi',
+  'samedi',
+  'dimanche',
+]
+
+/** Heure proposée d'emblée quand on programme un archivage. */
+export const HEURE_PAR_DEFAUT = '18:00'
+
+/**
+ * Quand la règle passera à l'acte, en toutes lettres.
+ *
+ * L'heure absente n'est pas remplacée par une heure inventée : le moteur, dans
+ * ce cas, agit au premier passage du bon jour, et c'est cela qu'il faut dire.
+ * Écrire « à 18 h » là où rien n'a été choisi ferait attendre l'utilisateur
+ * devant une heure qui n'existe pas.
+ */
+export function quand(frequence: FrequenceRegle, heure?: string): string {
+  const cadence = CADENCE[frequence] ?? 'tous les jours'
+  return heure ? `${cadence} à ${heure.replace(':', ' h ')}` : cadence
 }
 
 /**
@@ -80,11 +131,17 @@ export function nouvelleRegle({
   nom,
   categorie = 'publicite',
   action = 'archiver_automatique',
+  frequence,
+  heure,
 }: {
   adresse: string
   nom?: string
   categorie?: Categorie
   action?: ActionRegle
+  /** Absente : l'archivage a lieu dès que le message est vu. */
+  frequence?: FrequenceRegle
+  /** `HH:MM`. Sans objet sans fréquence. */
+  heure?: string
 }): Regle {
   const expediteur = adresse.trim().toLowerCase()
 
@@ -98,10 +155,13 @@ export function nouvelleRegle({
     action,
     active: true,
     date_ajout: new Date().toISOString().slice(0, 10),
-    // `phrase` annonce le jour et l'heure dès qu'ils existent : les poser sur
-    // une suppression ferait dire à l'interface ce qui n'arrivera pas.
-    ...(action === 'archiver_automatique'
-      ? { frequence: 'tous_les_vendredis' as const, heure_execution: '18:00' }
+    // Rien n'est programmé d'office. La règle posait auparavant « vendredi
+    // 18 h » sans le dire : une adresse ajoutée un lundi restait donc quatre
+    // jours en boîte, et rien à l'écran n'expliquait pourquoi. L'archivage est
+    // désormais immédiat par défaut, et la programmation est un choix qu'on
+    // fait, pas un réglage qu'on subit.
+    ...(action === 'archiver_automatique' && frequence
+      ? { frequence, heure_execution: heure ?? HEURE_PAR_DEFAUT }
       : {}),
   }
 }

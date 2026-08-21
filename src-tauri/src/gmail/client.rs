@@ -166,6 +166,11 @@ fn url_modify(id: &str) -> String {
     format!("{BASE_API}/users/me/messages/{id}/modify")
 }
 
+/// Envoi d'un message composé par l'utilisateur.
+fn url_envoi() -> String {
+    format!("{BASE_API}/users/me/messages/send")
+}
+
 fn url_trash(id: &str) -> String {
     let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
     format!("{BASE_API}/users/me/messages/{id}/trash")
@@ -343,6 +348,29 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
     /// reprendre.
     pub async fn mettre_a_la_corbeille(&self, id: &str) -> Resultat<()> {
         self.appeler(Methode::Post, &url_trash(id), Some("{}".into()))
+            .await
+            .map(|_| ())
+    }
+
+    /// Envoie un message composé dans MailFlow.
+    ///
+    /// # Sur l'autorisation
+    ///
+    /// `users.messages.send` accepte le scope `gmail.modify`, celui que
+    /// l'application demande déjà. Envoyer ne réclame donc **aucune nouvelle
+    /// autorisation** et aucune reconnexion : le droit était acquis depuis le
+    /// début, c'est l'usage qui n'existait pas.
+    ///
+    /// Le MIME est supposé déjà composé et déjà contrôlé par
+    /// [`crate::gmail::redaction::composer`] : c'est là que se refusent les
+    /// fins de ligne dans les en-têtes, et nulle part ailleurs.
+    pub async fn envoyer_message(&self, mime: &str) -> Resultat<()> {
+        let corps = serde_json::json!({
+            "raw": crate::gmail::redaction::encoder_pour_gmail(mime),
+        })
+        .to_string();
+
+        self.appeler(Methode::Post, &url_envoi(), Some(corps))
             .await
             .map(|_| ())
     }
@@ -953,6 +981,60 @@ mod tests {
         assert_eq!(rapport.mis_a_la_corbeille, 1);
         // `trash` et non `delete` : la corbeille reste réversible trente jours.
         assert!(c.urls()[0].ends_with("/messages/m1/trash"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_envoi_part_en_post_sur_l_endpoint_send() {
+        use crate::gmail::redaction::{Brouillon, composer};
+
+        let c = client(vec![ok(r#"{"id":"m9"}"#)]);
+        let mime = composer(&Brouillon {
+            de: "moi@exemple.fr".into(),
+            destinataires: vec!["toi@exemple.fr".into()],
+            copies: vec![],
+            sujet: "Bonjour".into(),
+            corps: "Un mot.".into(),
+        })
+        .unwrap();
+
+        c.client.envoyer_message(&mime).await.unwrap();
+
+        assert_eq!(c.appels(), 1);
+        assert_eq!(c.methodes()[0], Methode::Post);
+        assert!(c.urls()[0].ends_with("/users/me/messages/send"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn le_message_envoye_part_en_base64url_sous_la_cle_raw() {
+        use base64::Engine;
+        use crate::gmail::redaction::{Brouillon, composer};
+
+        let c = client(vec![ok(r#"{"id":"m9"}"#)]);
+        let mime = composer(&Brouillon {
+            de: "moi@exemple.fr".into(),
+            destinataires: vec!["toi@exemple.fr".into()],
+            copies: vec![],
+            sujet: "Bonjour".into(),
+            corps: "Un mot.".into(),
+        })
+        .unwrap();
+
+        c.client.envoyer_message(&mime).await.unwrap();
+
+        let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
+        let brut = envoye["raw"].as_str().expect("la clé raw porte le message");
+
+        // Ce qui arrive chez Google doit être exactement ce que le module de
+        // rédaction a composé : un encodage qui perdrait un octet en route
+        // enverrait un message que personne n'a relu.
+        let decode = String::from_utf8(
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(brut)
+                .expect("base64url"),
+        )
+        .unwrap();
+
+        assert_eq!(decode, mime);
     }
 
     #[tokio::test(start_paused = true)]

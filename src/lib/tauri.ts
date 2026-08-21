@@ -21,7 +21,7 @@ import type {
   Regle,
   ReglesDuCompte,
   Resume,
-  SyntheseDuJour,
+  ResultatSynthese,
   EtatLlm,
   Tableau,
 } from '../types/backend'
@@ -386,6 +386,25 @@ export function lienOuvrir(url: string): Promise<void> {
   return invoke<void>('lien_ouvrir', { url })
 }
 
+/**
+ * Envoie un message compose dans MailFlow.
+ *
+ * L'expediteur est le compte connecte : il n'est pas passe d'ici, il est lu
+ * cote Rust. Le frontend ne choisit pas au nom de qui part un courrier.
+ *
+ * Le controle des adresses et de l'objet est entierement cote Rust
+ * (`gmail::redaction::composer`) : un refus revient en erreur affichable. Le
+ * redoubler ici les ferait diverger le jour ou l'un des deux changerait.
+ */
+export function messageEnvoyer(
+  destinataires: string[],
+  copies: string[],
+  sujet: string,
+  corps: string,
+): Promise<void> {
+  return invoke<void>('message_envoyer', { destinataires, copies, sujet, corps })
+}
+
 /** Adresse du compte relié, ou `null` si aucun ne l'est. */
 export function compteAdresse(): Promise<string | null> {
   return invoke<string | null>('compte_adresse')
@@ -520,11 +539,12 @@ export interface PublicationASynthetiser {
  * disque. Appelee a chaque ouverture de la page, elle rend le cache sans rien
  * demander a personne.
  *
- * Rend `null` sans cle configuree ou sans aucun resume en main — le bandeau
- * garde alors ce qu'il affiche deja.
+ * Rend un `ResultatSynthese` : la synthese, ou la raison nommee pour laquelle
+ * il n'y en a pas. Trois raisons distinctes, parce qu'elles appellent trois
+ * gestes distincts — lancer l'analyse, enregistrer une cle, reessayer.
  */
 export function syntheseProduire(
   publications: PublicationASynthetiser[],
-): Promise<SyntheseDuJour | null> {
-  return invoke<SyntheseDuJour | null>('synthese_produire', { publications })
+): Promise<ResultatSynthese> {
+  return invoke<ResultatSynthese>('synthese_produire', { publications })
 }

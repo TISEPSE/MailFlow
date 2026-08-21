@@ -72,7 +72,7 @@ export function ApercuPieceJointe({
   }
 
   return (
-    <Modale titre={piece.nom} sous={poids(piece.taille)} onFermer={onFermer} large>
+    <Modale titre={piece.nom} sous={poids(piece.taille)} onFermer={onFermer} taille="grande">
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div
           className="flex min-h-[18rem] flex-1 items-center justify-center overflow-auto rounded-xl"

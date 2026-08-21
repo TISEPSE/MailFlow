@@ -34,6 +34,7 @@ pub mod corps;
 pub mod execution;
 pub mod logos;
 pub mod modele;
+pub mod redaction;
 pub mod reessai;
 pub mod synchronisation;
 pub mod transport;

@@ -1794,10 +1794,15 @@ where
 
 /// Ouvre un brouillon de réponse dans le client de courrier du système.
 ///
-/// MailFlow n'a pas — et ne demande pas — le droit d'envoyer du courrier en
-/// votre nom : la portée `gmail.send` est écartée depuis le début. La réponse
-/// s'écrit donc là où l'utilisateur écrit déjà son courrier, et part de son
-/// compte, pas du nôtre.
+/// La réponse s'écrit donc là où l'utilisateur écrit déjà son courrier, avec
+/// ses signatures et son historique.
+///
+/// Ce n'était autrefois pas un choix : MailFlow ne savait pas envoyer. Il le
+/// sait maintenant — voir [`message_envoyer`] — et ce chemin-là reste
+/// néanmoins, parce que répondre dans le fil d'une conversation demande
+/// `In-Reply-To` et `References`, que la fenêtre de rédaction ne pose pas
+/// encore. Une réponse envoyée sans eux ouvrirait un fil de plus au lieu de
+/// continuer celui qu'on a sous les yeux.
 #[tauri::command]
 pub async fn repondre_au_message(
     destinataire: String,
@@ -1867,6 +1872,57 @@ fn url_mailto(destinataire: &str, sujet: &str, copies: &[String]) -> Resultat<St
     }
 
     Ok(url)
+}
+
+/// Envoie un message composé dans MailFlow.
+///
+/// # Sur ce que cette commande change au projet
+///
+/// MailFlow n'envoyait pas de courrier : le bouton « Répondre » ouvrait un
+/// brouillon dans le client du système, et c'était un choix, pas une limite
+/// technique. Le scope `gmail.modify` déjà accordé autorise
+/// `users.messages.send` — aucune nouvelle autorisation Google n'est demandée,
+/// et rien à reconnecter. Ce qui change est le pouvoir donné à l'application,
+/// pas la portée du jeton.
+///
+/// Le bouton « Répondre » reste sur `mailto:` : le déplacer ici aurait mêlé
+/// deux décisions dans un même geste.
+///
+/// # Ce qui est vérifié, et où
+///
+/// Ici : rien de plus que le compte connecté. Tout le contrôle du message —
+/// adresses, objet, fins de ligne dans les en-têtes — est dans
+/// [`crate::gmail::redaction::composer`], qui rend une erreur affichable. Un
+/// second contrôle ici les ferait diverger le jour où l'un des deux changerait.
+#[tauri::command]
+pub async fn message_envoyer(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    destinataires: Vec<String>,
+    copies: Vec<String>,
+    sujet: String,
+    corps: String,
+) -> Resultat<()> {
+    let de = compte_actif(&app);
+    if de.trim().is_empty() {
+        return Err(AppError::NonAuthentifie);
+    }
+
+    let mime = crate::gmail::redaction::composer(&crate::gmail::redaction::Brouillon {
+        de,
+        destinataires,
+        copies,
+        sujet,
+        corps,
+    })?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    client.envoyer_message(&mime).await?;
+
+    // Le journal ne porte ni destinataire ni objet : ce sont les deux choses
+    // qu'un fichier de log ne doit pas conserver d'un courrier privé.
+    log::info!("message envoyé depuis MailFlow");
+    Ok(())
 }
 
 /// Ouvre dans le navigateur du système un lien cliqué dans un message.

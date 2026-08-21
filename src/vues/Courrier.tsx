@@ -64,6 +64,7 @@ export function Courrier({
   onSupprimer,
   onCopier,
   onRepondre,
+  onTransferer,
   onRanger,
   onCreerLibelle,
   libelles,
@@ -100,6 +101,14 @@ export function Courrier({
   onCopier?: (adresse: string) => void
   /** Absents hors des mails directs, où répondre n'aurait pas de sens. */
   onRepondre?: (message: MessageAffiche, tous?: boolean) => void
+  /**
+   * Ouvre la fenêtre de rédaction sur un transfert de ce message.
+   *
+   * Proposé sur toutes les pages de courrier, et pas seulement les mails
+   * directs : une publicité ou une newsletter se fait suivre à quelqu'un tout
+   * autant qu'une lettre — plus souvent, même.
+   */
+  onTransferer?: (message: MessageAffiche) => void
   onRanger?: (id: string, libelle?: string) => void
   onCreerLibelle?: (nom: string) => Promise<void>
   libelles?: LibelleGmail[]
@@ -327,6 +336,18 @@ export function Courrier({
               />
             )}
 
+            {onTransferer && (
+              <Bouton
+                compact
+                icone="forward"
+                onClick={() => onTransferer(choisi)}
+                disabled={enCours}
+                titre="Faire suivre ce message à quelqu'un. Les fichiers joints ne partent pas avec."
+              >
+                Transférer
+              </Bouton>
+            )}
+
             {proposition && choisi.adresse && !regleExistante && (
               <Bouton
                 compact
@@ -509,8 +530,13 @@ function BarreSelection({
 /**
  * Répondre et ranger, pour les mails directs.
  *
- * « Répondre » ouvre le client de courrier du système : MailFlow n'a pas — et
- * ne demande pas — le droit d'envoyer du courrier au nom de l'utilisateur.
+ * « Répondre » ouvre le client de courrier du système. Non plus faute de
+ * pouvoir envoyer — la fenêtre de rédaction le fait — mais parce que répondre
+ * dans un fil demande des en-têtes que MailFlow ne pose pas encore : sans eux,
+ * la réponse ouvrirait une conversation de plus au lieu de continuer celle-ci.
+ *
+ * « Transférer », lui, ouvre la fenêtre de rédaction : un transfert commence
+ * un nouveau fil de toute façon.
  *
  * « Archiver » ouvre une fenêtre plutôt que d'agir aussitôt. Archiver, c'est
  * faire disparaître un message de la boîte : mieux vaut dire où il va avant

@@ -6,6 +6,7 @@
  * d'accent de basculer sans que chaque vue ait à s'en occuper.
  */
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import { BOITE, GLYPHES, GLYPHES_PLEINS, type NomIcone } from './glyphes'
 
@@ -410,23 +411,45 @@ export function Confirmation({
   )
 }
 
+/**
+ * Les trois tailles de fenêtre, du plus court au plus long à lire.
+ *
+ * Une taille et non deux booléens : `large` et `moyen` posés ensemble n'auraient
+ * pas eu de sens, et rien n'aurait empêché de les écrire.
+ *
+ * - `normale` : une question, une confirmation, un formulaire de quelques
+ *   champs. La fenêtre est plus courte que ce qu'elle contient rarement.
+ * - `moyenne` : on **écrit** dedans. Il faut voir ce qu'on tape sur plusieurs
+ *   paragraphes, et une lettre coincée dans une colonne de trente caractères se
+ *   relit mal — c'est la taille de la fenêtre de rédaction.
+ * - `grande` : on lit un message entier, mise en forme comprise. Chaque
+ *   centimètre rendu au texte est une ligne de moins à faire défiler.
+ */
+export type TailleModale = 'normale' | 'moyenne' | 'grande'
+
+const LARGEUR_MODALE: Record<TailleModale, string> = {
+  normale: 'max-w-lg',
+  moyenne: 'max-w-3xl',
+  grande: 'max-w-[min(1500px,94vw)]',
+}
+
 export function Modale({
   titre,
   sous,
   onFermer,
   children,
-  large = false,
+  taille = 'normale',
   sansRembourrage = false,
 }: {
   titre: string
   sous?: string
   onFermer: () => void
   children: ReactNode
-  /** Occupe presque tout l'écran : pour lire un message en entier. */
-  large?: boolean
+  taille?: TailleModale
   /** Le contenu gère lui-même ses marges — utile à une `iframe`. */
   sansRembourrage?: boolean
 }) {
+  const grande = taille === 'grande'
   const cadre = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -446,7 +469,7 @@ export function Modale({
     }
   }, [onFermer])
 
-  return (
+  const fenetre = (
     <div
       role="presentation"
       onMouseDown={(e) => {
@@ -459,7 +482,7 @@ export function Modale({
       // l'écran sur un portable, et c'est alors la page derrière qui se mettait
       // à défiler.
       className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto ${
-        large ? 'p-5' : 'p-8'
+        grande ? 'p-5' : 'p-8'
       }`}
       style={{
         background: 'rgb(0 0 0 / 40%)',
@@ -479,9 +502,7 @@ export function Modale({
         // une ligne de moins à faire défiler. Les marges du fond restent —
         // collée aux bords, la fenêtre ne se distinguerait plus de la page, et
         // l'on ne saurait plus par où en sortir.
-        className={`apparait my-auto w-full rounded-3xl border ${
-          large ? 'max-w-[min(1500px,94vw)]' : 'max-w-lg'
-        }`}
+        className={`apparait my-auto w-full rounded-3xl border ${LARGEUR_MODALE[taille]}`}
         style={{
           background: 'var(--card)',
           borderColor: 'var(--line)',
@@ -511,7 +532,7 @@ export function Modale({
         </div>
 
         <div
-          className={`${large ? 'h-[82vh]' : 'max-h-[70vh]'} ${
+          className={`${grande ? 'h-[82vh]' : 'max-h-[70vh]'} ${
             sansRembourrage
               ? 'overflow-hidden rounded-b-3xl'
               : 'overflow-y-auto px-6 py-5'
@@ -522,6 +543,26 @@ export function Modale({
       </div>
     </div>
   )
+
+  // La fenêtre quitte l'endroit d'où on l'appelle et va se poser à la racine du
+  // document.
+  //
+  // Sans ce déplacement, `position: fixed` et `z-index` ne valent que dans le
+  // contexte d'empilement du parent. Les cartes de Newsletters en créent un —
+  // `isolation: isolate`, nécessaire pour que les feuilles décalées passent
+  // derrière leur seule carte — et la fenêtre de confirmation, appelée depuis
+  // l'intérieur d'une carte, se retrouvait donc *sous* les cartes rangées plus
+  // bas dans la grille : le voile ne les floutait pas, elles se peignaient par
+  // dessus le dialogue. Le portail règle le cas pour toutes les fenêtres à la
+  // fois, d'où qu'on les ouvre, plutôt que de demander à chaque appelant de se
+  // souvenir de ne pas s'isoler.
+  //
+  // `document` est testé parce que les tests de rendu du projet passent par
+  // `renderToString`, qui n'a pas de document et refuse les portails. Rien
+  // n'est perdu : l'application, elle, tourne toujours dans un webview.
+  return typeof document === 'undefined'
+    ? fenetre
+    : createPortal(fenetre, document.body)
 }
 
 /**
@@ -590,6 +631,31 @@ export function SqueletteLecture() {
           <span key={i} className="mouvement-utile squelette h-3.5" style={{ width: `${largeur}%` }} />
         ))}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Squelette d'une lettre seule, sans en-tête.
+ *
+ * Distinct de [`SqueletteLecture`] : la fenêtre en grand porte déjà son titre et
+ * son expéditeur, et lui remettre un en-tête gris sous les vrais donnerait
+ * l'impression que la fenêtre s'est dédoublée.
+ *
+ * Les largeurs sont irrégulières à dessein. Cinq barres de même longueur se
+ * lisent comme un tableau ; des lignes qui se terminent au hasard se lisent
+ * comme du texte, ce qui est précisément ce qu'on attend.
+ */
+export function SqueletteLettre() {
+  return (
+    <div className="flex flex-col gap-3 px-9 py-6" aria-hidden>
+      {[94, 88, 96, 72, 91, 85, 58].map((largeur, i) => (
+        <span
+          key={i}
+          className="mouvement-utile squelette h-3.5"
+          style={{ width: `${largeur}%` }}
+        />
+      ))}
     </div>
   )
 }
