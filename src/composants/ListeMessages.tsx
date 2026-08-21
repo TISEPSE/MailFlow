@@ -23,6 +23,7 @@ import {
 } from '../lib/presentation'
 import { ApercuPieceJointe } from './ApercuPieceJointe'
 import { lienOuvrir, messageDErreur, pieceJointeVignette } from '../lib/tauri'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { signalerUneErreur } from '../lib/crochets'
 import { decouperLesLiens } from '../lib/liens'
 import { lirePreferences } from '../lib/preferences'
@@ -803,40 +804,62 @@ function TexteAvecLiens({ texte }: { texte: string }) {
 const HAUTEUR_INITIALE = 320
 
 /**
+ * Adresse du cadre, servie par le protocole de `cadre.rs`.
+ *
+ * `convertFileSrc` donne la forme que la plateforme attend :
+ * `mailflow-corps://localhost/...` partout, `http://mailflow-corps.localhost/...`
+ * sous Windows et Android. L'écrire à la main marcherait sur cette machine et
+ * nulle part ailleurs.
+ */
+function adresseDuCadre(): string {
+  // `convertFileSrc` lit `window.__TAURI_INTERNALS__`. Les tests de rendu du
+  // projet passent par `renderToString`, qui n'a pas de fenêtre : calculer
+  // l'adresse au chargement du module faisait tomber tout fichier qui importe
+  // celui-ci, y compris ceux qui n'affichent jamais de cadre.
+  if (typeof window === 'undefined') return ''
+  return convertFileSrc('cadre.html', 'mailflow-corps')
+}
+
+/** Ce que le cadre sait dire à l'application. */
+type MessageDuCadre =
+  | { type: 'mailflow:pret' }
+  | { type: 'mailflow:hauteur'; hauteur: number }
+  | { type: 'mailflow:lien'; adresse: string }
+
+/**
  * Le cadre qui porte le HTML de l'expéditeur, ajusté à la hauteur du document.
  *
- * # Sur le bac à sable
+ * # Pourquoi il ne s'agit plus d'un `srcdoc`
  *
- * `allow-scripts` reste absent : rien ne s'exécute là-dedans, et c'est une
- * garantie du moteur, pas une promesse de notre part.
+ * Le corps était posé par `srcdoc` dans un bac à sable sans `allow-scripts`.
+ * Rien ne s'y exécutait, ce qui était la garantie voulue — mais **un clic sur
+ * un lien n'y produisait rien non plus**. Ce n'était pas une maladresse : un
+ * document dont le bac à sable a désactivé le script ne se voit servir aucun
+ * écouteur d'événement, y compris ceux que l'application y pose de l'extérieur.
+ * Une sonde l'a mesuré plutôt que supposé : l'écoute était bien posée, et
+ * l'événement qu'on s'envoyait à soi-même dans ce document ne revenait jamais.
  *
- * `allow-same-origin` a en revanche été ajouté, et c'est un choix qui mérite
- * son paragraphe. Il est nécessaire pour lire la hauteur du document : sans
- * lui, le cadre a une origine opaque et `contentDocument` est inaccessible, si
- * bien qu'aucun code ne peut savoir quelle place le message occupe. Or c'est
- * cette mesure qui permet de poser les fichiers joints juste après la lettre,
- * plutôt qu'au fond de la fenêtre.
+ * Le corps est maintenant servi par un protocole à lui, `mailflow-corps://`,
+ * qui porte sa propre politique de sécurité — voir `cadre.rs` pour le détail de
+ * ce qu'on gagne et de ce qu'on perd. L'essentiel tient en deux points :
  *
- * Ce que `allow-same-origin` ouvrirait — l'accès au contexte de l'application —
- * ne s'atteint que par du code. Trois verrous indépendants l'interdisent ici :
+ * - le cadre exécute un script, mais **seulement le nôtre** : sa politique
+ *   déclare `script-src 'self'`, sans `unsafe-inline`, ce qui refuse aussi bien
+ *   une balise `<script>` de l'expéditeur qu'un attribut `onclick` ;
+ * - il vit dans une **origine distincte** de celle de l'application, ce qui
+ *   n'était pas le cas avant. Son script ne peut ni lire le document de
+ *   MailFlow, ni atteindre `frameElement` pour se défaire de son bac à sable.
  *
- * 1. `allow-scripts` est absent, donc le moteur refuse d'exécuter quoi que ce
- *    soit dans ce document — il le journalise de lui-même ;
- * 2. le document déclare sa propre politique `default-src 'none'`, dont
- *    `script-src` hérite — voir [`documentIsole`] ;
- * 3. la politique de l'application n'autorise que ses propres scripts.
- *
- * Le HTML est par ailleurs déjà désinfecté côté Rust. Le danger classique de
- * `allow-same-origin` — un script du cadre qui retire lui-même l'attribut
- * `sandbox` — suppose précisément ce que ces trois verrous rendent impossible.
+ * `default-src 'none'` n'a pas bougé : rien ne sort du cadre, et les pixels de
+ * suivi restent morts.
  *
  * # Sur la mesure
  *
- * Le cadre est **replié à zéro avant chaque lecture**. Sans cela, le document
- * déclare toujours au moins la hauteur du cadre qui le porte : la mesure ne
- * peut alors que croître, jamais redescendre, et une lettre de trois lignes
- * héritait de la hauteur laissée par la précédente. C'est ce qui produisait ces
- * grandes étendues blanches avec les pièces jointes tout en bas.
+ * L'origine étant distincte, `contentDocument` n'est plus lisible — et c'est
+ * voulu. La hauteur arrive donc par message, mesurée à l'intérieur. Ça vaut
+ * mieux que l'ancien procédé, qui repliait le cadre à zéro avant chaque lecture
+ * pour contourner le fait qu'un document déclare toujours au moins la hauteur
+ * du cadre qui le porte.
  */
 function CadreIsole({ html }: { html: string }) {
   const cadre = useRef<HTMLIFrameElement>(null)
@@ -844,177 +867,108 @@ function CadreIsole({ html }: { html: string }) {
   /** Hauteur du document, ou `null` s'il s'est révélé impossible à mesurer. */
   const [hauteur, setHauteur] = useState<number | null>(HAUTEUR_INITIALE)
 
+  /** Le HTML courant, lu par l'écoute sans qu'elle ait à se reposer. */
+  const corps = useRef(html)
+  corps.current = html
+
+  /** Vrai dès que le cadre a annoncé qu'il écoute. */
+  const pret = useRef(false)
+
   useEffect(() => {
     const element = cadre.current
     if (!element) return
 
-    let observateur: ResizeObserver | null = null
-    let enMesure = false
     let vivant = true
 
-    /** Document du cadre sur lequel l'écoute des clics est posée, s'il y en a un. */
-    let documentEcoute: Document | null = null
+    const ecouter = (evenement: MessageEvent) => {
+      // Le cadre est en origine opaque pour ce qui nous concerne : c'est la
+      // source qui l'identifie, pas l'origine. Sans ce test, n'importe quel
+      // autre cadre de la page pourrait faire ouvrir une adresse.
+      if (!vivant || evenement.source !== element.contentWindow) return
+
+      const message = evenement.data as MessageDuCadre | null
+      if (!message || typeof message !== 'object') return
+
+      switch (message.type) {
+        case 'mailflow:pret':
+          pret.current = true
+          element.contentWindow?.postMessage(
+            { type: 'mailflow:corps', html: corps.current },
+            '*',
+          )
+          break
+
+        case 'mailflow:hauteur':
+          if (typeof message.hauteur === 'number' && message.hauteur > 0) {
+            setHauteur(message.hauteur)
+          }
+          break
+
+        case 'mailflow:lien':
+          if (typeof message.adresse !== 'string') break
+          // L'échec se dit à l'écran. Il ne se disait qu'à la console, et un
+          // lien qui n'ouvrait rien restait indistinguable d'un lien mort.
+          void lienOuvrir(message.adresse).catch((e) =>
+            signalerUneErreur(messageDErreur(e)),
+          )
+          break
+      }
+    }
 
     /**
-     * Ouvre dans le navigateur du système le lien sur lequel on vient de
-     * cliquer.
+     * Le corps est aussi envoyé au chargement du cadre, et pas seulement à son
+     * signal.
      *
-     * Sans cette interception, un clic ne produisait rien : le cadre n'a ni
-     * `allow-scripts` ni `allow-popups`, si bien que le moteur refuse la
-     * fenêtre surgissante, et le garde-fou de navigation de l'application ne
-     * voit pas les navigations de sous-cadre.
+     * Le signal part quand le script du cadre s'exécute — ce qui peut arriver
+     * **avant** que React n'ait posé cette écoute, le protocole répondant sans
+     * passer par le réseau. Le signal se perdait alors, et le message restait
+     * vide pour toujours. L'événement `load`, lui, arrive après l'exécution des
+     * scripts différés : à ce moment, le cadre écoute à coup sûr.
      *
-     * L'écoute est posée **depuis l'application**, sur le document du cadre —
-     * ce que `allow-same-origin` permet. Aucun script ne s'exécute pour autant
-     * *dans* le cadre : les trois verrous décrits plus haut restent en place,
-     * et c'est bien du code de l'application qui tourne, pas du code de
-     * l'expéditeur.
-     *
-     * L'attribut est lu tel qu'il est écrit dans le message, et non résolu :
-     * Rust doit voir exactement ce que l'expéditeur a mis, et refuser lui-même
-     * ce qui n'est pas une adresse absolue de schéma autorisé.
+     * Envoyer deux fois est sans conséquence : le cadre réécrit le même corps.
      */
-    const surClic = (evenement: Event) => {
-      // Surtout pas `instanceof Element` : la cible appartient au document du
-      // cadre, donc à un autre realm, avec ses propres constructeurs. Le test
-      // serait faux pour *tout* élément du message, et l'interception ne se
-      // déclencherait jamais. On reconnaît donc la capacité, pas la classe.
-      const cible = evenement.target as {
-        closest?: (selecteur: string) => Element | null
-      } | null
-
-      const lien = cible?.closest?.('a[href], area[href]')
-      if (!lien) return
-
-      // Annulé dans tous les cas : même refusée par Rust, cette navigation ne
-      // doit pas emporter le cadre — ni, pire, l'application.
-      evenement.preventDefault()
-
-      const adresse = lien.getAttribute('href')?.trim()
-      if (!adresse || adresse.startsWith('#')) return
-
-      // L'échec se dit à l'écran. Il ne se disait qu'à la console, et un lien
-      // qui n'ouvrait rien restait donc indistinguable d'un lien mort : c'est
-      // ce silence qui a fait croire la fonctionnalité absente alors qu'elle
-      // était seulement empêchée.
-      // TEMPORAIRE — voir plus haut.
-      console.error('[MailFlow] lien du message intercepté, remis au système')
-      void lienOuvrir(adresse).catch((e) => signalerUneErreur(messageDErreur(e)))
-    }
-
-    const mesurer = (document: Document) => {
-      // Le garde-fou empêche la boucle : replier le cadre change la mise en
-      // page du document, ce que l'observateur signale aussitôt.
-      if (enMesure || !vivant) return
-      enMesure = true
-
-      element.style.height = '0px'
-      const mesure = Math.max(
-        document.documentElement.scrollHeight,
-        document.body.scrollHeight,
+    const alimenter = () => {
+      if (!vivant) return
+      pret.current = true
+      element.contentWindow?.postMessage(
+        { type: 'mailflow:corps', html: corps.current },
+        '*',
       )
-      element.style.height = `${mesure}px`
-
-      enMesure = false
-      setHauteur(mesure)
     }
 
-    /** Rend `false` tant que le document n'est pas encore là. */
-    const brancher = () => {
-      let document: Document | null
-      try {
-        document = element.contentDocument
-      } catch (e) {
-        // Le moteur refuse la lecture : le cadre reprend toute la place
-        // disponible, comme autrefois, plutôt que de tronquer le message.
-        // Seuls les fichiers joints passent alors sous la ligne de flottaison.
-        //
-        // Et surtout : l'écoute des clics ne peut pas être posée, donc **aucun
-        // lien du message ne s'ouvrira**. C'est la seule branche du code où la
-        // fonctionnalité disparaît entièrement, et elle le faisait sans un mot
-        // — un lien mort y était indiscernable d'un lien qui ne mène nulle
-        // part. La trace n'est pas décorative : c'est elle qui distingue ce cas
-        // d'un échec du lanceur système, qui se règle ailleurs.
-        // TEMPORAIRE — `error` et non `warn` le temps du diagnostic : la
-        // console du webview est filtrée sur les erreurs, et un avertissement
-        // n'y arrive pas.
-        console.error(
-          '[MailFlow] document du cadre inaccessible : les liens du message ne peuvent pas être interceptés',
-          e,
-        )
-        setHauteur(null)
-        return true
-      }
-
-      // Un document pas encore remplacé par `srcdoc` n'a pas de corps. Ce n'est
-      // pas un échec : c'est trop tôt, et l'événement de chargement rappellera.
-      if (!document?.body) return false
-
-      document.removeEventListener('click', surClic, true)
-      document.addEventListener('click', surClic, true)
-      documentEcoute = document
-
-      // TEMPORAIRE — diagnostic.
-      //
-      // Deux cas que rien ne distinguait jusqu'ici : l'écoute n'a jamais été
-      // posée, ou elle l'a été et le moteur ne la sert pas. Le second est le
-      // cas d'un document dont le bac à sable a désactivé le script : la
-      // spécification veut alors qu'aucun écouteur ne soit appelé sur ce
-      // document, y compris ceux qu'un autre cadre y a posés.
-      //
-      // La sonde tranche sans dépendre d'un clic bien visé : on pose un
-      // écouteur, on lui envoie un événement, on regarde s'il revient.
-      let sondeRecue = false
-      const sonde = () => {
-        sondeRecue = true
-      }
-      document.addEventListener('mailflow:sonde', sonde, true)
-      document.dispatchEvent(new Event('mailflow:sonde'))
-      document.removeEventListener('mailflow:sonde', sonde, true)
-
-      console.error(
-        `[MailFlow] cadre branché — ${document.querySelectorAll('a[href]').length} lien(s) ;` +
-          ` les écouteurs du document ${sondeRecue ? 'RÉPONDENT' : 'NE RÉPONDENT PAS'}`,
-      )
-
-      mesurer(document)
-      observateur?.disconnect()
-      observateur = new ResizeObserver(() => {
-        requestAnimationFrame(() => {
-          mesurer(document)
-        })
-      })
-      // Les images arrivent après le chargement du document et changent la
-      // hauteur : sans cette observation, une lettre illustrée resterait
-      // tronquée à la taille de son seul texte.
-      observateur.observe(document.body)
-      return true
-    }
-
-    element.addEventListener('load', brancher)
-    // Le document peut être déjà en place quand l'effet se déclenche : le
-    // `srcdoc` d'une chaîne se charge sans passer par le réseau, et
-    // l'événement a pu partir avant que React n'écoute.
-    brancher()
+    window.addEventListener('message', ecouter)
+    element.addEventListener('load', alimenter)
 
     return () => {
       vivant = false
-      element.removeEventListener('load', brancher)
-      documentEcoute?.removeEventListener('click', surClic, true)
-      observateur?.disconnect()
+      pret.current = false
+      window.removeEventListener('message', ecouter)
+      element.removeEventListener('load', alimenter)
     }
+  }, [])
+
+  // Changer de message sans recharger le cadre : le script est déjà en place,
+  // il suffit de lui donner le nouveau corps. Recharger ferait clignoter un
+  // document blanc entre deux lettres.
+  useEffect(() => {
+    if (!pret.current) return
+    cadre.current?.contentWindow?.postMessage(
+      { type: 'mailflow:corps', html },
+      '*',
+    )
   }, [html])
 
   return (
     <iframe
       ref={cadre}
       title="Contenu du message"
-      // Ni `allow-scripts` ni `allow-popups` : rien ne s'exécute ici, et le
-      // cadre ne peut pas ouvrir de fenêtre. Le clic sur un lien est donc
-      // intercepté par l'application elle-même, qui confie l'adresse à Rust —
-      // voir `surClic` plus haut.
-      sandbox="allow-same-origin"
-      srcDoc={documentIsole(html)}
+      // `allow-scripts` pour notre seul script — la politique du document
+      // refuse tous les autres. `allow-same-origin` garde au cadre son origine
+      // `mailflow-corps://`, qui n'est pas celle de l'application : la
+      // combinaison n'est dangereuse que lorsque les deux origines coïncident,
+      // ce qui n'est justement plus le cas.
+      sandbox="allow-scripts allow-same-origin"
+      src={adresseDuCadre()}
       scrolling={hauteur === null ? 'auto' : 'no'}
       className="w-full"
       style={{
@@ -1039,38 +993,4 @@ function Avertissement() {
       </p>
     </div>
   )
-}
-
-/**
- * Enveloppe le HTML de l'expéditeur dans un document minimal.
- *
- * La politique de sécurité déclarée ici s'ajoute à celle de l'application, dont
- * le cadre hérite : `default-src 'none'` interdit toute requête sortante, ce qui
- * neutralise au passage les pixels de suivi.
- *
- * Le fond reste blanc même en thème sombre : ces messages sont écrits pour du
- * papier blanc, et les recolorer rendrait illisible tout ce qui fixe sa propre
- * couleur de texte.
- */
-function documentIsole(html: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
-<style>
-  html { background: #ffffff; }
-  /* La barre de défilement du message est masquée : le cadre a la sienne, et
-     deux barres côte à côte n'en font pas une meilleure. Le contenu défile
-     toujours, à la molette comme au clavier. */
-  body::-webkit-scrollbar { width: 0; height: 0; }
-  body {
-    margin: 0; padding: 20px 24px;
-    /* Un message bâti sur un tableau large défile ici, au lieu d'élargir le
-       cadre et de pousser toute l'application hors de la fenêtre. */
-    overflow-x: auto;
-    font: 14px/1.55 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
-    color: #1d1d1f; overflow-wrap: break-word;
-  }
-  img, table { max-width: 100%; }
-  img { height: auto; }
-  a { color: #2f6bff; }
-</style></head><body>${html}</body></html>`
 }

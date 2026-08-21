@@ -11,6 +11,12 @@ import { renderToString } from 'react-dom/server'
 import { Newsletters } from './Newsletters'
 import type { MessageAffiche } from '../types/backend'
 import type { EtatSynthese } from './Newsletters'
+import { identiteExpediteur } from '../lib/newsletters'
+
+/** La clé sous laquelle la synthèse désigne la publication d'un message. */
+function cleDe(id: string): string {
+  return identiteExpediteur(`no-reply@${id}.example`)
+}
 
 function message(id: string): MessageAffiche {
   return {
@@ -29,10 +35,13 @@ function message(id: string): MessageAffiche {
   }
 }
 
-function rendre(synthese: EtatSynthese, { analysable = true } = {}) {
+function rendre(
+  synthese: EtatSynthese,
+  { analysable = true, messages = [message('a'), message('b')] } = {},
+) {
   return renderToString(
     <Newsletters
-      messages={[message('a'), message('b')]}
+      messages={messages}
       vide={{ icone: 'newspaper', titre: 'Rien', detail: 'Rien' }}
       logos={{}}
       onOuvrir={() => {}}
@@ -104,6 +113,39 @@ describe('bandeau de synthèse', () => {
 
     expect(html).toContain("La synthèse n&#x27;a rien retenu")
     expect(html).toContain('Réessayer')
+  })
+
+  it('retire le point dont la publication a disparu de la page', () => {
+    // Supprimer un bloc laissait sa phrase en haut de l'écran, à parler d'un
+    // message qui n'existait plus.
+    const html = rendre({
+      quoi: 'faite',
+      points: [
+        { texte: 'Ce que dit la première.', sources: [cleDe('a')] },
+        { texte: 'Ce que dit la seconde.', sources: [cleDe('b')] },
+      ],
+      hashtags: [],
+      produiteLe: '2026-08-22T07:10:00+02:00',
+      publications: 2,
+      // La page ne montre plus que « a ».
+    }, { messages: [message('a')] })
+
+    expect(html).toContain('Ce que dit la première.')
+    expect(html).not.toContain('Ce que dit la seconde.')
+  })
+
+  it('retire aussi un point à moitié orphelin', () => {
+    // Deux publications, une supprimée : la phrase reste vraie pour moitié, ce
+    // qui est pire qu'un point de moins.
+    const html = rendre({
+      quoi: 'faite',
+      points: [{ texte: 'Ce que disent les deux.', sources: [cleDe('a'), cleDe('b')] }],
+      hashtags: [],
+      produiteLe: '2026-08-22T07:10:00+02:00',
+      publications: 2,
+    }, { messages: [message('a')] })
+
+    expect(html).not.toContain('Ce que disent les deux.')
   })
 
   it('affiche les points et un seul bouton quand la synthèse est là', () => {

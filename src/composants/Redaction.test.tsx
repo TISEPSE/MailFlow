@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToString } from 'react-dom/server'
 import { Redaction } from './Redaction'
 import { brouillonDeTransfert, brouillonVierge } from '../lib/redaction'
+import type { Connaissance } from '../lib/contacts'
 import type { MessageAffiche } from '../types/backend'
 
 const MESSAGE: MessageAffiche = {
@@ -27,11 +28,16 @@ const MESSAGE: MessageAffiche = {
   libelles: [],
 }
 
+const CARNET: Connaissance[] = [
+  { adresse: 'alice@exemple.fr', nom: 'Alice Martin', apparitions: 3 },
+]
+
 function rendre(depart = brouillonVierge()) {
   return renderToString(
     <Redaction
       depart={depart}
       de="moi@exemple.fr"
+      carnet={CARNET}
       onFermer={() => {}}
       onEnvoye={() => {}}
     />,

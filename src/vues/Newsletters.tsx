@@ -423,12 +423,32 @@ function Synthese({
           ? `Dernier reçu à ${heureCourte(derniere)}`
           : 'En attente du relevé'
 
-  const points = (synthese.quoi === 'faite' ? synthese.points : []).map((point) => ({
-    texte: point.texte,
-    citees: point.sources
-      .map((cle) => parCle.get(cle))
-      .filter((v): v is { groupe: GroupeNewsletters; rang: number } => Boolean(v)),
-  }))
+  /**
+   * Les points de la synthèse, amputés de ceux qui parlent d'un absent.
+   *
+   * Un point n'est gardé que si **toutes** ses sources sont encore sur la
+   * page. Supprimer une publication laissait auparavant sa phrase en haut de
+   * l'écran, à parler d'un message qui n'existait plus — et il n'y avait aucun
+   * moyen de s'en débarrasser sans relancer toute l'analyse.
+   *
+   * Toutes et non pas une seule : un point qui réunit deux publications dont
+   * l'une vient d'être supprimée est à moitié faux, et une demi-vérité affichée
+   * comme un fait est pire qu'un point de moins.
+   *
+   * Rien n'est mémorisé pour cela : la liste est déduite de ce qui est affiché.
+   * Un bloc archivé quitte la page au même titre qu'un bloc supprimé, et son
+   * point s'en va avec — la synthèse résume ce qu'il reste à lire.
+   */
+  const points = (synthese.quoi === 'faite' ? synthese.points : [])
+    .map((point) => ({
+      texte: point.texte,
+      citees: point.sources
+        .map((cle) => parCle.get(cle))
+        .filter((v): v is { groupe: GroupeNewsletters; rang: number } => Boolean(v)),
+      // Le compte de départ, pour savoir si quelque chose manque à l'arrivée.
+      attendues: point.sources.length,
+    }))
+    .filter((point) => point.citees.length === point.attendues)
 
   return (
     <div

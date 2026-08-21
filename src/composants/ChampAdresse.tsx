@@ -12,7 +12,7 @@ import { useState } from 'react'
 import { Etiquette, Icone } from './base'
 import { LIBELLE_CATEGORIE, ton } from '../lib/presentation'
 import { adresseValide } from '../lib/regles'
-import { normaliser } from '../lib/recherche'
+import { HORS_JEU, normaliser, rangDeCorrespondance } from '../lib/recherche'
 import type { Categorie, MessageAffiche } from '../types/backend'
 
 export function ChampAdresse({
@@ -119,15 +119,7 @@ function Saisie({
   const MINIMUM = 2
 
   /** Là où la requête tombe dans une chaîne : plus c'est tôt, plus c'est sûr. */
-  const rang = (texte: string): number => {
-    const t = normaliser(texte)
-    if (t.startsWith(q)) return 0
-    // Début d'un mot : « rennes » pour « re », mais pas « no-reply ».
-    if (new RegExp(`(^|[\\s.@_-])${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(t)) {
-      return 1
-    }
-    return t.includes(q) ? 2 : 99
-  }
+  const rang = (texte: string): number => rangDeCorrespondance(q, texte)
 
   const propositions =
     q.length >= MINIMUM
@@ -139,7 +131,7 @@ function Saisie({
           ).values(),
         )
           .map((m) => ({ m, r: Math.min(rang(m.nom), rang(m.adresse)) }))
-          .filter(({ r }) => r < 99)
+          .filter(({ r }) => r < HORS_JEU)
           // Le classement d'abord, l'alphabet ensuite : une correspondance en
           // début de nom passe avant une qui se cache au milieu d'une adresse.
           .sort(

@@ -420,8 +420,9 @@ export function Confirmation({
  * - `normale` : une question, une confirmation, un formulaire de quelques
  *   champs. La fenêtre est plus courte que ce qu'elle contient rarement.
  * - `moyenne` : on **écrit** dedans. Il faut voir ce qu'on tape sur plusieurs
- *   paragraphes, et une lettre coincée dans une colonne de trente caractères se
- *   relit mal — c'est la taille de la fenêtre de rédaction.
+ *   paragraphes, et une lettre coincée dans une colonne étroite se relit mal —
+ *   c'est la taille de la fenêtre de rédaction. Large, donc : écrire est la
+ *   seule chose qu'on fait dans cette fenêtre, autant lui donner la place.
  * - `grande` : on lit un message entier, mise en forme comprise. Chaque
  *   centimètre rendu au texte est une ligne de moins à faire défiler.
  */
@@ -429,7 +430,7 @@ export type TailleModale = 'normale' | 'moyenne' | 'grande'
 
 const LARGEUR_MODALE: Record<TailleModale, string> = {
   normale: 'max-w-lg',
-  moyenne: 'max-w-3xl',
+  moyenne: 'max-w-5xl',
   grande: 'max-w-[min(1500px,94vw)]',
 }
 

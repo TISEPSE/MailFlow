@@ -242,12 +242,26 @@ export function Archives({
     [tasVivants, seuls, dispose],
   )
 
-  /** Déplace un objet et enregistre la nouvelle disposition. */
+  /**
+   * Déplace un objet et enregistre **son** nouvel emplacement.
+   *
+   * À partir de `tableau` et non de `dispose` : c'est toute la différence.
+   *
+   * L'ancienne version repartait de la disposition calculée, donc elle écrivait
+   * aussi les places attribuées automatiquement à tout le reste. Un seul
+   * déplacement suffisait ainsi à épingler la table entière, et la tuile
+   * suivante — celle qu'on venait d'archiver — ne trouvait plus de place libre
+   * qu'au milieu, derrière des tuiles que personne n'avait jamais touchées.
+   *
+   * `tableau.json` ne retient plus que les décisions de l'utilisateur. Tout le
+   * reste se recalcule à chaque affichage, du plus récent au plus ancien, en
+   * commençant par le coin supérieur gauche.
+   */
   const poser = useCallback(
     (id: string, position: Position, estUnTas: boolean) => {
       const suivant: Tableau = {
-        tas: { ...dispose.tas },
-        messages: { ...dispose.messages },
+        tas: { ...tableau.tas },
+        messages: { ...tableau.messages },
       }
 
       if (estUnTas) suivant.tas[id] = position
@@ -255,7 +269,7 @@ export function Archives({
 
       onTableau(suivant)
     },
-    [dispose, onTableau],
+    [tableau, onTableau],
   )
 
   /**

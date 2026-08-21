@@ -35,6 +35,39 @@ export function normaliser(texte: string): string {
  * non une note de pertinence : sur une boite de soixante messages, la date est
  * un meilleur guide qu'un score que personne ne peut prevoir.
  */
+/**
+ * À quel point une chaîne répond à ce qu'on a tapé.
+ *
+ * Trois rangs, du plus sûr au plus douteux, et [`HORS_JEU`] pour « pas du
+ * tout ». Le classement compte autant que le filtrage : une liste de dix
+ * propositions dans le désordre oblige à la lire en entier, c'est-à-dire à
+ * faire soi-même le travail qu'elle prétend éviter.
+ *
+ * - `0` — la chaîne **commence** par ce qu'on a tapé.
+ * - `1` — un de ses mots commence par ce qu'on a tapé. « rennes » pour « re »,
+ *   mais pas « no-reply ».
+ * - `2` — ça se trouve quelque part au milieu.
+ *
+ * `requete` est attendue déjà normalisée : la fonction est appelée une fois par
+ * candidat, et normaliser la même requête à chaque tour serait du travail
+ * refait pour rien.
+ *
+ * Écrite ici plutôt que dans un champ de saisie : deux champs s'en servent —
+ * l'adresse d'une règle et les destinataires d'un message — et deux copies
+ * auraient fini par se comporter différemment sans que personne ne le veuille.
+ */
+export const HORS_JEU = 99
+
+export function rangDeCorrespondance(requete: string, texte: string): number {
+  const t = normaliser(texte)
+  if (t.startsWith(requete)) return 0
+
+  const echappee = requete.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (new RegExp(`(^|[\\s.@_-])${echappee}`).test(t)) return 1
+
+  return t.includes(requete) ? 2 : HORS_JEU
+}
+
 export function chercher(
   messages: readonly MessageAffiche[],
   requete: string,

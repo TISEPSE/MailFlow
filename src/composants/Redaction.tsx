@@ -27,11 +27,14 @@
 import { useState } from 'react'
 import { Bouton, Icone, Modale } from './base'
 import { decouperAdresses, type Brouillon } from '../lib/redaction'
+import { ChampDestinataires } from './ChampDestinataires'
+import type { Connaissance } from '../lib/contacts'
 import { messageDErreur, messageEnvoyer } from '../lib/tauri'
 
 export function Redaction({
   depart,
   de,
+  carnet,
   onFermer,
   onEnvoye,
 }: {
@@ -39,6 +42,8 @@ export function Redaction({
   depart: Brouillon
   /** Adresse du compte connecté, montrée en pied : le message part de là. */
   de: string | null
+  /** Les gens qui figurent déjà dans vos messages. Voir `lib/contacts`. */
+  carnet: readonly Connaissance[]
   onFermer: () => void
   /** Appelé après un envoi réussi, pour l'annoncer là où on annonce. */
   onEnvoye: (message: string) => void
@@ -97,11 +102,12 @@ export function Redaction({
         className="flex flex-col gap-3"
       >
         <Ligne titre="À">
-          <Saisie
+          <ChampDestinataires
             valeur={brouillon.destinataires}
             onChange={changer('destinataires')}
+            carnet={carnet}
             libelle="Destinataires"
-            placeholder="adresse@exemple.fr, une-autre@exemple.fr"
+            placeholder="Un nom ou une adresse"
             autoFocus
           />
           {!copiesVisibles && (
@@ -117,11 +123,12 @@ export function Redaction({
 
         {copiesVisibles && (
           <Ligne titre="Cc">
-            <Saisie
+            <ChampDestinataires
               valeur={brouillon.copies}
               onChange={changer('copies')}
+              carnet={carnet}
               libelle="Copies"
-              placeholder="adresse@exemple.fr"
+              placeholder="Un nom ou une adresse"
             />
           </Ligne>
         )}
@@ -140,12 +147,15 @@ export function Redaction({
           onChange={(e) => changer('corps')(e.target.value)}
           aria-label="Corps du message"
           placeholder="Écrivez votre message…"
-          rows={16}
+          rows={20}
           className="champ-de-saisie selectionnable resize-none rounded-2xl border px-4 py-3 text-[0.8125rem] leading-relaxed outline-none placeholder:text-[var(--sub)]"
           style={{
             background: 'var(--sunk)',
             borderColor: 'var(--line)',
             color: 'var(--fg)',
+            // Une hauteur plancher : sans elle, la fenêtre se rétractait sur un
+            // message court et l'on écrivait dans une fente.
+            minHeight: '22rem',
           }}
         />
 
@@ -179,11 +189,11 @@ export function Redaction({
 function Ligne({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
     <div
-      className="flex items-center gap-3 border-b pb-2.5"
+      className="flex items-baseline gap-3 border-b pb-2.5"
       style={{ borderColor: 'var(--line)' }}
     >
       <span
-        className="w-10 flex-none text-[0.75rem] font-semibold"
+        className="w-10 flex-none pt-1.5 text-[0.75rem] font-semibold"
         style={{ color: 'var(--sub)' }}
       >
         {titre}

@@ -122,10 +122,19 @@ export interface Position {
  * rangement.
  */
 export interface Tableau {
-  /** Position des tas, par identifiant de libellé Gmail. */
+  /**
+   * Position des tas, par identifiant de libellé Gmail.
+   *
+   * Ce fichier ne retient que ce que **l'utilisateur** a placé. Les positions
+   * attribuées automatiquement se recalculent à chaque affichage : les écrire
+   * ici reviendrait à les faire passer pour des choix, et une tuile fraîchement
+   * archivée ne trouverait plus de place libre qu'au milieu de la table.
+   */
   tas: Record<string, Position>
   /** Position des messages laissés seuls sur la table. */
   messages: Record<string, Position>
+  /** Posée par le backend. Le frontend n'a pas à s'en occuper. */
+  version?: number
 }
 
 /** Miroir de `rules::model::Categorie`. */

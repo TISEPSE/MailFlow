@@ -192,6 +192,34 @@ describe('compléter une disposition existante', () => {
     expect(complet.messages.nouveau).not.toEqual(complet.messages.m1)
   })
 
+  it('donne la première case à la plus récente, pas à la dernière servie', () => {
+    // La liste des archives va du plus récent au plus ancien. Ce qu'on vient
+    // d'archiver doit donc atterrir en haut à gauche, et non derrière tout ce
+    // qui traînait déjà : c'est la première chose qu'on cherche des yeux.
+    const complet = completer({ tas: {}, messages: {} }, [], [
+      'recent',
+      'moins_recent',
+      'ancien',
+    ])
+
+    const recent = complet.messages.recent!
+    const ancien = complet.messages.ancien!
+
+    expect(recent.x).toBeLessThan(ancien.x)
+    expect(recent.y).toBeLessThanOrEqual(ancien.y)
+  })
+
+  it('ne pose rien sur une place choisie à la main', () => {
+    // La table est ce que l'utilisateur en a fait : une tuile qu'il a déplacée
+    // ne doit pas se faire recouvrir par la suivante.
+    const aLaMain: Tableau = { tas: {}, messages: { garde: { x: 24, y: 24 } } }
+
+    const complet = completer(aLaMain, [], ['garde', 'nouveau'])
+
+    expect(complet.messages.garde).toEqual({ x: 24, y: 24 })
+    expect(complet.messages.nouveau).not.toEqual({ x: 24, y: 24 })
+  })
+
   it("ne laisse rien du tableau d'origine derrière lui", () => {
     const complet = completer({ tas: {}, messages: {} }, ['Label_9'], ['m9'])
 

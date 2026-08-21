@@ -43,10 +43,32 @@ pub struct Position {
     pub y: f64,
 }
 
+/// Version du format de disposition.
+///
+/// Sert à une seule chose : reconnaître un fichier écrit avant que les
+/// positions automatiques ne cessent d'y être enregistrées. Voir
+/// [`Tableau::migrer`].
+pub const VERSION: u32 = 2;
+
 /// Ce que MailFlow retient de la disposition d'un compte.
+///
+/// # Ce qui doit s'y trouver, et ce qui n'y a rien à faire
+///
+/// **Uniquement ce que l'utilisateur a placé lui-même.** Les positions
+/// attribuées automatiquement se recalculent à chaque affichage, et les écrire
+/// ici revient à les faire passer pour des choix.
+///
+/// Ce n'était pas le cas, et la conséquence se voyait : une tuile fraîchement
+/// archivée se rangeait derrière toutes les autres — au milieu de la table —
+/// parce que toutes les autres étaient épinglées, y compris celles que personne
+/// n'avait jamais touchées.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tableau {
+    /// Version du format. Absente des fichiers d'avant la correction.
+    #[serde(default)]
+    pub version: u32,
+
     /// Position des tas, par identifiant de libellé Gmail.
     #[serde(default)]
     pub tas: HashMap<String, Position>,
@@ -57,6 +79,40 @@ pub struct Tableau {
 }
 
 impl Tableau {
+    /// Remet à plat, une seule fois, les positions qu'on ne sait pas juger.
+    ///
+    /// # Pourquoi une remise à plat plutôt qu'un tri
+    ///
+    /// Rien ne distingue, dans un fichier ancien, une tuile déplacée à la main
+    /// d'une tuile posée par le calcul : les deux ont été écrites de la même
+    /// façon. Il n'y a donc pas de tri possible — seulement un choix entre tout
+    /// garder, et ne plus rien épingler d'incertain.
+    ///
+    /// Les **tas** sont conservés. Faire un tas est un geste délibéré : on
+    /// dépose une tuile sur une autre, on nomme le libellé. Le placer l'est
+    /// tout autant. Les tuiles isolées, elles, sont le plus souvent là où le
+    /// calcul les a mises.
+    ///
+    /// Une fois et une seule : la version passe à [`VERSION`] et le fichier
+    /// n'est plus jamais touché de cette façon.
+    pub fn migrer(&mut self) -> bool {
+        if self.version >= VERSION {
+            return false;
+        }
+
+        let oubliees = self.messages.len();
+        self.messages.clear();
+        self.version = VERSION;
+
+        if oubliees > 0 {
+            log::info!(
+                "disposition reprise : {oubliees} tuile(s) isolée(s) rendues au placement \
+                 automatique, les tas gardent leur place"
+            );
+        }
+
+        true
+    }
     /// Oublie ce qui ne correspond plus à rien.
     ///
     /// Une position de message effacé, ou de libellé supprimé depuis Gmail, ne
@@ -88,15 +144,28 @@ pub fn chemin(racine: &Path, compte: &str) -> PathBuf {
 /// page. Un fichier illisible se traite pareil : perdre une mise en page ne
 /// justifie pas de refuser d'afficher la table.
 pub fn charger(racine: &Path, compte: &str) -> Tableau {
-    std::fs::read_to_string(chemin(racine, compte))
+    let mut tableau: Tableau = std::fs::read_to_string(chemin(racine, compte))
         .ok()
         .and_then(|texte| serde_json::from_str(&texte).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+
+    // La reprise a lieu à la lecture, et l'écriture qui suivra la rendra
+    // définitive. La refaire à chaque lecture est sans effet : la version
+    // consignée l'arrête d'elle-même.
+    tableau.migrer();
+    tableau
 }
 
 /// Écrit la disposition d'un compte.
 pub fn enregistrer(racine: &Path, compte: &str, tableau: &Tableau) -> Resultat<()> {
     let fichier = chemin(racine, compte);
+    // Le frontend renvoie la disposition sans se soucier de la version : elle
+    // est posée ici, sinon le fichier se ferait reprendre à chaque lecture et
+    // l'utilisateur verrait sa table se défaire à chaque ouverture.
+    let tableau = &Tableau {
+        version: VERSION,
+        ..tableau.clone()
+    };
 
     if let Some(dossier) = fichier.parent() {
         std::fs::create_dir_all(dossier).map_err(|e| AppError::io(dossier.display(), e))?;
@@ -112,22 +181,78 @@ pub fn enregistrer(racine: &Path, compte: &str, tableau: &Tableau) -> Resultat<(
 mod tests {
     use super::*;
 
+    /// Un fichier écrit avant la correction : pas de version, des positions
+    /// pour tout.
+    fn ancien_format() -> Tableau {
+        let mut t = Tableau::default();
+        t.version = 0;
+        t.tas.insert("Label_factures".into(), position(500.0, 300.0));
+        t.messages.insert("m1".into(), position(700.0, 400.0));
+        t.messages.insert("m2".into(), position(900.0, 400.0));
+        t
+    }
+
+    #[test]
+    fn un_ancien_fichier_rend_ses_tuiles_au_placement_automatique() {
+        // Rien n'y distingue une tuile déplacée à la main d'une tuile posée par
+        // le calcul : il n'y a pas de tri possible, seulement un choix.
+        let mut t = ancien_format();
+
+        assert!(t.migrer());
+        assert!(t.messages.is_empty());
+        assert_eq!(t.version, VERSION);
+    }
+
+    #[test]
+    fn les_tas_survivent_a_la_reprise() {
+        // Faire un tas et le placer sont deux gestes délibérés.
+        let mut t = ancien_format();
+        t.migrer();
+
+        assert_eq!(t.tas.get("Label_factures"), Some(&position(500.0, 300.0)));
+    }
+
+    #[test]
+    fn la_reprise_n_a_lieu_qu_une_fois() {
+        // Sans ce garde-fou, la table se déferait à chaque ouverture.
+        let mut t = ancien_format();
+        t.migrer();
+        t.messages.insert("place_a_la_main".into(), position(24.0, 24.0));
+
+        assert!(!t.migrer());
+        assert_eq!(t.messages.len(), 1);
+    }
+
     fn position(x: f64, y: f64) -> Position {
         Position { x, y }
     }
 
     fn tableau_type() -> Tableau {
-        let mut tableau = Tableau::default();
+        // Au format courant : ce qui est relu porte toujours la version, que
+        // l'écriture y pose. Un `Tableau::default()` nu vaut, lui, un fichier
+        // d'avant la correction.
+        let mut tableau = Tableau {
+            version: VERSION,
+            ..Default::default()
+        };
         tableau.tas.insert("Label_1".into(), position(40.0, 80.0));
         tableau.messages.insert("m1".into(), position(10.0, 20.0));
         tableau
+    }
+
+    /// Ce qu'une lecture rend quand il n'y a rien à lire.
+    fn table_vide() -> Tableau {
+        Tableau {
+            version: VERSION,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn une_premiere_ouverture_n_est_pas_une_panne() {
         let dossier = tempfile::tempdir().unwrap();
 
-        assert_eq!(charger(dossier.path(), "moi@gmail.com"), Tableau::default());
+        assert_eq!(charger(dossier.path(), "moi@gmail.com"), table_vide());
     }
 
     #[test]
@@ -148,10 +273,7 @@ mod tests {
 
         enregistrer(dossier.path(), "moi@gmail.com", &tableau_type()).unwrap();
 
-        assert_eq!(
-            charger(dossier.path(), "boulot@exemple.fr"),
-            Tableau::default()
-        );
+        assert_eq!(charger(dossier.path(), "boulot@exemple.fr"), table_vide());
     }
 
     #[test]
@@ -161,7 +283,7 @@ mod tests {
         std::fs::create_dir_all(fichier.parent().unwrap()).unwrap();
         std::fs::write(&fichier, "{ ceci n'est pas du json").unwrap();
 
-        assert_eq!(charger(dossier.path(), "moi@gmail.com"), Tableau::default());
+        assert_eq!(charger(dossier.path(), "moi@gmail.com"), table_vide());
     }
 
     #[test]

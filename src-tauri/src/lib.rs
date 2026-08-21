@@ -13,6 +13,7 @@ use tauri::Manager;
 pub mod archives;
 pub mod auth;
 pub mod cache;
+pub mod cadre;
 pub mod commands;
 pub mod comptes;
 pub mod config;
@@ -32,6 +33,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(liens_vers_le_navigateur())
+        // Le cadre où s'affiche le corps d'un message est servi par son propre
+        // protocole, avec sa propre politique de sécurité. Voir [`cadre`] pour
+        // le pourquoi — en un mot : un document en bac à sable sans
+        // `allow-scripts` ne sert aucun écouteur d'événement, et le clic sur un
+        // lien ne pouvait donc pas être intercepté.
+        .register_uri_scheme_protocol(cadre::SCHEME, |_app, requete| cadre::servir(requete))
         .setup(|app| {
             // Le journal est écrit **dans toutes les constructions**, pas
             // seulement en développement.
@@ -209,16 +216,36 @@ pub fn sortie_autorisee(url: &tauri::Url) -> bool {
 /// s'est produit à la première version, qui ignorait que le serveur de
 /// développement sert l'application sur `http://localhost`.
 fn est_l_application(url: &tauri::Url) -> bool {
+    // Le cadre où s'affiche le corps d'un message est servi par MailFlow
+    // lui-même — voir [`cadre`]. C'est donc l'application, pas un site tiers.
+    //
+    // Sans cette reconnaissance, le garde-fou annulait le chargement du cadre
+    // et le message restait blanc, en laissant dans le journal un « lien ignoré
+    // : schéma non autorisé » qui parlait d'un lien alors qu'il s'agissait de
+    // l'application. La leçon vaut d'être écrite : ce gestionnaire **voit** les
+    // navigations de sous-cadre, contrairement à ce qui a longtemps été supposé
+    // ici.
+    if url.scheme() == cadre::SCHEME {
+        return true;
+    }
+
     match url.scheme() {
         // Schémas propres au webview, jamais employés par un lien d'e-mail.
         "tauri" | "asset" | "ipc" | "about" | "data" | "blob" => true,
         "http" | "https" => matches!(
             url.host_str(),
             Some("tauri.localhost" | "localhost" | "127.0.0.1")
+            // La forme que Windows et Android donnent au protocole du cadre.
+            | Some(HOTE_DU_CADRE)
         ),
         _ => false,
     }
 }
+
+/// Hôte du protocole du cadre sous Windows et Android, où Tauri sert les
+/// protocoles maison en `http://<scheme>.localhost` faute de pouvoir en
+/// enregistrer un vrai.
+const HOTE_DU_CADRE: &str = "mailflow-corps.localhost";
 
 #[cfg(test)]
 mod tests_navigation {
@@ -236,6 +263,49 @@ mod tests_navigation {
         assert!(est_l_application(&url("http://localhost:1420/")));
         assert!(est_l_application(&url("http://tauri.localhost/index.html")));
         assert!(est_l_application(&url("tauri://localhost/")));
+    }
+
+    /// Le cadre du corps est servi par MailFlow : il ne doit pas être pris pour
+    /// un site tiers.
+    ///
+    /// Sans ce test, la régression est invisible et coûteuse : le garde-fou
+    /// annule silencieusement le chargement, et **tous** les messages
+    /// s'affichent blancs — sur toutes les pages à la fois. C'est exactement ce
+    /// qui est arrivé.
+    #[test]
+    fn le_cadre_du_corps_est_l_application_et_non_un_site_tiers() {
+        assert!(est_l_application(&url("mailflow-corps://localhost/cadre.html")));
+        assert!(est_l_application(&url("mailflow-corps://localhost/cadre.js")));
+        // La forme de Windows et d'Android.
+        assert!(est_l_application(&url(
+            "http://mailflow-corps.localhost/cadre.html"
+        )));
+    }
+
+    /// Reconnaître le cadre ne doit pas revenir à ouvrir la porte à qui
+    /// s'appellerait presque pareil.
+    #[test]
+    fn un_hote_voisin_de_celui_du_cadre_reste_un_site_tiers() {
+        for imposteur in [
+            "http://mailflow-corps.localhost.exemple.fr/",
+            "https://mailflow-corps.fr/",
+            "http://mailflow-corp.localhost/",
+        ] {
+            assert!(
+                !est_l_application(&url(imposteur)),
+                "« {imposteur} » ne doit pas passer pour l'application"
+            );
+        }
+    }
+
+    /// Le schéma du cadre reste interdit à la sortie.
+    ///
+    /// Un message hostile qui écrirait `<a href="mailflow-corps://...">` ne doit
+    /// pas faire ouvrir quoi que ce soit par le système : ce schéma désigne
+    /// l'intérieur de l'application, pas une adresse du monde.
+    #[test]
+    fn le_schema_du_cadre_ne_sort_jamais_vers_le_systeme() {
+        assert!(!sortie_autorisee(&url("mailflow-corps://localhost/cadre.js")));
     }
 
     #[test]
