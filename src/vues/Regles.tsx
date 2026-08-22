@@ -398,8 +398,13 @@ export function Regles({
  *
  * Il affiche la phrase que la règle produira, avant d'enregistrer : c'est la
  * seule manière pour l'utilisateur de vérifier qu'il a demandé ce qu'il croit.
+ *
+ * Exporté pour être éprouvé seul. La page ne le rend que fenêtre ouverte, et un
+ * test qui passerait par elle n'aurait rien à regarder : il vérifierait
+ * l'absence de ce qui n'a jamais été rendu, et resterait vert quoi qu'il
+ * arrive. C'est le seul usage de cet export.
  */
-function FormulaireAjout({
+export function FormulaireAjout({
   onValider,
   onAnnuler,
   comptes,
@@ -537,18 +542,28 @@ function FormulaireAjout({
         />
       </Champ>
 
-      <Champ titre="Catégorie">
-        <Segments
-          pleineLargeur
-          valeurs={CATEGORIES}
-          valeur={categorie}
-          onChange={(v) => {
-            changerCategorie(v)
-            setChoisiParDefaut(false)
-          }}
-          libelle="Catégorie de la règle"
-        />
-      </Champ>
+      {/* La catégorie nomme la page de MailFlow où les messages se rangent.
+          Elle n'a donc rien à dire d'un archivage : ces messages-là quittent la
+          boîte pour la table des archives, ils ne s'arrêtent dans aucune page.
+
+          Elle continue d'être **retenue** — devinée depuis l'adresse — parce
+          qu'une règle programmée laisse ses messages en boîte jusqu'à l'heure
+          dite, et qu'il faut bien les montrer quelque part d'ici là. Ce qui
+          disparaît est la question posée à l'utilisateur, pas la valeur. */}
+      {!archive && (
+        <Champ titre="Catégorie">
+          <Segments
+            pleineLargeur
+            valeurs={CATEGORIES}
+            valeur={categorie}
+            onChange={(v) => {
+              changerCategorie(v)
+              setChoisiParDefaut(false)
+            }}
+            libelle="Catégorie de la règle"
+          />
+        </Champ>
+      )}
 
       {archive && (
         <Champ titre="Ranger sous">
@@ -613,11 +628,15 @@ function FormulaireAjout({
               </label>
             )}
           </div>
-          <p className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
-            {frequence
-              ? "L'archivage a lieu au premier relevé qui suit l'heure dite."
-              : 'Les messages quittent la boîte dès que MailFlow les voit.'}
-          </p>
+          {/* Rien à écrire sous « Immédiatement » : le mot se suffit. La
+              phrase qui s'y trouvait répétait son propre intitulé. Une
+              fréquence, elle, laisse une vraie question — à quel moment
+              exactement ? — et mérite sa ligne. */}
+          {frequence && (
+            <p className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+              L'archivage a lieu au premier relevé qui suit l'heure dite.
+            </p>
+          )}
         </Champ>
       )}
 
