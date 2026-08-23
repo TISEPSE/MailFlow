@@ -99,13 +99,43 @@ export function carnet(
   )
 }
 
-/** Deux lettres au minimum avant de proposer quoi que ce soit.
- *
- *  Sur une seule, la liste rend presque tout le carnet et ne guide rien. */
-export const MINIMUM_POUR_PROPOSER = 2
+/** Une lettre au minimum avant de proposer, ou liste les plus fréquents si vide. */
+export const MINIMUM_POUR_PROPOSER = 1
 
 /** Au-delà, la liste cache le formulaire au lieu de l'aider. */
 const PLAFOND = 8
+
+/**
+ * Fusionne deux carnets d'adresses en combinant les apparitions et meilleurs noms.
+ */
+export function fusionnerCarnets(
+  premier: readonly Connaissance[],
+  second: readonly Connaissance[],
+): Connaissance[] {
+  const map = new Map<string, Connaissance>()
+
+  for (const c of [...premier, ...second]) {
+    const cle = c.adresse.trim().toLowerCase()
+    if (!cle) continue
+    const deja = map.get(cle)
+    if (deja) {
+      deja.apparitions += c.apparitions
+      deja.nom = meilleurNom(deja.nom, c.nom, cle)
+    } else {
+      map.set(cle, {
+        adresse: cle,
+        nom: meilleurNom('', c.nom, cle),
+        apparitions: c.apparitions,
+      })
+    }
+  }
+
+  return [...map.values()].sort(
+    (a, b) =>
+      b.apparitions - a.apparitions ||
+      (a.nom || a.adresse).localeCompare(b.nom || b.adresse, 'fr'),
+  )
+}
 
 /**
  * Les connaissances qui répondent à ce qu'on tape, les meilleures d'abord.
@@ -122,10 +152,15 @@ export function proposer(
   saisie: string,
   deja: readonly string[] = [],
 ): Connaissance[] {
-  const q = normaliser(saisie.trim())
-  if (q.length < MINIMUM_POUR_PROPOSER) return []
-
   const retenues = new Set(deja.map((a) => a.trim().toLowerCase()))
+  const texte = saisie.trim()
+
+  // Quand le champ est vide, propose les contacts les plus fréquents
+  if (!texte) {
+    return carnet.filter((c) => !retenues.has(c.adresse)).slice(0, PLAFOND)
+  }
+
+  const q = normaliser(texte)
 
   return carnet
     .filter((c) => !retenues.has(c.adresse))

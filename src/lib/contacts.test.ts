@@ -141,13 +141,12 @@ describe('proposer', () => {
     null,
   )
 
-  it('ne propose rien sur une seule lettre', () => {
-    // La liste rendrait presque tout le carnet et ne guiderait rien.
-    expect(proposer(repertoire, 'a')).toEqual([])
+  it('propose les contacts fréquents sur un champ vide', () => {
+    expect(proposer(repertoire, '')).toHaveLength(3)
   })
 
-  it('propose dès deux lettres', () => {
-    expect(proposer(repertoire, 'al').map((c) => c.adresse)).toContain(
+  it('propose dès une seule lettre', () => {
+    expect(proposer(repertoire, 'a').map((c) => c.adresse)).toContain(
       'alice@exemple.fr',
     )
   })

@@ -17,6 +17,7 @@ pub mod cadre;
 pub mod commands;
 pub mod comptes;
 pub mod config;
+pub mod contacts;
 pub mod error;
 pub mod gmail;
 pub mod html;
@@ -138,6 +139,8 @@ pub fn run() {
             commands::compte_ajouter,
             commands::compte_oublier,
             commands::logos_expediteurs,
+            commands::contacts_lister,
+            commands::contacts_synchroniser,
             commands::lien_ouvrir,
             commands::resumes::llm_etat,
             commands::resumes::llm_cle_enregistrer,

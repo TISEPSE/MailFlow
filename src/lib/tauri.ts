@@ -548,3 +548,14 @@ export function syntheseProduire(
 ): Promise<ResultatSynthese> {
   return invoke<ResultatSynthese>('synthese_produire', { publications })
 }
+
+/** Liste les contacts connus enregistrés localement. */
+export function contactsLister(): Promise<Connaissance[]> {
+  return invoke<Connaissance[]>('contacts_lister')
+}
+
+/** Synchronise les contacts depuis Gmail (messages envoyés et reçus). */
+export function contactsSynchroniser(): Promise<Connaissance[]> {
+  return invoke<Connaissance[]>('contacts_synchroniser')
+}
+

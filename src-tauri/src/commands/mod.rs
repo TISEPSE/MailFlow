@@ -2327,6 +2327,77 @@ pub async fn logos_expediteurs(
     Ok(trouves)
 }
 
+/// Liste les contacts enregistrés localement.
+#[tauri::command]
+pub async fn contacts_lister(app: AppHandle) -> Resultat<Vec<crate::contacts::ContactConnu>> {
+    let dossier = dossier_config(&app)?;
+    let annuaire = comptes::charger(&dossier);
+    let mut tous = Vec::new();
+    let mut vus = std::collections::HashSet::new();
+
+    let liste_comptes: Vec<String> = if annuaire.connus.is_empty() {
+        vec![compte_actif(&app)]
+    } else {
+        annuaire.connus.iter().map(|c| c.adresse.clone()).collect()
+    };
+
+    for c in liste_comptes {
+        let contacts = crate::contacts::charger(&dossier, &c);
+        for contact in contacts {
+            if vus.insert(contact.adresse.clone()) {
+                tous.push(contact);
+            }
+        }
+    }
+
+    tous.sort_by(|a, b| b.apparitions.cmp(&a.apparitions));
+    Ok(tous)
+}
+
+/// Synchronise les contacts depuis Gmail (messages envoyés et reçus).
+#[tauri::command]
+pub async fn contacts_synchroniser(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<Vec<crate::contacts::ContactConnu>> {
+    let compte = compte_actif(&app);
+    let dossier = dossier_config(&app)?;
+    let regles = RulesStore::pour_compte(&dossier, &compte).charger()?;
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+
+    // 1. Relève les e-mails envoyés (in:sent)
+    let envoyes = crate::gmail::boite::relever_requete(
+        &client,
+        &regles,
+        &compte,
+        "in:sent",
+        150,
+    )
+    .await
+    .unwrap_or_default();
+
+    // 2. Relève également les messages récents de la boîte
+    let recus = crate::gmail::boite::relever_requete(
+        &client,
+        &regles,
+        &compte,
+        "-in:trash -in:spam",
+        100,
+    )
+    .await
+    .unwrap_or_default();
+
+    let mut tous_messages = envoyes;
+    tous_messages.extend(recus);
+
+    let existants = crate::contacts::charger(&dossier, &compte);
+    let fusionnes = crate::contacts::fusionner(existants, &tous_messages, &compte);
+    crate::contacts::enregistrer(&dossier, &compte, &fusionnes)?;
+
+    log::info!("{} contact(s) synchronisé(s) depuis Gmail", fusionnes.len());
+    Ok(fusionnes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::url_mailto;
