@@ -39,6 +39,7 @@ export function Redaction({
   depart,
   de,
   carnet,
+  logos,
   onFermer,
   onEnvoye,
 }: {
@@ -48,6 +49,8 @@ export function Redaction({
   de: string | null
   /** Les gens qui figurent déjà dans vos messages. */
   carnet: readonly Connaissance[]
+  /** Logos des domaines enregistrés. */
+  logos?: Record<string, string>
   onFermer: () => void
   /** Appelé après un envoi réussi, pour l'annoncer là où on annonce. */
   onEnvoye: (message: string) => void
@@ -155,6 +158,7 @@ export function Redaction({
               valeur={brouillon.destinataires}
               onChange={changer('destinataires')}
               carnet={carnet}
+              logos={logos}
               libelle="Destinataires"
               placeholder="Un nom ou une adresse"
               autoFocus
@@ -189,6 +193,7 @@ export function Redaction({
                 valeur={brouillon.copies}
                 onChange={changer('copies')}
                 carnet={carnet}
+                logos={logos}
                 libelle="Copies"
                 placeholder="Un nom ou une adresse"
               />
@@ -201,6 +206,7 @@ export function Redaction({
                 valeur={cci}
                 onChange={setCci}
                 carnet={carnet}
+                logos={logos}
                 libelle="Copies cachées"
                 placeholder="Un nom ou une adresse"
               />

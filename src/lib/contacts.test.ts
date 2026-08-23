@@ -141,11 +141,11 @@ describe('proposer', () => {
     null,
   )
 
-  it('propose les contacts fréquents sur un champ vide', () => {
-    expect(proposer(repertoire, '')).toHaveLength(3)
+  it('ne propose rien sur un champ vide tant qu on n a pas tape', () => {
+    expect(proposer(repertoire, '')).toEqual([])
   })
 
-  it('propose dès une seule lettre', () => {
+  it('propose dès une seule lettre tapée', () => {
     expect(proposer(repertoire, 'a').map((c) => c.adresse)).toContain(
       'alice@exemple.fr',
     )

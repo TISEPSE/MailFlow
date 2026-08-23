@@ -18,14 +18,16 @@
  * dans vos messages — voir `lib/contacts`.
  */
 import { useRef, useState } from 'react'
-import { Icone } from './base'
+import { Icone, Pastille } from './base'
 import { proposer, type Connaissance } from '../lib/contacts'
 import { decouperAdresses } from '../lib/redaction'
+import { domaineDe, initiales, palette } from '../lib/presentation'
 
 export function ChampDestinataires({
   valeur,
   onChange,
   carnet,
+  logos,
   libelle,
   placeholder,
   autoFocus = false,
@@ -34,6 +36,7 @@ export function ChampDestinataires({
   valeur: string
   onChange: (v: string) => void
   carnet: readonly Connaissance[]
+  logos?: Record<string, string>
   libelle: string
   placeholder: string
   autoFocus?: boolean
@@ -165,39 +168,59 @@ export function ChampDestinataires({
 
       {propositions.length > 0 && (
         <ul
-          className="menu-apparait absolute top-full right-0 left-0 z-10 mt-1.5 max-h-64 overflow-y-auto rounded-xl border py-1"
+          className="menu-apparait absolute top-full right-0 left-0 z-20 mt-1.5 max-h-64 overflow-y-auto rounded-2xl border p-1"
           style={{
             background: 'var(--card)',
             borderColor: 'var(--line)',
             boxShadow: 'var(--shadow-lg)',
           }}
         >
-          {propositions.map((c, i) => (
-            <li key={c.adresse}>
-              <button
-                type="button"
-                // `mousedown` et non `click` : le `blur` du champ part avant le
-                // `click`, et le menu aurait déjà disparu.
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  poser(c.adresse)
-                }}
-                onMouseEnter={() => setVise(i)}
-                className="flex w-full items-baseline gap-2 px-3 py-2 text-left"
-                style={{ background: i === vise ? 'var(--selection)' : 'transparent' }}
-              >
-                {c.nom && (
-                  <span className="truncate text-[0.8125rem] font-medium">{c.nom}</span>
-                )}
-                <span
-                  className="min-w-0 flex-1 truncate font-mono text-[0.6875rem]"
-                  style={{ color: 'var(--sub)' }}
+          {propositions.map((c, i) => {
+            const dom = domaineDe(c.adresse)
+            const logo = logos?.[dom]
+            const [fond, couleur] = palette(i)
+            return (
+              <li key={c.adresse}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    poser(c.adresse)
+                  }}
+                  onMouseEnter={() => setVise(i)}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors"
+                  style={{ background: i === vise ? 'var(--selection)' : 'transparent' }}
                 >
-                  {c.adresse}
-                </span>
-              </button>
-            </li>
-          ))}
+                  <Pastille
+                    texte={initiales(c.nom || c.adresse)}
+                    fond={fond}
+                    couleur={couleur}
+                    logo={logo}
+                    taille="1.875rem"
+                  />
+                  <div className="min-w-0 flex-1 flex flex-col justify-center">
+                    {c.nom ? (
+                      <>
+                        <span className="truncate text-[0.8125rem] font-medium text-[var(--fg)]">
+                          {c.nom}
+                        </span>
+                        <span
+                          className="truncate font-mono text-[0.6875rem]"
+                          style={{ color: 'var(--sub)' }}
+                        >
+                          {c.adresse}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="truncate font-mono text-[0.8125rem] text-[var(--fg)]">
+                        {c.adresse}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

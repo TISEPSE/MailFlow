@@ -1610,6 +1610,7 @@ export default function App() {
             depart={redaction}
             de={profil?.adresse ?? null}
             carnet={carnetDAdresses}
+            logos={logos}
             onFermer={() => setRedaction(null)}
             onEnvoye={(m) => annoncer(m)}
           />

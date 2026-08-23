@@ -152,14 +152,12 @@ export function proposer(
   saisie: string,
   deja: readonly string[] = [],
 ): Connaissance[] {
-  const retenues = new Set(deja.map((a) => a.trim().toLowerCase()))
   const texte = saisie.trim()
-
-  // Quand le champ est vide, propose les contacts les plus fréquents
-  if (!texte) {
-    return carnet.filter((c) => !retenues.has(c.adresse)).slice(0, PLAFOND)
+  if (texte.length < MINIMUM_POUR_PROPOSER) {
+    return []
   }
 
+  const retenues = new Set(deja.map((a) => a.trim().toLowerCase()))
   const q = normaliser(texte)
 
   return carnet
