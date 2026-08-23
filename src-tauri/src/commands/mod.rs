@@ -438,18 +438,18 @@ pub async fn google_deconnecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Re
     }
 
     // Si un autre compte est disponible, on bascule dessus automatiquement
-    if let Some(cible) = prochain_compte {
-        if let Ok(dossier) = dossier_config(&app) {
-            let mut annuaire = comptes::charger(&dossier);
-            let mut session = etat.session.lock().await;
-            if let Err(e) =
-                session.basculer(|secrets| comptes::basculer(secrets, &mut annuaire, &cible))
-            {
-                log::warn!("impossible de basculer automatiquement sur {cible} : {e}");
-            } else {
-                let _ = comptes::ecrire(&dossier, &annuaire);
-                log::info!("bascule automatique sur le compte suivant : {cible}");
-            }
+    if let Some(cible) = prochain_compte
+        && let Ok(dossier) = dossier_config(&app)
+    {
+        let mut annuaire = comptes::charger(&dossier);
+        let mut session = etat.session.lock().await;
+        if let Err(e) =
+            session.basculer(|secrets| comptes::basculer(secrets, &mut annuaire, &cible))
+        {
+            log::warn!("impossible de basculer automatiquement sur {cible} : {e}");
+        } else {
+            let _ = comptes::ecrire(&dossier, &annuaire);
+            log::info!("bascule automatique sur le compte suivant : {cible}");
         }
     }
 
