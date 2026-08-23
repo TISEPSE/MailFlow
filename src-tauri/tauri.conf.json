@@ -62,7 +62,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "appimage", "nsis", "app", "dmg"],
     "createUpdaterArtifacts": true,
     "category": "Productivity",
     "shortDescription": "Tri automatique de la boîte Gmail",

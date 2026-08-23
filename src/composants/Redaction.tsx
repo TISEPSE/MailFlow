@@ -725,8 +725,8 @@ export function Redaction({
           <button
             type="button"
             onClick={onFermer}
-            className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-            title="Supprimer le brouillon (Annuler)"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-red-500"
+            title="Supprimer le brouillon"
             aria-label="Supprimer le brouillon"
           >
             <Icone nom="delete" taille="1.125rem" />
