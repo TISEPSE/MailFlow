@@ -223,191 +223,268 @@ export function Redaction({
           </Ligne>
         </div>
 
-        {/* Barre de formatage (si Aa est activé) */}
+        {/* Barre de formatage riche (Style Gmail Material 3) */}
         {formatageActif && (
           <div
-            className="flex flex-none items-center gap-1 overflow-x-auto border-b px-6 py-1.5 text-[0.8125rem]"
-            style={{
-              borderColor: 'var(--line)',
-              background: 'var(--bg)',
-              color: 'var(--fg)',
-            }}
+            className="flex flex-none items-center overflow-x-auto min-w-0 px-5 py-2 border-b"
+            style={{ borderColor: 'var(--line)' }}
           >
-            {/* Sélecteur de Police */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMenuPolice(!menuPolice)}
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.75rem] font-medium hover:bg-[var(--sunk)]"
-              >
-                <span>{police}</span>
-                <span className="text-[0.625rem]">▼</span>
-              </button>
-              {menuPolice && (
-                <div
-                  className="menu-apparait absolute top-full left-0 z-30 mt-1 min-w-[9rem] rounded-xl border py-1 shadow-lg"
-                  style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
-                >
-                  {POLICES.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => {
-                        setPolice(p)
-                        setMenuPolice(false)
-                      }}
-                      className="flex w-full px-3 py-1.5 text-left text-[0.75rem] hover:bg-[var(--sunk)]"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="h-4 w-[1px]" style={{ background: 'var(--line)' }} />
-
-            {/* Sélecteur de Taille */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMenuTaille(!menuTaille)}
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.75rem] font-medium hover:bg-[var(--sunk)]"
-              >
-                <span className="font-serif font-bold">TT</span>
-                <span className="text-[0.625rem]">▼</span>
-              </button>
-              {menuTaille && (
-                <div
-                  className="menu-apparait absolute top-full left-0 z-30 mt-1 min-w-[7rem] rounded-xl border py-1 shadow-lg"
-                  style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
-                >
-                  {TAILLES.map((t) => (
-                    <button
-                      key={t.nom}
-                      type="button"
-                      onClick={() => {
-                        setTaillePolice(t.nom)
-                        setMenuTaille(false)
-                      }}
-                      className="flex w-full px-3 py-1.5 text-left text-[0.75rem] hover:bg-[var(--sunk)]"
-                    >
-                      {t.nom}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="h-4 w-[1px]" style={{ background: 'var(--line)' }} />
-
-            {/* Gras, Italique, Souligné */}
-            <button
-              type="button"
-              onClick={() => setGras(!gras)}
-              className={`rounded-md px-2 py-1 font-bold transition-colors ${
-                gras ? 'bg-[var(--sunk)] text-[var(--accent)]' : 'hover:bg-[var(--sunk)]'
-              }`}
-              title="Gras (Ctrl+B)"
-            >
-              B
-            </button>
-            <button
-              type="button"
-              onClick={() => setItalique(!italique)}
-              className={`rounded-md px-2 py-1 italic transition-colors ${
-                italique ? 'bg-[var(--sunk)] text-[var(--accent)]' : 'hover:bg-[var(--sunk)]'
-              }`}
-              title="Italique (Ctrl+I)"
-            >
-              I
-            </button>
-            <button
-              type="button"
-              onClick={() => setSouligne(!souligne)}
-              className={`rounded-md px-2 py-1 underline transition-colors ${
-                souligne ? 'bg-[var(--sunk)] text-[var(--accent)]' : 'hover:bg-[var(--sunk)]'
-              }`}
-              title="Souligné (Ctrl+U)"
-            >
-              U
-            </button>
-
-            {/* Couleur de texte */}
-            <button
-              type="button"
-              onClick={() => afficherInfoBulle('Couleur du texte')}
-              className="flex items-center gap-0.5 rounded-md px-2 py-1 hover:bg-[var(--sunk)]"
-              title="Couleur du texte"
-            >
-              <span className="font-bold underline decoration-red-500 decoration-2">A</span>
-              <span className="text-[0.5625rem]">▼</span>
-            </button>
-
-            <div className="h-4 w-[1px]" style={{ background: 'var(--line)' }} />
-
-            {/* Alignement */}
-            <button
-              type="button"
-              onClick={() => {
-                const ordre: ('left' | 'center' | 'right' | 'justify')[] = [
-                  'left',
-                  'center',
-                  'right',
-                  'justify',
-                ]
-                const idx = ordre.indexOf(alignement)
-                setAlignement(ordre[(idx + 1) % ordre.length] ?? 'left')
+            <div
+              className="flex items-center gap-0.5 rounded-full px-3 py-1 text-[0.8125rem] shadow-xs"
+              style={{
+                background: 'var(--sunk, #edf2fa)',
+                color: 'var(--fg)',
               }}
-              className="flex items-center gap-0.5 rounded-md px-2 py-1 hover:bg-[var(--sunk)]"
-              title="Aligner"
             >
-              <span className="text-[0.875rem]">≡</span>
-              <span className="text-[0.5625rem]">▼</span>
-            </button>
+              {/* Sélecteur de Police */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuPolice(!menuPolice)
+                    setMenuTaille(false)
+                  }}
+                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.78125rem] font-medium transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                >
+                  <span className="truncate max-w-[5.5rem]">{police}</span>
+                  <svg className="w-2.5 h-2.5 fill-current opacity-70" viewBox="0 0 20 20">
+                    <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                  </svg>
+                </button>
+                {menuPolice && (
+                  <div
+                    className="menu-apparait absolute top-full left-0 z-30 mt-1 min-w-[9.5rem] rounded-2xl border py-1.5 shadow-xl text-[0.8125rem]"
+                    style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+                  >
+                    {POLICES.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => {
+                          setPolice(p)
+                          setMenuPolice(false)
+                        }}
+                        className={`flex w-full px-3.5 py-1.5 text-left transition-colors hover:bg-[var(--sunk)] ${
+                          police === p ? 'font-semibold text-[var(--accent)]' : ''
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            {/* Listes & Citation */}
-            <button
-              type="button"
-              onClick={() => afficherInfoBulle('Liste numérotée')}
-              className="rounded-md px-2 py-1 text-[0.75rem] hover:bg-[var(--sunk)]"
-              title="Liste numérotée"
-            >
-              1. ▾
-            </button>
-            <button
-              type="button"
-              onClick={() => afficherInfoBulle('Liste à puces')}
-              className="rounded-md px-2 py-1 text-[0.75rem] hover:bg-[var(--sunk)]"
-              title="Liste à puces"
-            >
-              • ▾
-            </button>
-            <button
-              type="button"
-              onClick={() => afficherInfoBulle('Citation')}
-              className="rounded-md px-2 py-1 font-serif text-[0.8125rem] hover:bg-[var(--sunk)]"
-              title="Citation"
-            >
-              ❝
-            </button>
+              <div className="h-4 w-[1px] mx-1 opacity-60" style={{ background: 'var(--line)' }} />
 
-            <div className="ml-auto flex items-center gap-1">
+              {/* Sélecteur de Taille TT */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuTaille(!menuTaille)
+                    setMenuPolice(false)
+                  }}
+                  className="flex items-center gap-1 rounded-full px-2 py-1 transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                  title="Taille de police"
+                >
+                  <span className="font-bold text-[0.8125rem] tracking-tighter">TT</span>
+                  <svg className="w-2.5 h-2.5 fill-current opacity-70" viewBox="0 0 20 20">
+                    <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                  </svg>
+                </button>
+                {menuTaille && (
+                  <div
+                    className="menu-apparait absolute top-full left-0 z-30 mt-1 min-w-[7.5rem] rounded-2xl border py-1.5 shadow-xl text-[0.8125rem]"
+                    style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+                  >
+                    {TAILLES.map((t) => (
+                      <button
+                        key={t.nom}
+                        type="button"
+                        onClick={() => {
+                          setTaillePolice(t.nom)
+                          setMenuTaille(false)
+                        }}
+                        className={`flex w-full px-3.5 py-1.5 text-left transition-colors hover:bg-[var(--sunk)] ${
+                          taillePolice === t.nom ? 'font-semibold text-[var(--accent)]' : ''
+                        }`}
+                      >
+                        {t.nom}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="h-4 w-[1px] mx-1 opacity-60" style={{ background: 'var(--line)' }} />
+
+              {/* Gras (Bold) */}
+              <button
+                type="button"
+                onClick={() => setGras(!gras)}
+                className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                  gras
+                    ? 'bg-black/15 dark:bg-white/20 text-[var(--accent)] font-bold'
+                    : 'hover:bg-black/8 dark:hover:bg-white/10'
+                }`}
+                title="Gras (Ctrl+B)"
+              >
+                <span className="font-bold text-[0.875rem]">B</span>
+              </button>
+
+              {/* Italique (Italic) */}
+              <button
+                type="button"
+                onClick={() => setItalique(!italique)}
+                className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                  italique
+                    ? 'bg-black/15 dark:bg-white/20 text-[var(--accent)] font-bold'
+                    : 'hover:bg-black/8 dark:hover:bg-white/10'
+                }`}
+                title="Italique (Ctrl+I)"
+              >
+                <span className="font-bold italic text-[0.875rem] font-serif">I</span>
+              </button>
+
+              {/* Souligné (Underline) */}
+              <button
+                type="button"
+                onClick={() => setSouligne(!souligne)}
+                className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                  souligne
+                    ? 'bg-black/15 dark:bg-white/20 text-[var(--accent)] font-bold'
+                    : 'hover:bg-black/8 dark:hover:bg-white/10'
+                }`}
+                title="Souligné (Ctrl+U)"
+              >
+                <span className="underline font-semibold text-[0.875rem]">U</span>
+              </button>
+
+              {/* Couleur du texte (A) */}
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Couleur du texte')}
+                className="flex items-center gap-0.5 rounded-full px-2 py-1 transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                title="Couleur du texte"
+              >
+                <div className="flex flex-col items-center leading-none">
+                  <span className="font-bold text-[0.8125rem]">A</span>
+                  <div className="w-3.5 h-[3px] bg-red-600 rounded-xs mt-0.5" />
+                </div>
+                <svg className="w-2.5 h-2.5 fill-current opacity-70" viewBox="0 0 20 20">
+                  <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                </svg>
+              </button>
+
+              <div className="h-4 w-[1px] mx-1 opacity-60" style={{ background: 'var(--line)' }} />
+
+              {/* Alignement */}
+              <button
+                type="button"
+                onClick={() => {
+                  const ordre: ('left' | 'center' | 'right' | 'justify')[] = [
+                    'left',
+                    'center',
+                    'right',
+                    'justify',
+                  ]
+                  const idx = ordre.indexOf(alignement)
+                  setAlignement(ordre[(idx + 1) % ordre.length] ?? 'left')
+                }}
+                className="flex items-center gap-0.5 rounded-full px-2 py-1 transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                title="Aligner"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M15 15H3v2h12v-2zm0-8H3v2h12V7zM3 13h18v-2H3v2zm0 8h18v-2H3v2zM3 3v2h18V3H3z" />
+                </svg>
+                <svg className="w-2.5 h-2.5 fill-current opacity-70" viewBox="0 0 20 20">
+                  <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                </svg>
+              </button>
+
+              {/* Liste numérotée */}
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Liste numérotée')}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                title="Liste numérotée"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z" />
+                </svg>
+              </button>
+
+              {/* Liste à puces */}
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Liste à puces')}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                title="Liste à puces"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z" />
+                </svg>
+              </button>
+
+              {/* Retrait (Indentation) */}
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Retrait')}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                title="Augmenter le retrait"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M11 17h10v-2H11v2zm-8-5l4 4V8l-4 4zm0 9h18v-2H3v2zM3 3v2h18V3H3zm8 6h10V7H11v2zm0 4h10v-2H11v2z" />
+                </svg>
+              </button>
+
+              {/* Citation */}
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Citation')}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                title="Citation"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" />
+                </svg>
+              </button>
+
+              {/* Barré */}
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Barré')}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-black/8 dark:hover:bg-white/10"
+                title="Barré"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z" />
+                </svg>
+              </button>
+
+              <div className="h-4 w-[1px] mx-1 opacity-60" style={{ background: 'var(--line)' }} />
+
+              {/* Annuler / Rétablir */}
               <button
                 type="button"
                 onClick={() => afficherInfoBulle('Annuler')}
-                className="rounded-md p-1.5 text-[0.75rem] hover:bg-[var(--sunk)]"
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-black/8 dark:hover:bg-white/10"
                 title="Annuler (Ctrl+Z)"
               >
-                ↺
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" />
+                </svg>
               </button>
               <button
                 type="button"
                 onClick={() => afficherInfoBulle('Rétablir')}
-                className="rounded-md p-1.5 text-[0.75rem] hover:bg-[var(--sunk)]"
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-black/8 dark:hover:bg-white/10"
                 title="Rétablir (Ctrl+Y)"
               >
-                ↻
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z" />
+                </svg>
               </button>
             </div>
           </div>
