@@ -528,9 +528,9 @@ export function Redaction({
             <button
               type="button"
               onClick={() => setFormatageActif(!formatageActif)}
-              className={`rounded-full p-2 text-[0.875rem] font-semibold transition-colors ${
+              className={`flex h-9 w-9 items-center justify-center rounded-full text-[0.875rem] font-semibold transition-colors ${
                 formatageActif
-                  ? 'bg-[#d3e3fd] text-[#041e49] dark:bg-[#004a77] dark:text-[#c2e7ff]'
+                  ? 'text-[var(--accent)] hover:bg-[var(--sunk)]'
                   : 'text-[var(--sub)] hover:bg-[var(--sunk)] hover:text-[var(--fg)]'
               }`}
               title="Options de mise en forme"
@@ -542,7 +542,7 @@ export function Redaction({
             <button
               type="button"
               onClick={() => afficherInfoBulle("M'aider à écrire (IA)")}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="M'aider à écrire (IA)"
             >
               <Icone nom="auto_awesome" taille="1.125rem" />
@@ -552,7 +552,7 @@ export function Redaction({
             <button
               type="button"
               onClick={() => afficherInfoBulle('Joindre des fichiers')}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="Joindre des fichiers"
             >
               <Icone nom="attach_file" taille="1.125rem" />
@@ -567,7 +567,7 @@ export function Redaction({
                   changer('corps')(brouillon.corps + (brouillon.corps ? ' ' : '') + url)
                 }
               }}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="Insérer un lien (Ctrl+K)"
             >
               <svg
@@ -588,7 +588,7 @@ export function Redaction({
               onClick={() => {
                 changer('corps')(brouillon.corps + ' 😊')
               }}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="Insérer un emoji"
             >
               <svg
@@ -607,7 +607,7 @@ export function Redaction({
             <button
               type="button"
               onClick={() => afficherInfoBulle('Google Drive')}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="Insérer des fichiers avec Drive"
             >
               <svg
@@ -626,7 +626,7 @@ export function Redaction({
             <button
               type="button"
               onClick={() => afficherInfoBulle('Insérer une photo')}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="Insérer une photo"
             >
               <svg
@@ -645,7 +645,7 @@ export function Redaction({
             <button
               type="button"
               onClick={() => afficherInfoBulle('Mode confidentiel')}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="Activer/désactiver le mode confidentiel"
             >
               <Icone nom="mail_lock" taille="1.125rem" />
@@ -655,7 +655,7 @@ export function Redaction({
             <button
               type="button"
               onClick={() => afficherInfoBulle('Insérer une signature')}
-              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
               title="Insérer une signature"
             >
               <Icone nom="edit" taille="1.125rem" />
@@ -666,7 +666,7 @@ export function Redaction({
               <button
                 type="button"
                 onClick={() => setMenuPlus(!menuPlus)}
-                className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
                 title="Autres options"
               >
                 <svg
