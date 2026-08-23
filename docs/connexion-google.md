@@ -51,6 +51,11 @@ Un projet neuf n'a accès à rien. Il faut ouvrir l'accès à Gmail explicitemen
 Dans le menu de gauche : **APIs et services** > **Bibliothèque**. Cherchez
 `Gmail API`, ouvrez le résultat, cliquez **Activer**.
 
+Recommencez avec `People API`, dans la même bibliothèque. C'est elle qui donne
+accès à votre carnet d'adresses, pour vous proposer des destinataires quand vous
+écrivez un message. Sans cette activation, Google refuse la demande même si vous
+avez accordé l'autorisation à l'écran de connexion.
+
 ## 3. Décrire l'application
 
 Google demande qui vous êtes et ce que fait l'application, pour l'afficher à
@@ -69,8 +74,18 @@ Le reste peut rester vide.
 
 ## 4. Déclarer ce que MailFlow a le droit de faire
 
-Toujours dans l'écran de consentement, cherchez la section **Portées**
-(ou « Scopes »). Ajoutez celle-ci :
+Toujours dans l'écran de consentement, cherchez la section **Accès aux
+données**, puis le bouton **Ajouter ou supprimer des champs d'application**.
+
+Ne cherchez pas le mot « portées » : Google traduit *scopes* par « champs
+d'application ». Si le menu de gauche a changé, l'adresse directe est
+<https://console.cloud.google.com/auth/scopes>.
+
+Le panneau qui s'ouvre affiche une liste interminable. Plutôt que d'y chercher,
+descendez tout en bas : une zone de texte **Ajouter manuellement des champs
+d'application** accepte les adresses collées telles quelles, une par ligne.
+
+Ajoutez celle-ci :
 
 ```
 https://www.googleapis.com/auth/gmail.modify
@@ -79,6 +94,25 @@ https://www.googleapis.com/auth/gmail.modify
 Elle autorise MailFlow à lire vos messages, à les archiver et à les mettre à la
 corbeille. Elle **n'autorise pas** l'envoi de courrier en votre nom : c'est
 volontaire.
+
+Ajoutez ensuite ces deux-là, qui servent aux suggestions de destinataires :
+
+```
+https://www.googleapis.com/auth/contacts.readonly
+https://www.googleapis.com/auth/contacts.other.readonly
+```
+
+La première donne votre carnet d'adresses, la seconde les adresses que Google
+retient de lui-même quand vous écrivez à quelqu'un. Les deux sont en **lecture
+seule** : MailFlow ne modifie jamais vos contacts.
+
+Cliquez sur **Ajouter à la table**, puis sur **Enregistrer** en bas du panneau,
+et enfin sur le **Enregistrer** de la page elle-même. Sauter ce dernier laisse
+la page telle qu'elle était sans rien dire : c'est l'oubli le plus courant.
+
+Les trois portées apparaissent ensuite sous « sensibles » et « restreintes ».
+C'est attendu, et c'est ce qui impose la vérification décrite à l'étape
+suivante.
 
 ## 5. Vous ajouter comme testeur
 

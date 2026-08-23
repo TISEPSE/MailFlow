@@ -590,20 +590,8 @@ export function FormulaireAjout({
           fonctionnalité qu'un aveu. */}
       {archive && (
         <Champ titre="Quand archiver">
-          <div className="flex items-center gap-2">
-            <Selecteur
-              valeurs={[
-                { valeur: '', texte: 'Immédiatement' },
-                ...FREQUENCES_REGLE.map((f) => ({
-                  valeur: f,
-                  texte: LIBELLE_FREQUENCE[f],
-                })),
-              ]}
-              valeur={frequence}
-              onChange={(v) => setFrequence(v as FrequenceRegle | '')}
-              libelle="Quand la règle archive"
-              className="min-w-0 flex-1"
-            />
+          <div className="flex flex-col gap-3">
+            <ChoixDuMoment valeur={frequence} onChange={setFrequence} />
 
             {/* L'heure n'apparaît qu'une fois la cadence choisie : proposer
                 « à quelle heure » sous « Immédiatement » serait une question
@@ -672,6 +660,89 @@ function Champ({ titre, children }: { titre: string; children: React.ReactNode }
     <div className="flex flex-col gap-1.5">
       <span className="text-[0.7812rem] font-semibold">{titre}</span>
       {children}
+    </div>
+  )
+}
+
+/**
+ * Le moment de l'archivage : deux cas sans jour, puis les sept jours.
+ *
+ * # Pourquoi pas une liste déroulante
+ *
+ * Elle contenait neuf entrées dont sept jours de semaine. Il fallait l'ouvrir
+ * pour savoir ce qu'elle proposait, puis lire « Tous les » sept fois de suite
+ * pour trouver le bon jour. Les sept tiennent sur une ligne : les montrer coûte
+ * moins cher que de les cacher.
+ *
+ * # Pourquoi un seul jour à la fois
+ *
+ * Parce que le moteur n'en tient qu'un. `FrequenceRegle` est une énumération
+ * plate, et cocher lundi *et* jeudi n'aurait nulle part où être écrit. Ces
+ * pastilles se comportent donc en boutons radio, pas en cases à cocher.
+ */
+function ChoixDuMoment({
+  valeur,
+  onChange,
+}: {
+  valeur: FrequenceRegle | ''
+  onChange: (v: FrequenceRegle | '') => void
+}) {
+  /** Les sept jours, réduits à leur initiale. Deux « M » : c'est l'usage, et
+   *  l'intitulé complet reste lisible au survol comme au lecteur d'écran. */
+  const jours = FREQUENCES_REGLE.filter((f) => f !== 'quotidienne')
+
+  const style = (actif: boolean) => ({
+    background: actif ? 'var(--accent)' : 'var(--sunk)',
+    borderColor: actif ? 'var(--accent)' : 'var(--line)',
+    color: actif ? '#fff' : 'var(--fg)',
+  })
+
+  return (
+    <div
+      className="flex flex-col gap-2"
+      role="group"
+      aria-label="Quand la règle archive"
+    >
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ['', 'Immédiatement'],
+            ['quotidienne', 'Chaque jour'],
+          ] as const
+        ).map(([v, texte]) => (
+          <button
+            key={v || 'immediat'}
+            type="button"
+            aria-pressed={valeur === v}
+            onClick={() => onChange(v)}
+            className="rounded-full border px-4 py-1.5 text-[0.75rem] font-medium transition-colors"
+            style={style(valeur === v)}
+          >
+            {texte}
+          </button>
+        ))}
+      </div>
+
+      <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+        ou un jour précis
+      </span>
+
+      <div className="flex flex-wrap gap-1.5">
+        {jours.map((jour) => (
+          <button
+            key={jour}
+            type="button"
+            aria-pressed={valeur === jour}
+            aria-label={LIBELLE_FREQUENCE[jour]}
+            title={LIBELLE_FREQUENCE[jour]}
+            onClick={() => onChange(jour)}
+            className="flex h-9 w-9 flex-none items-center justify-center rounded-full border text-[0.75rem] font-semibold uppercase transition-colors"
+            style={style(valeur === jour)}
+          >
+            {jour.charAt(0).toUpperCase()}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

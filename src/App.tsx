@@ -20,7 +20,7 @@ import {
   brouillonVierge,
   type Brouillon,
 } from './lib/redaction'
-import { carnet, fusionnerCarnets, type Connaissance } from './lib/contacts'
+import { type Connaissance } from './lib/contacts'
 import { Archives } from './vues/Archives'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
@@ -64,6 +64,7 @@ import {
   messageCorps,
   googleConnecter,
   googleDeconnecter,
+  estErreurBackend,
   messageDErreur,
   archivesLister,
   archivesSynchroniser,
@@ -294,21 +295,17 @@ export default function App() {
   const [redaction, setRedaction] = useState<Brouillon | null>(null)
 
   /**
-   * Les gens qui figurent déjà dans vos messages, pour les propositions de la
-   * fenêtre de rédaction.
+   * Le carnet d'adresses Google, pour les propositions de la fenêtre de
+   * rédaction.
    *
-   * Calculé ici et non dans la fenêtre : il ne dépend que de la boîte et du
-   * compte, et le refaire à chaque frappe reviendrait à reparcourir tous les
-   * messages pour un résultat identique. Les archives entrent aussi dans le
-   * compte — quelqu'un à qui l'on a écrit il y a un mois reste quelqu'un qu'on
-   * connaît.
+   * Il se déduisait autrefois des messages sous la main, ce qui proposait
+   * comme destinataire quiconque avait écrit une fois — robots d'expédition
+   * et newsletters compris. Il vient maintenant du carnet que l'utilisateur
+   * tient chez Google, relevé au démarrage et rangé sur le disque.
    */
   const [contactsGmail, setContactsGmail] = useState<Connaissance[]>([])
 
-  const carnetDAdresses = useMemo(() => {
-    const contactsLocaux = carnet([...boite, ...archives], profil?.adresse ?? null)
-    return fusionnerCarnets(contactsGmail, contactsLocaux)
-  }, [boite, archives, profil, contactsGmail])
+  const carnetDAdresses = contactsGmail
 
   /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas.
    *
@@ -935,16 +932,28 @@ export default function App() {
       // et aucun appel réseau.
       setArchives(await archivesLister().catch(() => []))
 
-      // Charge le carnet de contacts localement et lance la synchronisation en arrière-plan
+      // Le carnet rangé sur le disque s'affiche tout de suite ; celui de Google
+      // le remplace dès qu'il arrive.
       void contactsLister().then(setContactsGmail).catch(console.warn)
-      void contactsSynchroniser().then(setContactsGmail).catch(console.warn)
+      void contactsSynchroniser()
+        .then(setContactsGmail)
+        .catch((e) => {
+          // Un compte relié avant que MailFlow ne demande les contacts ne peut
+          // pas les lire. Sans ce message, l'utilisateur n'aurait qu'un champ
+          // de destinataire muet, sans rien à quoi le rattacher.
+          if (estErreurBackend(e) && e.code === 'PORTEE_MANQUANTE') {
+            annoncer(e.message, true)
+            return
+          }
+          console.warn(e)
+        })
 
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)
       }
       await chargerLaBoite()
     })
-  }, [rafraichir, chargerLaBoite])
+  }, [rafraichir, chargerLaBoite, annoncer])
 
   /**
    * La table se charge à son ouverture, et se relève à chaque ouverture.

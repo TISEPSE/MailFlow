@@ -1030,24 +1030,18 @@ function ResumesIA({ onErreur }: { onErreur: (message: string) => void }) {
         titre="Résumés automatiques des newsletters"
         detail="Un modèle de Google lit vos newsletters et en écrit une phrase. Facultatif, et gratuit."
       >
+        {/* Pas de mention « Clé enregistrée » à côté : le bouton « Retirer »
+            ne s'affiche que lorsqu'il y a une clé, et dit donc déjà qu'il y en
+            a une. L'écrire en plus revenait à répondre deux fois. */}
         {etat?.cleConfiguree ? (
-          <span className="flex items-center gap-2">
-            <span
-              className="inline-flex items-center gap-1.5 text-[0.75rem] font-semibold"
-              style={{ color: 'var(--accent-fg)' }}
-            >
-              <Icone nom="check_circle" taille="0.9375rem" rempli />
-              Clé enregistrée
-            </span>
-            <Bouton
-              compact
-              icone="delete"
-              variante="danger"
-              onClick={() => void effacer()}
-            >
-              Retirer
-            </Bouton>
-          </span>
+          <Bouton
+            compact
+            icone="delete"
+            variante="danger"
+            onClick={() => void effacer()}
+          >
+            Retirer
+          </Bouton>
         ) : (
           <Bouton compact variante="principal" onClick={() => setSaisie(true)}>
             Configurer

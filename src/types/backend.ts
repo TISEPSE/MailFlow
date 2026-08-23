@@ -332,11 +332,17 @@ export type CodeErreur =
   | 'ERREUR_RESEAU'
   | 'CONFIG_INVALIDE'
   | 'RESUME_INDISPONIBLE'
+  | 'PORTEE_MANQUANTE'
+
+/** D'où vient une entrée du carnet. Miroir de `contacts::Origine`. */
+export type OrigineContact = 'carnet' | 'autre'
 
 /** Miroir de `contacts::ContactConnu`. */
 export interface Connaissance {
   adresse: string
   nom: string
-  apparitions: number
+  /** URL de la photo Google. Absente des « autres contacts ». */
+  photo: string | null
+  origine: OrigineContact
 }
 

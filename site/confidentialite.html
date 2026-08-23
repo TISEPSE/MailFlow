@@ -89,11 +89,21 @@
             <td>Connaître le nom et la photo du compte.</td>
             <td>Vous permettre de reconnaître d'un coup d'œil le compte affiché.</td>
           </tr>
+          <tr>
+            <td><code>contacts.readonly</code></td>
+            <td>Lire votre carnet d'adresses Google : noms, adresses, photos.</td>
+            <td>Vous proposer les bons destinataires quand vous écrivez un message, au lieu de les deviner à partir du courrier que vous recevez.</td>
+          </tr>
+          <tr>
+            <td><code>contacts.other.readonly</code></td>
+            <td>Lire les adresses que Google retient automatiquement lorsque vous écrivez à quelqu'un.</td>
+            <td>Retrouver les correspondants que vous n'avez jamais enregistrés dans votre carnet.</td>
+          </tr>
         </tbody>
       </table>
     </div>
 
-    <p>MailFlow ne demande aucune autre autorisation. En particulier, il ne demande rien concernant Google Drive, Google Agenda, vos contacts, votre historique de navigation ou votre position.</p>
+    <p>MailFlow ne demande aucune autre autorisation. Les deux portées relatives aux contacts sont en <strong>lecture seule</strong> : l'application ne crée, ne modifie et ne supprime jamais aucun contact. En particulier, elle ne demande rien concernant Google Drive, Google Agenda, votre historique de navigation ou votre position.</p>
 
     <h3>Ce que MailFlow ne supprime jamais définitivement</h3>
     <p>Le tri met les messages à la corbeille de Gmail. Il ne les efface pas de manière irréversible : ils restent récupérables trente jours dans votre corbeille, comme si vous les y aviez mis vous-même.</p>
@@ -104,6 +114,7 @@
       <li><strong>Vos règles de tri</strong> : un fichier par compte, dans le dossier de configuration de l'application.</li>
       <li><strong>Une copie des messages relevés</strong>, y compris leur contenu, dans le dossier de données locales. Ces fichiers ne sont accessibles qu'à votre compte utilisateur (permissions <code>0600</code>). Ils ne sont pas chiffrés : la protection est celle de votre session, comme pour n'importe quel client de messagerie installé.</li>
       <li><strong>L'autorisation d'accès délivrée par Google</strong> (jeton de rafraîchissement), placée dans le trousseau de votre système : Trousseau d'accès sur macOS, service de secrets de votre session sur Linux. Elle n'est jamais écrite en clair dans un fichier.</li>
+      <li><strong>Une copie de votre carnet d'adresses</strong>, pour que les destinataires vous soient proposés à la frappe sans interroger Google à chaque lettre tapée. Elle ne quitte pas votre machine et s'efface avec le bouton des réglages.</li>
       <li><strong>Votre clé d'API Gemini</strong>, si vous en fournissez une, également dans le trousseau du système.</li>
     </ul>
     <p>Rien de tout cela n'est envoyé où que ce soit. Ces fichiers vivent et meurent sur votre machine.</p>
