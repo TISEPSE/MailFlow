@@ -31,7 +31,6 @@ pub mod tableau;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(liens_vers_le_navigateur())
         // Le cadre où s'affiche le corps d'un message est servi par son propre
