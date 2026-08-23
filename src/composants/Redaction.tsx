@@ -1,35 +1,39 @@
 /**
- * La fenêtre où l'on écrit un message.
+ * La fenêtre où l'on écrit un message avec l'interface et les boutons natifs de Gmail.
  *
- * # Ce qu'elle fait, et ce qu'elle ne fait pas
+ * # Architecture
  *
- * Quatre champs : destinataires, copies, objet, corps. Le corps est du texte
- * brut, et il part en `text/plain`. Ni mise en forme, ni pièces jointes, ni
- * signature — c'est ce qui a été demandé, et chaque forme de plus est une forme
- * de plus à vérifier avant d'envoyer quelque chose au nom de quelqu'un.
- *
- * Elle sert deux gestes qui ne diffèrent que par leur contenu de départ :
- * écrire à quelqu'un, et transférer une lettre. Les faire vivre dans deux
- * composants aurait donné deux fenêtres qui divergent — c'est déjà arrivé sur
- * ce projet avec la fenêtre de lecture.
- *
- * # Sur la validation
- *
- * Elle n'est pas ici. Les adresses et l'objet sont contrôlés par Rust, dans
- * `gmail::redaction::composer`, qui refuse net une fin de ligne dans un
- * en-tête. Un second contrôle ici les ferait diverger le jour où l'un des deux
- * changerait, et c'est celui de Rust qui décide puisque c'est lui qui compose.
- *
- * Le seul jugement porté ici est celui du bouton : il reste inerte tant qu'il
- * n'y a ni destinataire ni objet, pour ne pas faire faire l'aller-retour à un
- * message qui ne peut pas partir.
+ * - Les en-têtes (destinataires, copies, objet) sont fixés en haut.
+ * - La barre de formatage s'affiche/se masque avec le bouton `Aa`.
+ * - Le corps du texte défile indépendamment.
+ * - La barre d'actions inférieure (Envoyer, pièces jointes, Drive, emoji, corbeille...)
+ *   reste TOUJOURS visible et indépendante du défilement.
  */
 import { useState } from 'react'
-import { Bouton, Icone, Modale } from './base'
+import { Icone, Modale } from './base'
 import { decouperAdresses, type Brouillon } from '../lib/redaction'
 import { ChampDestinataires } from './ChampDestinataires'
 import type { Connaissance } from '../lib/contacts'
 import { messageDErreur, messageEnvoyer } from '../lib/tauri'
+
+const POLICES = [
+  'Sans Serif',
+  'Serif',
+  'Monospace',
+  'Wide',
+  'Garamond',
+  'Georgia',
+  'Tahoma',
+  'Trebuchet MS',
+  'Verdana',
+]
+
+const TAILLES = [
+  { nom: 'Petit', taille: '0.75rem' },
+  { nom: 'Normal', taille: '0.875rem' },
+  { nom: 'Grand', taille: '1.125rem' },
+  { nom: 'Très grand', taille: '1.375rem' },
+]
 
 export function Redaction({
   depart,
@@ -42,7 +46,7 @@ export function Redaction({
   depart: Brouillon
   /** Adresse du compte connecté, montrée en pied : le message part de là. */
   de: string | null
-  /** Les gens qui figurent déjà dans vos messages. Voir `lib/contacts`. */
+  /** Les gens qui figurent déjà dans vos messages. */
   carnet: readonly Connaissance[]
   onFermer: () => void
   /** Appelé après un envoi réussi, pour l'annoncer là où on annonce. */
@@ -52,10 +56,26 @@ export function Redaction({
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
 
-  // Le champ « Cc » est replié tant qu'il est vide : la plupart des messages
-  // n'en ont pas, et un champ vide de plus est une ligne de plus à survoler.
-  // Il s'ouvre déjà rempli quand le brouillon de départ en porte un.
+  // Champs d'en-tête repliables
   const [copiesVisibles, setCopiesVisibles] = useState(Boolean(depart.copies))
+  const [cciVisibles, setCciVisibles] = useState(false)
+  const [cci, setCci] = useState('')
+
+  // Barre d'outils de formatage (bouton Aa)
+  const [formatageActif, setFormatageActif] = useState(true)
+  const [police, setPolice] = useState('Sans Serif')
+  const [taillePolice, setTaillePolice] = useState('Normal')
+  const [gras, setGras] = useState(false)
+  const [italique, setItalique] = useState(false)
+  const [souligne, setSouligne] = useState(false)
+  const [alignement, setAlignement] = useState<'left' | 'center' | 'right' | 'justify'>('left')
+
+  // Menus déroulants
+  const [menuPolice, setMenuPolice] = useState(false)
+  const [menuTaille, setMenuTaille] = useState(false)
+  const [menuProgrammer, setMenuProgrammer] = useState(false)
+  const [menuPlus, setMenuPlus] = useState(false)
+  const [infoBulleAction, setInfoBulleAction] = useState<string | null>(null)
 
   const changer = (champ: keyof Brouillon) => (valeur: string) =>
     setBrouillon((b) => ({ ...b, [champ]: valeur }))
@@ -70,21 +90,44 @@ export function Redaction({
     setErreur(null)
 
     try {
+      const toutesCopies = [
+        ...decouperAdresses(brouillon.copies),
+        ...decouperAdresses(cci),
+      ]
       await messageEnvoyer(
         destinataires,
-        decouperAdresses(brouillon.copies),
+        toutesCopies,
         brouillon.sujet,
         brouillon.corps,
       )
       onEnvoye('Message envoyé.')
       onFermer()
     } catch (e) {
-      // L'échec reste dans la fenêtre, et la fenêtre reste ouverte : refermer
-      // sur une erreur ferait perdre un texte qu'on vient d'écrire.
       setErreur(messageDErreur(e))
     } finally {
       setEnCours(false)
     }
+  }
+
+  const afficherInfoBulle = (texte: string) => {
+    setInfoBulleAction(texte)
+    window.setTimeout(() => setInfoBulleAction(null), 2500)
+  }
+
+  const policeStyle = () => {
+    switch (police) {
+      case 'Serif':
+        return 'font-serif'
+      case 'Monospace':
+        return 'font-mono'
+      default:
+        return 'font-sans'
+    }
+  }
+
+  const tailleStyle = () => {
+    const trouve = TAILLES.find((t) => t.nom === taillePolice)
+    return trouve ? trouve.taille : '0.875rem'
   }
 
   return (
@@ -93,92 +136,595 @@ export function Redaction({
       titre={depart.sujet ? 'Transférer le message' : 'Nouveau message'}
       sous={de ? `Envoyé depuis ${de}` : undefined}
       onFermer={onFermer}
+      sansRembourrage
     >
       <form
         onSubmit={(e) => {
           e.preventDefault()
           void envoyer()
         }}
-        className="flex flex-col gap-3"
+        className="flex h-[75vh] max-h-[75vh] flex-col"
       >
-        <Ligne titre="À">
-          <ChampDestinataires
-            valeur={brouillon.destinataires}
-            onChange={changer('destinataires')}
-            carnet={carnet}
-            libelle="Destinataires"
-            placeholder="Un nom ou une adresse"
-            autoFocus
-          />
-          {!copiesVisibles && (
-            <button
-              type="button"
-              onClick={() => setCopiesVisibles(true)}
-              className="bouton flex-none rounded-full px-3 py-1.5 text-[0.6875rem] font-medium"
-            >
-              Cc
-            </button>
-          )}
-        </Ligne>
-
-        {copiesVisibles && (
-          <Ligne titre="Cc">
+        {/* Section haute : En-têtes (À, Cc, Cci, Objet) - Fixe en haut */}
+        <div
+          className="flex-none space-y-2 border-b px-6 pt-3 pb-2"
+          style={{ borderColor: 'var(--line)' }}
+        >
+          <Ligne titre="À">
             <ChampDestinataires
-              valeur={brouillon.copies}
-              onChange={changer('copies')}
+              valeur={brouillon.destinataires}
+              onChange={changer('destinataires')}
               carnet={carnet}
-              libelle="Copies"
+              libelle="Destinataires"
               placeholder="Un nom ou une adresse"
+              autoFocus
+            />
+            <div className="flex flex-none items-center gap-1">
+              {!copiesVisibles && (
+                <button
+                  type="button"
+                  onClick={() => setCopiesVisibles(true)}
+                  className="rounded-full px-2.5 py-1 text-[0.6875rem] font-medium transition-colors hover:bg-[var(--sunk)]"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  Cc
+                </button>
+              )}
+              {!cciVisibles && (
+                <button
+                  type="button"
+                  onClick={() => setCciVisibles(true)}
+                  className="rounded-full px-2.5 py-1 text-[0.6875rem] font-medium transition-colors hover:bg-[var(--sunk)]"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  Cci
+                </button>
+              )}
+            </div>
+          </Ligne>
+
+          {copiesVisibles && (
+            <Ligne titre="Cc">
+              <ChampDestinataires
+                valeur={brouillon.copies}
+                onChange={changer('copies')}
+                carnet={carnet}
+                libelle="Copies"
+                placeholder="Un nom ou une adresse"
+              />
+            </Ligne>
+          )}
+
+          {cciVisibles && (
+            <Ligne titre="Cci">
+              <ChampDestinataires
+                valeur={cci}
+                onChange={setCci}
+                carnet={carnet}
+                libelle="Copies cachées"
+                placeholder="Un nom ou une adresse"
+              />
+            </Ligne>
+          )}
+
+          <Ligne titre="Objet">
+            <Saisie
+              valeur={brouillon.sujet}
+              onChange={changer('sujet')}
+              libelle="Objet du message"
+              placeholder="Objet"
             />
           </Ligne>
-        )}
+        </div>
 
-        <Ligne titre="Objet">
-          <Saisie
-            valeur={brouillon.sujet}
-            onChange={changer('sujet')}
-            libelle="Objet du message"
-            placeholder="De quoi s'agit-il ?"
-          />
-        </Ligne>
-
-        <textarea
-          value={brouillon.corps}
-          onChange={(e) => changer('corps')(e.target.value)}
-          aria-label="Corps du message"
-          placeholder="Écrivez votre message…"
-          rows={20}
-          className="champ-de-saisie selectionnable resize-none rounded-2xl border px-4 py-3 text-[0.8125rem] leading-relaxed outline-none placeholder:text-[var(--sub)]"
-          style={{
-            background: 'var(--sunk)',
-            borderColor: 'var(--line)',
-            color: 'var(--fg)',
-            // Une hauteur plancher : sans elle, la fenêtre se rétractait sur un
-            // message court et l'on écrivait dans une fente.
-            minHeight: '22rem',
-          }}
-        />
-
-        {erreur && (
+        {/* Barre de formatage (si Aa est activé) */}
+        {formatageActif && (
           <div
-            className="flex items-start gap-2.5 rounded-xl px-3 py-2.5"
-            style={{ background: 'var(--sunk)' }}
+            className="flex flex-none items-center gap-1 overflow-x-auto border-b px-6 py-1.5 text-[0.8125rem]"
+            style={{
+              borderColor: 'var(--line)',
+              background: 'var(--bg)',
+              color: 'var(--fg)',
+            }}
           >
-            <Icone nom="error" taille="1rem" style={{ color: '#d93025' }} />
-            <span className="min-w-0 flex-1 text-[0.75rem] leading-relaxed">{erreur}</span>
+            {/* Sélecteur de Police */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuPolice(!menuPolice)}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.75rem] font-medium hover:bg-[var(--sunk)]"
+              >
+                <span>{police}</span>
+                <span className="text-[0.625rem]">▼</span>
+              </button>
+              {menuPolice && (
+                <div
+                  className="menu-apparait absolute top-full left-0 z-30 mt-1 min-w-[9rem] rounded-xl border py-1 shadow-lg"
+                  style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+                >
+                  {POLICES.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        setPolice(p)
+                        setMenuPolice(false)
+                      }}
+                      className="flex w-full px-3 py-1.5 text-left text-[0.75rem] hover:bg-[var(--sunk)]"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="h-4 w-[1px]" style={{ background: 'var(--line)' }} />
+
+            {/* Sélecteur de Taille */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuTaille(!menuTaille)}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.75rem] font-medium hover:bg-[var(--sunk)]"
+              >
+                <span className="font-serif font-bold">TT</span>
+                <span className="text-[0.625rem]">▼</span>
+              </button>
+              {menuTaille && (
+                <div
+                  className="menu-apparait absolute top-full left-0 z-30 mt-1 min-w-[7rem] rounded-xl border py-1 shadow-lg"
+                  style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+                >
+                  {TAILLES.map((t) => (
+                    <button
+                      key={t.nom}
+                      type="button"
+                      onClick={() => {
+                        setTaillePolice(t.nom)
+                        setMenuTaille(false)
+                      }}
+                      className="flex w-full px-3 py-1.5 text-left text-[0.75rem] hover:bg-[var(--sunk)]"
+                    >
+                      {t.nom}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="h-4 w-[1px]" style={{ background: 'var(--line)' }} />
+
+            {/* Gras, Italique, Souligné */}
+            <button
+              type="button"
+              onClick={() => setGras(!gras)}
+              className={`rounded-md px-2 py-1 font-bold transition-colors ${
+                gras ? 'bg-[var(--sunk)] text-[var(--accent)]' : 'hover:bg-[var(--sunk)]'
+              }`}
+              title="Gras (Ctrl+B)"
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onClick={() => setItalique(!italique)}
+              className={`rounded-md px-2 py-1 italic transition-colors ${
+                italique ? 'bg-[var(--sunk)] text-[var(--accent)]' : 'hover:bg-[var(--sunk)]'
+              }`}
+              title="Italique (Ctrl+I)"
+            >
+              I
+            </button>
+            <button
+              type="button"
+              onClick={() => setSouligne(!souligne)}
+              className={`rounded-md px-2 py-1 underline transition-colors ${
+                souligne ? 'bg-[var(--sunk)] text-[var(--accent)]' : 'hover:bg-[var(--sunk)]'
+              }`}
+              title="Souligné (Ctrl+U)"
+            >
+              U
+            </button>
+
+            {/* Couleur de texte */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Couleur du texte')}
+              className="flex items-center gap-0.5 rounded-md px-2 py-1 hover:bg-[var(--sunk)]"
+              title="Couleur du texte"
+            >
+              <span className="font-bold underline decoration-red-500 decoration-2">A</span>
+              <span className="text-[0.5625rem]">▼</span>
+            </button>
+
+            <div className="h-4 w-[1px]" style={{ background: 'var(--line)' }} />
+
+            {/* Alignement */}
+            <button
+              type="button"
+              onClick={() => {
+                const ordre: ('left' | 'center' | 'right' | 'justify')[] = [
+                  'left',
+                  'center',
+                  'right',
+                  'justify',
+                ]
+                const idx = ordre.indexOf(alignement)
+                setAlignement(ordre[(idx + 1) % ordre.length] ?? 'left')
+              }}
+              className="flex items-center gap-0.5 rounded-md px-2 py-1 hover:bg-[var(--sunk)]"
+              title="Aligner"
+            >
+              <span className="text-[0.875rem]">≡</span>
+              <span className="text-[0.5625rem]">▼</span>
+            </button>
+
+            {/* Listes & Citation */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Liste numérotée')}
+              className="rounded-md px-2 py-1 text-[0.75rem] hover:bg-[var(--sunk)]"
+              title="Liste numérotée"
+            >
+              1. ▾
+            </button>
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Liste à puces')}
+              className="rounded-md px-2 py-1 text-[0.75rem] hover:bg-[var(--sunk)]"
+              title="Liste à puces"
+            >
+              • ▾
+            </button>
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Citation')}
+              className="rounded-md px-2 py-1 font-serif text-[0.8125rem] hover:bg-[var(--sunk)]"
+              title="Citation"
+            >
+              ❝
+            </button>
+
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Annuler')}
+                className="rounded-md p-1.5 text-[0.75rem] hover:bg-[var(--sunk)]"
+                title="Annuler (Ctrl+Z)"
+              >
+                ↺
+              </button>
+              <button
+                type="button"
+                onClick={() => afficherInfoBulle('Rétablir')}
+                className="rounded-md p-1.5 text-[0.75rem] hover:bg-[var(--sunk)]"
+                title="Rétablir (Ctrl+Y)"
+              >
+                ↻
+              </button>
+            </div>
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Bouton onClick={onFermer}>Annuler</Bouton>
-          <Bouton
-            type="submit"
-            variante="principal"
-            icone="send"
-            disabled={!envoyable || enCours}
+        {/* Section médiane : Corps du message (défile indépendamment) */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          <textarea
+            value={brouillon.corps}
+            onChange={(e) => changer('corps')(e.target.value)}
+            aria-label="Corps du message"
+            placeholder="Écrivez votre message…"
+            rows={14}
+            className={`champ-de-saisie selectionnable h-full min-h-[14rem] w-full resize-none bg-transparent leading-relaxed outline-none placeholder:text-[var(--sub)] ${policeStyle()} ${
+              gras ? 'font-bold' : ''
+            } ${italique ? 'italic' : ''} ${souligne ? 'underline' : ''}`}
+            style={{
+              color: 'var(--fg)',
+              fontSize: tailleStyle(),
+              textAlign: alignement,
+            }}
+          />
+
+          {erreur && (
+            <div
+              className="mt-3 flex items-start gap-2.5 rounded-xl px-3 py-2.5"
+              style={{ background: 'var(--sunk)' }}
+            >
+              <Icone nom="error" taille="1rem" style={{ color: '#d93025' }} />
+              <span className="min-w-0 flex-1 text-[0.75rem] leading-relaxed">{erreur}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Notification / Info bulle des actions */}
+        {infoBulleAction && (
+          <div className="px-6 py-1 text-center text-[0.75rem] font-medium text-[var(--sub)]">
+            {infoBulleAction}
+          </div>
+        )}
+
+        {/* Section basse FIXE : Barre d'actions Gmail - Toujours visible et indépendante du scroll ! */}
+        <div
+          className="flex flex-none items-center justify-between border-t px-5 py-3"
+          style={{
+            borderColor: 'var(--line)',
+            background: 'var(--card)',
+          }}
+        >
+          {/* Côté gauche : Bouton Envoyer split + Outils d'action natifs */}
+          <div className="flex items-center gap-1">
+            {/* Bouton Envoyer scindé bleu Gmail */}
+            <div className="relative mr-1.5 flex items-center rounded-full bg-[#0b57d0] text-white shadow-xs transition-colors hover:bg-[#0842a0]">
+              <button
+                type="submit"
+                disabled={!envoyable || enCours}
+                className="flex items-center gap-2 rounded-l-full py-2 pr-3 pl-4 text-[0.875rem] font-medium disabled:opacity-50"
+              >
+                {enCours ? 'Envoi…' : 'Envoyer'}
+              </button>
+              <div className="h-4 w-[1px] bg-white/30" />
+              <button
+                type="button"
+                disabled={!envoyable || enCours}
+                onClick={() => setMenuProgrammer(!menuProgrammer)}
+                title="Programmer l'envoi"
+                className="rounded-r-full p-2 pr-2.5 hover:bg-black/10 disabled:opacity-50"
+              >
+                <span className="text-[0.625rem]">▼</span>
+              </button>
+
+              {menuProgrammer && (
+                <div
+                  className="menu-apparait absolute bottom-full left-0 z-30 mb-2 min-w-[14rem] rounded-xl border py-1.5 text-[0.8125rem] text-[var(--fg)] shadow-xl"
+                  style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+                >
+                  <div
+                    className="border-b px-3 py-1.5 text-[0.6875rem] font-semibold text-[var(--sub)]"
+                    style={{ borderColor: 'var(--line)' }}
+                  >
+                    Programmer l'envoi
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuProgrammer(false)
+                      afficherInfoBulle('Envoi programmé pour demain 08:00')
+                    }}
+                    className="flex w-full px-3 py-2 text-left hover:bg-[var(--sunk)]"
+                  >
+                    Demain matin (08:00)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuProgrammer(false)
+                      afficherInfoBulle('Envoi programmé pour cet après-midi 13:00')
+                    }}
+                    className="flex w-full px-3 py-2 text-left hover:bg-[var(--sunk)]"
+                  >
+                    Cet après-midi (13:00)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuProgrammer(false)
+                      afficherInfoBulle('Envoi programmé pour lundi matin 08:00')
+                    }}
+                    className="flex w-full px-3 py-2 text-left hover:bg-[var(--sunk)]"
+                  >
+                    Lundi matin (08:00)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Bouton Aa (Options de mise en forme) */}
+            <button
+              type="button"
+              onClick={() => setFormatageActif(!formatageActif)}
+              className={`rounded-full p-2 text-[0.875rem] font-semibold transition-colors ${
+                formatageActif
+                  ? 'bg-[#d3e3fd] text-[#041e49] dark:bg-[#004a77] dark:text-[#c2e7ff]'
+                  : 'text-[var(--sub)] hover:bg-[var(--sunk)] hover:text-[var(--fg)]'
+              }`}
+              title="Options de mise en forme"
+            >
+              Aa
+            </button>
+
+            {/* Magic pen / ✨ M'aider à écrire */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle("M'aider à écrire (IA)")}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="M'aider à écrire (IA)"
+            >
+              <Icone nom="auto_awesome" taille="1.125rem" />
+            </button>
+
+            {/* 📎 Joindre des fichiers */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Joindre des fichiers')}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="Joindre des fichiers"
+            >
+              <Icone nom="attach_file" taille="1.125rem" />
+            </button>
+
+            {/* 🔗 Insérer un lien */}
+            <button
+              type="button"
+              onClick={() => {
+                const url = window.prompt('URL du lien :')
+                if (url) {
+                  changer('corps')(brouillon.corps + (brouillon.corps ? ' ' : '') + url)
+                }
+              }}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="Insérer un lien (Ctrl+K)"
+            >
+              <svg
+                aria-hidden
+                focusable="false"
+                viewBox="0 0 24 24"
+                width="1.125rem"
+                height="1.125rem"
+                className="fill-current"
+              >
+                <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+              </svg>
+            </button>
+
+            {/* 😊 Insérer un emoji */}
+            <button
+              type="button"
+              onClick={() => {
+                changer('corps')(brouillon.corps + ' 😊')
+              }}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="Insérer un emoji"
+            >
+              <svg
+                aria-hidden
+                focusable="false"
+                viewBox="0 0 24 24"
+                width="1.125rem"
+                height="1.125rem"
+                className="fill-current"
+              >
+                <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
+              </svg>
+            </button>
+
+            {/* ⏶ Insérer des fichiers avec Drive */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Google Drive')}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="Insérer des fichiers avec Drive"
+            >
+              <svg
+                aria-hidden
+                focusable="false"
+                viewBox="0 0 24 24"
+                width="1.125rem"
+                height="1.125rem"
+                className="fill-current"
+              >
+                <path d="M7.71 3.5L1.15 15l3.43 6 6.55-11.5M9.73 15L6.3 21h13.12l3.43-6M22.85 15l-6.57-11.5H9.43L16 15" />
+              </svg>
+            </button>
+
+            {/* 🖼 Insérer une photo */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Insérer une photo')}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="Insérer une photo"
+            >
+              <svg
+                aria-hidden
+                focusable="false"
+                viewBox="0 0 24 24"
+                width="1.125rem"
+                height="1.125rem"
+                className="fill-current"
+              >
+                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+              </svg>
+            </button>
+
+            {/* 🔒 Activer/désactiver le mode confidentiel */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Mode confidentiel')}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="Activer/désactiver le mode confidentiel"
+            >
+              <Icone nom="mail_lock" taille="1.125rem" />
+            </button>
+
+            {/* 🖊 Insérer une signature */}
+            <button
+              type="button"
+              onClick={() => afficherInfoBulle('Insérer une signature')}
+              className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              title="Insérer une signature"
+            >
+              <Icone nom="edit" taille="1.125rem" />
+            </button>
+
+            {/* ⋮ Autres options */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuPlus(!menuPlus)}
+                className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+                title="Autres options"
+              >
+                <svg
+                  aria-hidden
+                  focusable="false"
+                  viewBox="0 0 24 24"
+                  width="1.125rem"
+                  height="1.125rem"
+                  className="fill-current"
+                >
+                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                </svg>
+              </button>
+
+              {menuPlus && (
+                <div
+                  className="menu-apparait absolute bottom-full left-0 z-30 mb-2 min-w-[12rem] rounded-xl border py-1.5 text-[0.8125rem] text-[var(--fg)] shadow-xl"
+                  style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuPlus(false)
+                      afficherInfoBulle('Mode plein écran activé')
+                    }}
+                    className="flex w-full px-3 py-2 text-left hover:bg-[var(--sunk)]"
+                  >
+                    Plein écran
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuPlus(false)
+                      afficherInfoBulle('Vérification orthographique')
+                    }}
+                    className="flex w-full px-3 py-2 text-left hover:bg-[var(--sunk)]"
+                  >
+                    Vérifier l'orthographe
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuPlus(false)
+                      afficherInfoBulle('Format texte brut')
+                    }}
+                    className="flex w-full px-3 py-2 text-left hover:bg-[var(--sunk)]"
+                  >
+                    Mode texte brut
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Côté droit : Supprimer le brouillon / Annuler */}
+          <button
+            type="button"
+            onClick={onFermer}
+            className="rounded-full p-2 text-[var(--sub)] transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+            title="Supprimer le brouillon (Annuler)"
+            aria-label="Supprimer le brouillon"
           >
-            {enCours ? 'Envoi…' : 'Envoyer'}
-          </Bouton>
+            <Icone nom="delete" taille="1.125rem" />
+          </button>
         </div>
       </form>
     </Modale>
@@ -189,11 +735,11 @@ export function Redaction({
 function Ligne({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
     <div
-      className="flex items-baseline gap-3 border-b pb-2.5"
+      className="flex items-baseline gap-3 border-b pb-2"
       style={{ borderColor: 'var(--line)' }}
     >
       <span
-        className="w-10 flex-none pt-1.5 text-[0.75rem] font-semibold"
+        className="w-10 flex-none pt-1 text-[0.75rem] font-semibold"
         style={{ color: 'var(--sub)' }}
       >
         {titre}

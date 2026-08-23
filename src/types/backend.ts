@@ -332,3 +332,11 @@ export type CodeErreur =
   | 'ERREUR_RESEAU'
   | 'CONFIG_INVALIDE'
   | 'RESUME_INDISPONIBLE'
+
+/** Miroir de `contacts::ContactConnu`. */
+export interface Connaissance {
+  adresse: string
+  nom: string
+  apparitions: number
+}
+

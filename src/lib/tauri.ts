@@ -24,6 +24,7 @@ import type {
   ResultatSynthese,
   EtatLlm,
   Tableau,
+  Connaissance,
 } from '../types/backend'
 
 /** Vrai lorsqu'une valeur rejetée a la forme d'une erreur backend. */

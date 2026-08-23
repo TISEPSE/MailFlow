@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{cloison, ecrire_prive};
-use crate::error::Resultat;
+use crate::error::{AppError, Resultat};
 use crate::gmail::boite::MessageAffiche;
 
 const NOM_FICHIER: &str = "contacts.json";
@@ -37,10 +37,12 @@ pub fn charger(racine: &Path, compte: &str) -> Vec<ContactConnu> {
 pub fn enregistrer(racine: &Path, compte: &str, contacts: &[ContactConnu]) -> Resultat<()> {
     let chemin_fichier = chemin(racine, compte);
     if let Some(parent) = chemin_fichier.parent() {
-        std::fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::Config(format!("création du dossier de contacts : {e}")))?;
     }
     let json = serde_json::to_string_pretty(contacts)?;
-    ecrire_prive(&chemin_fichier, json.as_bytes())?;
+    ecrire_prive(&chemin_fichier, &json)
+        .map_err(|e| AppError::Config(format!("écriture du carnet de contacts : {e}")))?;
     Ok(())
 }
 
@@ -103,6 +105,7 @@ pub fn fusionner(
 mod tests {
     use super::*;
     use crate::gmail::boite::Contact;
+    use crate::gmail::classement::CategorieMessage;
 
     #[test]
     fn fusionne_contacts_depuis_messages() {
@@ -119,7 +122,7 @@ mod tests {
             extrait: "".into(),
             date: None,
             non_lu: false,
-            categorie: "humain".into(),
+            categorie: CategorieMessage::Humain,
             compte: "moi@test.com".into(),
             libelles: vec![],
         };

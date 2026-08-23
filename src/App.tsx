@@ -20,7 +20,7 @@ import {
   brouillonVierge,
   type Brouillon,
 } from './lib/redaction'
-import { carnet } from './lib/contacts'
+import { carnet, fusionnerCarnets, type Connaissance } from './lib/contacts'
 import { Archives } from './vues/Archives'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
@@ -58,6 +58,8 @@ import {
   EVENEMENT_RELEVE,
   type Avancement,
   comptesLister,
+  contactsLister,
+  contactsSynchroniser,
   gmailSynchroniser,
   messageCorps,
   googleConnecter,
@@ -301,10 +303,12 @@ export default function App() {
    * compte — quelqu'un à qui l'on a écrit il y a un mois reste quelqu'un qu'on
    * connaît.
    */
-  const carnetDAdresses = useMemo(
-    () => carnet([...boite, ...archives], profil?.adresse ?? null),
-    [boite, archives, profil],
-  )
+  const [contactsGmail, setContactsGmail] = useState<Connaissance[]>([])
+
+  const carnetDAdresses = useMemo(() => {
+    const contactsLocaux = carnet([...boite, ...archives], profil?.adresse ?? null)
+    return fusionnerCarnets(contactsGmail, contactsLocaux)
+  }, [boite, archives, profil, contactsGmail])
 
   /** Avancement de la troisième phase, ou `null` quand elle ne tourne pas.
    *
@@ -928,12 +932,12 @@ export default function App() {
       setLibelles(await libellesLister().catch(() => []))
 
       // Le registre des archives, dès le démarrage : deux lectures de fichier
-      // et aucun appel réseau. Sans lui, le compteur de la barre affichait zéro
-      // tant qu'on n'avait pas ouvert la table — c'est-à-dire qu'il affirmait
-      // une table vide au lieu d'avouer qu'il ne l'avait pas regardée. Le
-      // relevé du classement Gmail, lui, reste à l'ouverture de la page : c'est
-      // celui-là qui coûte des appels.
+      // et aucun appel réseau.
       setArchives(await archivesLister().catch(() => []))
+
+      // Charge le carnet de contacts localement et lance la synchronisation en arrière-plan
+      void contactsLister().then(setContactsGmail).catch(console.warn)
+      void contactsSynchroniser().then(setContactsGmail).catch(console.warn)
 
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)

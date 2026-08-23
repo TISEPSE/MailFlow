@@ -19,7 +19,7 @@
  */
 import { useRef, useState } from 'react'
 import { Icone } from './base'
-import { MINIMUM_POUR_PROPOSER, proposer, type Connaissance } from '../lib/contacts'
+import { proposer, type Connaissance } from '../lib/contacts'
 import { decouperAdresses } from '../lib/redaction'
 
 export function ChampDestinataires({
@@ -199,17 +199,6 @@ export function ChampDestinataires({
             </li>
           ))}
         </ul>
-      )}
-
-      {/* Ce que le champ attend, dit une seule fois et seulement quand c'est
-          utile : tant qu'on n'a pas tapé assez pour déclencher la liste. */}
-      {ouvert && saisie.trim().length > 0 && saisie.trim().length < MINIMUM_POUR_PROPOSER && (
-        <span
-          className="absolute top-full left-0 mt-1 text-[0.6875rem]"
-          style={{ color: 'var(--sub)' }}
-        >
-          Encore une lettre pour voir des propositions.
-        </span>
       )}
     </div>
   )
