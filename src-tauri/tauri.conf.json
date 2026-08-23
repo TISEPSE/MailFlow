@@ -63,6 +63,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "category": "Productivity",
     "shortDescription": "Tri automatique de la boîte Gmail",
     "longDescription": "MailFlow trie automatiquement votre boîte Gmail : séparation du courrier humain, nettoyage des publicités, résumés de newsletters et rappels de formations.",
