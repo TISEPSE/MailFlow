@@ -2350,7 +2350,7 @@ pub async fn contacts_lister(app: AppHandle) -> Resultat<Vec<crate::contacts::Co
         }
     }
 
-    tous.sort_by(|a, b| b.apparitions.cmp(&a.apparitions));
+    tous.sort_by_key(|c| std::cmp::Reverse(c.apparitions));
     Ok(tous)
 }
 
@@ -2366,26 +2366,15 @@ pub async fn contacts_synchroniser(
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
 
     // 1. Relève les e-mails envoyés (in:sent)
-    let envoyes = crate::gmail::boite::relever_requete(
-        &client,
-        &regles,
-        &compte,
-        "in:sent",
-        150,
-    )
-    .await
-    .unwrap_or_default();
+    let envoyes = crate::gmail::boite::relever_requete(&client, &regles, &compte, "in:sent", 150)
+        .await
+        .unwrap_or_default();
 
     // 2. Relève également les messages récents de la boîte
-    let recus = crate::gmail::boite::relever_requete(
-        &client,
-        &regles,
-        &compte,
-        "-in:trash -in:spam",
-        100,
-    )
-    .await
-    .unwrap_or_default();
+    let recus =
+        crate::gmail::boite::relever_requete(&client, &regles, &compte, "-in:trash -in:spam", 100)
+            .await
+            .unwrap_or_default();
 
     let mut tous_messages = envoyes;
     tous_messages.extend(recus);

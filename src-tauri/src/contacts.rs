@@ -65,9 +65,14 @@ pub fn fusionner(
             return;
         }
 
-        let entry = map.entry(addr.clone()).or_insert_with(|| (String::new(), 0));
+        let entry = map
+            .entry(addr.clone())
+            .or_insert_with(|| (String::new(), 0));
         entry.1 += 1;
-        if (entry.0.is_empty() || entry.0.to_lowercase() == addr) && !nom.trim().is_empty() && nom.trim().to_lowercase() != addr {
+        if (entry.0.is_empty() || entry.0.to_lowercase() == addr)
+            && !nom.trim().is_empty()
+            && nom.trim().to_lowercase() != addr
+        {
             entry.0 = nom.trim().to_string();
         }
     };
@@ -129,7 +134,13 @@ mod tests {
 
         let res = fusionner(vec![], &[m], "moi@test.com");
         assert_eq!(res.len(), 2);
-        assert!(res.iter().any(|c| c.adresse == "alice@test.com" && c.nom == "Alice"));
-        assert!(res.iter().any(|c| c.adresse == "bob@test.com" && c.nom == "Bob"));
+        assert!(
+            res.iter()
+                .any(|c| c.adresse == "alice@test.com" && c.nom == "Alice")
+        );
+        assert!(
+            res.iter()
+                .any(|c| c.adresse == "bob@test.com" && c.nom == "Bob")
+        );
     }
 }
