@@ -56,7 +56,7 @@ describe('Modale', () => {
       return /class="apparait my-auto w-full rounded-3xl border ([^"]+)"/.exec(html)?.[1]
     })
 
-    expect(largeurs).toEqual(['max-w-lg', 'max-w-5xl', 'max-w-[min(1500px,94vw)]'])
+    expect(largeurs).toEqual(['max-w-2xl', 'max-w-5xl', 'max-w-[min(1500px,94vw)]'])
   })
 
   it('rend la confirmation avec ses deux gestes', () => {

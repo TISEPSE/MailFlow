@@ -429,7 +429,7 @@ export function Confirmation({
 export type TailleModale = 'normale' | 'moyenne' | 'grande'
 
 const LARGEUR_MODALE: Record<TailleModale, string> = {
-  normale: 'max-w-lg',
+  normale: 'max-w-2xl',
   moyenne: 'max-w-5xl',
   grande: 'max-w-[min(1500px,94vw)]',
 }
@@ -483,7 +483,7 @@ export function Modale({
       // l'écran sur un portable, et c'est alors la page derrière qui se mettait
       // à défiler.
       className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto ${
-        grande ? 'p-5' : 'p-8'
+        grande ? 'p-5' : 'p-6 sm:p-8'
       }`}
       style={{
         background: 'rgb(0 0 0 / 40%)',
@@ -511,7 +511,7 @@ export function Modale({
         }}
       >
         <div
-          className="flex items-center gap-4 border-b px-6 py-4"
+          className="flex items-center gap-4 border-b px-7 py-4.5"
           style={{ borderColor: 'var(--line)' }}
         >
           <div className="min-w-0 flex-1">
@@ -533,10 +533,10 @@ export function Modale({
         </div>
 
         <div
-          className={`${grande ? 'h-[82vh]' : 'max-h-[70vh]'} ${
+          className={`${grande ? 'h-[82vh]' : 'max-h-[85vh]'} ${
             sansRembourrage
               ? 'overflow-hidden rounded-b-3xl'
-              : 'overflow-y-auto px-6 py-5'
+              : 'overflow-y-auto px-7 py-6'
           }`}
         >
           {children}
