@@ -11,8 +11,8 @@ import { ChampDestinataires } from './ChampDestinataires'
 import type { Connaissance } from '../lib/contacts'
 
 const CARNET: Connaissance[] = [
-  { adresse: 'alice@exemple.fr', nom: 'Alice Martin', apparitions: 3 },
-  { adresse: 'bob@exemple.fr', nom: 'Bob Dupont', apparitions: 1 },
+  { adresse: 'alice@exemple.fr', nom: 'Alice Martin', photo: null, origine: 'carnet' },
+  { adresse: 'bob@exemple.fr', nom: 'Bob Dupont', photo: null, origine: 'carnet' },
 ]
 
 function rendre(valeur: string) {

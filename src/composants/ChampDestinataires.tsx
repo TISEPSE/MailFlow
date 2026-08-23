@@ -195,7 +195,11 @@ export function ChampDestinataires({
                     texte={initiales(c.nom || c.adresse)}
                     fond={fond}
                     couleur={couleur}
-                    logo={logo}
+                    // La photo de la personne l'emporte sur le logo de son
+                    // domaine : on reconnaît un visage plus vite qu'une marque.
+                    // Les « autres contacts » n'en ont pas, et retombent sur le
+                    // logo puis sur les initiales.
+                    logo={c.photo ?? logo}
                     taille="1.875rem"
                   />
                   <div className="min-w-0 flex-1 flex flex-col justify-center">

@@ -29,7 +29,7 @@ const MESSAGE: MessageAffiche = {
 }
 
 const CARNET: Connaissance[] = [
-  { adresse: 'alice@exemple.fr', nom: 'Alice Martin', apparitions: 3 },
+  { adresse: 'alice@exemple.fr', nom: 'Alice Martin', photo: null, origine: 'carnet' },
 ]
 
 function rendre(depart = brouillonVierge()) {

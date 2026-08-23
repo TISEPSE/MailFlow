@@ -1,141 +1,35 @@
 /**
- * Le carnet d'adresses que MailFlow se constitue tout seul.
+ * Le carnet d'adresses, et ce qu'on en propose à la frappe.
  *
  * # D'où il vient
  *
- * De vos messages, et de rien d'autre. Chaque message porte son expéditeur, ses
- * destinataires et ses copies : ce sont, à peu de chose près, les gens avec qui
- * vous avez déjà eu affaire. Rien n'est demandé à Google — l'annuaire de
- * contacts exigerait la People API et une autorisation restreinte de plus, pour
- * un résultat que ces trois champs donnent déjà.
+ * De Google, et de rien d'autre : c'est le carnet que l'utilisateur voit dans
+ * Gmail, plus les adresses que Google retient de lui-même quand on écrit à
+ * quelqu'un. Le backend le relève et le range ; ce module ne fait que le
+ * traverser.
  *
- * # Pourquoi il compte les apparitions
+ * Il se déduisait autrefois des messages sous la main, expéditeurs compris.
+ * C'était gratuit en autorisations, mais toute personne ayant écrit une fois
+ * entrait dans les suggestions — un robot d'expédition proposé comme
+ * destinataire d'un message qu'on rédige.
+ *
+ * # Comment il classe
  *
  * Taper une adresse de mémoire est le moyen le plus sûr de se tromper d'une
  * lettre, et un message parti à côté ne revient pas. Ce qui aide vraiment,
- * c'est que la bonne proposition soit **en premier** : une liste de dix noms
- * dans le désordre oblige à la lire en entier. D'où le tri par nombre
- * d'apparitions — les gens avec qui l'on échange souvent remontent d'eux-mêmes,
- * sans qu'on ait à tenir un classement quelque part.
+ * c'est que la bonne proposition soit **en premier** : une liste de huit noms
+ * dans le désordre oblige à la lire en entier. D'où le classement par qualité
+ * de correspondance, puis, à égalité, par origine — quelqu'un qu'on a
+ * délibérément enregistré passe avant une adresse que Google a retenue seule.
  */
 import { HORS_JEU, normaliser, rangDeCorrespondance } from './recherche'
-import type { Contact, MessageAffiche } from '../types/backend'
+import type { Connaissance, Contact } from '../types/backend'
 
-/** Une entrée du carnet. */
-export interface Connaissance {
-  /** Adresse en minuscules. C'est elle qui identifie. */
-  adresse: string
-  /** Le nom le plus utile qu'on ait vu pour cette adresse. */
-  nom: string
-  /** Dans combien de messages elle apparaît. */
-  apparitions: number
-}
-
-/** Vrai quand la chaîne peut passer pour une adresse. */
-function utilisable(adresse: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adresse.trim())
-}
-
-/**
- * Le meilleur des deux noms pour une même adresse.
- *
- * Un nom qui répète l'adresse n'en est pas un : Gmail met l'adresse dans le
- * champ « nom » quand l'expéditeur n'en a pas donné, et l'afficher deux fois
- * sur la même ligne ne renseigne personne.
- */
-function meilleurNom(ancien: string, neuf: string, adresse: string): string {
-  const vaut = (n: string) =>
-    n.trim() && n.trim().toLowerCase() !== adresse ? n.trim() : ''
-
-  return vaut(ancien) || vaut(neuf) || ''
-}
-
-/**
- * Construit le carnet à partir des messages sous la main.
- *
- * `moi` est écarté : se proposer soi-même comme destinataire est au mieux du
- * bruit, au pire un message qu'on s'envoie par erreur en croyant l'envoyer à
- * quelqu'un.
- */
-export function carnet(
-  messages: readonly MessageAffiche[],
-  moi: string | null,
-): Connaissance[] {
-  const propre = moi?.trim().toLowerCase() ?? ''
-  const connus = new Map<string, Connaissance>()
-
-  const noter = (nom: string, adresse: string) => {
-    const cle = adresse.trim().toLowerCase()
-    if (!utilisable(cle) || cle === propre) return
-
-    const deja = connus.get(cle)
-    if (deja) {
-      deja.apparitions += 1
-      deja.nom = meilleurNom(deja.nom, nom, cle)
-      return
-    }
-
-    connus.set(cle, {
-      adresse: cle,
-      nom: meilleurNom('', nom, cle),
-      apparitions: 1,
-    })
-  }
-
-  for (const message of messages) {
-    noter(message.nom, message.adresse)
-    // Le repli sur une liste vide n'est pas une politesse : un relevé rangé par
-    // une version antérieure peut ne pas porter ces champs, et lire `for...of`
-    // sur `undefined` lève — une exception pendant un rendu démonte l'arbre
-    // entier et laisse la fenêtre blanche.
-    for (const c of message.destinataires ?? []) noter(c.nom, c.adresse)
-    for (const c of message.copies ?? []) noter(c.nom, c.adresse)
-  }
-
-  return [...connus.values()].sort(
-    (a, b) =>
-      b.apparitions - a.apparitions ||
-      (a.nom || a.adresse).localeCompare(b.nom || b.adresse, 'fr'),
-  )
-}
-
-/** Une lettre au minimum avant de proposer, ou liste les plus fréquents si vide. */
+/** En dessous, la liste serait toute la boîte : on ne propose rien. */
 export const MINIMUM_POUR_PROPOSER = 1
 
-/** Au-delà, la liste cache le formulaire au lieu de l'aider. */
+/** Au-delà, la liste cesse d'aider et commence à cacher le champ de saisie. */
 const PLAFOND = 8
-
-/**
- * Fusionne deux carnets d'adresses en combinant les apparitions et meilleurs noms.
- */
-export function fusionnerCarnets(
-  premier: readonly Connaissance[],
-  second: readonly Connaissance[],
-): Connaissance[] {
-  const map = new Map<string, Connaissance>()
-
-  for (const c of [...premier, ...second]) {
-    const cle = c.adresse.trim().toLowerCase()
-    if (!cle) continue
-    const deja = map.get(cle)
-    if (deja) {
-      deja.apparitions += c.apparitions
-      deja.nom = meilleurNom(deja.nom, c.nom, cle)
-    } else {
-      map.set(cle, {
-        adresse: cle,
-        nom: meilleurNom('', c.nom, cle),
-        apparitions: c.apparitions,
-      })
-    }
-  }
-
-  return [...map.values()].sort(
-    (a, b) =>
-      b.apparitions - a.apparitions ||
-      (a.nom || a.adresse).localeCompare(b.nom || b.adresse, 'fr'),
-  )
-}
 
 /**
  * Les connaissances qui répondent à ce qu'on tape, les meilleures d'abord.
@@ -160,18 +54,28 @@ export function proposer(
   const retenues = new Set(deja.map((a) => a.trim().toLowerCase()))
   const q = normaliser(texte)
 
-  return carnet
-    .filter((c) => !retenues.has(c.adresse))
-    .map((c) => ({
-      c,
-      r: Math.min(rangDeCorrespondance(q, c.nom), rangDeCorrespondance(q, c.adresse)),
-    }))
-    .filter(({ r }) => r < HORS_JEU)
-    // Le rang d'abord, la fréquence ensuite : une correspondance en début de nom
-    // passe avant un familier qui ne correspond qu'au milieu de son adresse.
-    .sort((a, b) => a.r - b.r || b.c.apparitions - a.c.apparitions)
-    .slice(0, PLAFOND)
-    .map(({ c }) => c)
+  return (
+    carnet
+      .filter((c) => !retenues.has(c.adresse))
+      .map((c) => ({
+        c,
+        r: Math.min(
+          rangDeCorrespondance(q, c.nom),
+          rangDeCorrespondance(q, c.adresse),
+        ),
+      }))
+      .filter(({ r }) => r < HORS_JEU)
+      // Le rang d'abord, l'origine ensuite : une correspondance en début de nom
+      // passe avant un contact enregistré qui ne correspond qu'au milieu de son
+      // adresse.
+      .sort(
+        (a, b) =>
+          a.r - b.r ||
+          Number(a.c.origine !== 'carnet') - Number(b.c.origine !== 'carnet'),
+      )
+      .slice(0, PLAFOND)
+      .map(({ c }) => c)
+  )
 }
 
 /** Ce qu'on affiche pour une connaissance, sur une ligne de proposition. */
@@ -180,4 +84,4 @@ export function etiquette(c: Connaissance): string {
 }
 
 /** Le type du backend, pour les tests et les appelants. */
-export type { Contact }
+export type { Connaissance, Contact }
