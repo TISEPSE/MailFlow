@@ -274,8 +274,12 @@ mod tests_navigation {
     /// qui est arrivé.
     #[test]
     fn le_cadre_du_corps_est_l_application_et_non_un_site_tiers() {
-        assert!(est_l_application(&url("mailflow-corps://localhost/cadre.html")));
-        assert!(est_l_application(&url("mailflow-corps://localhost/cadre.js")));
+        assert!(est_l_application(&url(
+            "mailflow-corps://localhost/cadre.html"
+        )));
+        assert!(est_l_application(&url(
+            "mailflow-corps://localhost/cadre.js"
+        )));
         // La forme de Windows et d'Android.
         assert!(est_l_application(&url(
             "http://mailflow-corps.localhost/cadre.html"
@@ -305,7 +309,9 @@ mod tests_navigation {
     /// l'intérieur de l'application, pas une adresse du monde.
     #[test]
     fn le_schema_du_cadre_ne_sort_jamais_vers_le_systeme() {
-        assert!(!sortie_autorisee(&url("mailflow-corps://localhost/cadre.js")));
+        assert!(!sortie_autorisee(&url(
+            "mailflow-corps://localhost/cadre.js"
+        )));
     }
 
     #[test]

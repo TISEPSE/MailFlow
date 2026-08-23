@@ -210,10 +210,10 @@ pub fn servir(requete: Request<Vec<u8>>) -> Response<Vec<u8>> {
         None => {
             log::warn!("chemin inconnu demandé au protocole du cadre");
             Response::builder()
-            .status(404)
-            .header("Content-Security-Policy", POLITIQUE)
-            .body(Vec::new())
-            .expect("réponse 404 constructible")
+                .status(404)
+                .header("Content-Security-Policy", POLITIQUE)
+                .body(Vec::new())
+                .expect("réponse 404 constructible")
         }
     }
 }
@@ -274,7 +274,11 @@ mod tests {
             "/cadre.html.js",
             "/index.html",
         ] {
-            assert_eq!(chemin_demande(hostile), None, "« {hostile} » doit être refusé");
+            assert_eq!(
+                chemin_demande(hostile),
+                None,
+                "« {hostile} » doit être refusé"
+            );
         }
     }
 

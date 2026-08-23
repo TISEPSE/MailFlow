@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Politique de confidentialité — MailFlow</title>
+<meta name="description" content="Ce que MailFlow fait des données de votre compte Google : où elles sont stockées, ce qui sort de votre ordinateur, et comment tout effacer.">
+<link rel="icon" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="barre">
+  <div class="enveloppe">
+    <a class="marque" href="index.html"><img src="logo.png" alt=""> MailFlow</a>
+    <nav>
+      <a href="index.html">Accueil</a>
+      <a href="confidentialite.html" aria-current="page">Confidentialité</a>
+      <a href="conditions.html">Conditions</a>
+    </nav>
+  </div>
+</header>
+
+<main class="enveloppe document">
+
+  <aside class="sommaire">
+    <h2>Sur cette page</h2>
+    <ol>
+      <li><a href="#editeur">Qui édite MailFlow</a></li>
+      <li><a href="#principe">Le principe</a></li>
+      <li><a href="#autorisations">Autorisations Google</a></li>
+      <li><a href="#stockage">Ce qui est gardé</a></li>
+      <li><a href="#resumes">Résumés par IA</a></li>
+      <li><a href="#limited-use">Engagement Limited Use</a></li>
+      <li><a href="#jamais">Ce qui n'arrive jamais</a></li>
+      <li><a href="#effacer">Retirer l'accès, effacer</a></li>
+      <li><a href="#securite">Sécurité</a></li>
+      <li><a href="#droits">Vos droits</a></li>
+      <li><a href="#mineurs">Mineurs</a></li>
+      <li><a href="#modifications">Modifications</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ol>
+  </aside>
+
+  <article>
+    <p class="surtitre">Politique de confidentialité</p>
+    <h1>Ce que MailFlow fait de vos données</h1>
+
+    <p class="datation">Version du 23 août 2026 · Applicable à l'application de bureau MailFlow, versions 0.1 et suivantes</p>
+
+    <p>MailFlow est un logiciel installé sur votre ordinateur. Il lit et range votre boîte Gmail à votre demande. Ce document décrit précisément quelles données il touche, où elles restent, et dans quels cas elles sortent de votre machine.</p>
+
+    <h2 id="editeur">1. Qui édite MailFlow</h2>
+    <p>MailFlow est édité par TISEPSE, développeur indépendant, joignable à l'adresse <span class="a-remplir">[ADRESSE DE CONTACT]</span>.</p>
+    <p>Il n'existe aucune société, aucun service en ligne et aucune infrastructure derrière MailFlow. Le logiciel est distribué gratuitement, et son code source est public.</p>
+
+    <h2 id="principe">2. Le principe : rien ne nous parvient</h2>
+    <p>MailFlow n'a pas de serveur. L'éditeur ne reçoit, ne stocke et ne consulte aucune donnée vous concernant : ni vos messages, ni votre adresse, ni la moindre statistique d'usage.</p>
+    <p>Quand l'application a besoin de vos messages, elle les demande directement à Google depuis votre ordinateur, et la réponse revient directement sur votre ordinateur. Aucun intermédiaire.</p>
+
+    <div class="encadre">
+      <p>Il n'y a pas de compte MailFlow à créer, pas de mot de passe MailFlow, et aucune télémétrie. Le logiciel ne se connecte qu'aux services nommés dans cette page.</p>
+    </div>
+
+    <h2 id="autorisations">3. Les autorisations Google demandées</h2>
+    <p>Lors de votre première connexion, Google vous présente la liste exacte de ce que MailFlow demande. Vous pouvez refuser. Voici ces autorisations et la raison de chacune.</p>
+
+    <div class="defilant">
+      <table>
+        <thead>
+          <tr><th>Autorisation</th><th>Ce qu'elle permet</th><th>Pourquoi MailFlow la demande</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>gmail.modify</code></td>
+            <td>Lire vos messages, poser et retirer des libellés, archiver, mettre à la corbeille, envoyer un message.</td>
+            <td>C'est le cœur du logiciel : afficher votre courrier et exécuter le tri que vous avez décidé. C'est aussi cette autorisation qui permet d'envoyer une réponse depuis l'application.</td>
+          </tr>
+          <tr>
+            <td><code>userinfo.email</code></td>
+            <td>Connaître l'adresse du compte connecté.</td>
+            <td>Afficher quel compte est relié, et séparer les données quand vous en connectez plusieurs.</td>
+          </tr>
+          <tr>
+            <td><code>userinfo.profile</code></td>
+            <td>Connaître le nom et la photo du compte.</td>
+            <td>Vous permettre de reconnaître d'un coup d'œil le compte affiché.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>MailFlow ne demande aucune autre autorisation. En particulier, il ne demande rien concernant Google Drive, Google Agenda, vos contacts, votre historique de navigation ou votre position.</p>
+
+    <h3>Ce que MailFlow ne supprime jamais définitivement</h3>
+    <p>Le tri met les messages à la corbeille de Gmail. Il ne les efface pas de manière irréversible : ils restent récupérables trente jours dans votre corbeille, comme si vous les y aviez mis vous-même.</p>
+
+    <h2 id="stockage">4. Ce qui est gardé sur votre ordinateur</h2>
+    <p>Pour éviter de tout retélécharger à chaque ouverture, MailFlow conserve des données localement, dans le dossier réservé aux applications de votre système :</p>
+    <ul>
+      <li><strong>Vos règles de tri</strong> : un fichier par compte, dans le dossier de configuration de l'application.</li>
+      <li><strong>Une copie des messages relevés</strong>, y compris leur contenu, dans le dossier de données locales. Ces fichiers ne sont accessibles qu'à votre compte utilisateur (permissions <code>0600</code>). Ils ne sont pas chiffrés : la protection est celle de votre session, comme pour n'importe quel client de messagerie installé.</li>
+      <li><strong>L'autorisation d'accès délivrée par Google</strong> (jeton de rafraîchissement), placée dans le trousseau de votre système : Trousseau d'accès sur macOS, service de secrets de votre session sur Linux. Elle n'est jamais écrite en clair dans un fichier.</li>
+      <li><strong>Votre clé d'API Gemini</strong>, si vous en fournissez une, également dans le trousseau du système.</li>
+    </ul>
+    <p>Rien de tout cela n'est envoyé où que ce soit. Ces fichiers vivent et meurent sur votre machine.</p>
+
+    <h2 id="resumes">5. Résumés de newsletters par intelligence artificielle</h2>
+
+    <div class="encadre important">
+      <p>C'est le seul cas où le contenu de votre courrier sort de votre ordinateur vers un service qui n'est pas Gmail. Cette fonction est facultative et désactivée tant que vous n'avez pas fourni votre propre clé d'API.</p>
+    </div>
+
+    <p>Si vous activez les résumés, MailFlow envoie le texte des newsletters concernées à l'API Gemini de Google, à l'aide de la clé d'API que vous avez saisie. Le service vous renvoie un résumé de quelques phrases, qui est affiché puis conservé sur votre disque.</p>
+
+    <h3>Ce qui est envoyé, et ce qui est retiré avant l'envoi</h3>
+    <ul>
+      <li>Seuls sont envoyés les messages que vos propres règles ont classés comme newsletters. Le courrier écrit par des personnes n'est jamais transmis.</li>
+      <li>Les en-têtes techniques ne sont pas transmis.</li>
+      <li>Votre adresse e-mail est retirée du texte avant l'envoi.</li>
+      <li>Les liens sont retirés du texte avant l'envoi, notamment les liens de désabonnement, qui contiennent souvent votre adresse en clair.</li>
+    </ul>
+
+    <h3>Votre clé d'API détermine le traitement</h3>
+    <p>Le texte envoyé est traité par Google selon les conditions attachées à <em>votre</em> clé d'API, et non à celles de MailFlow. Ces conditions diffèrent selon le forfait auquel votre clé est rattachée :</p>
+    <ul>
+      <li><strong>Palier gratuit</strong> : Google se réserve le droit d'utiliser les contenus soumis pour améliorer ses services et ses modèles, et des personnes peuvent les examiner.</li>
+      <li><strong>Palier payant</strong> : Google indique ne pas utiliser les contenus soumis pour entraîner ses modèles.</li>
+    </ul>
+    <p>MailFlow affiche cet avertissement à l'écran, au moment exact où vous saisissez la clé, avant tout enregistrement. Le choix du palier vous appartient, et il détermine le sort du texte de vos newsletters une fois qu'il a quitté votre machine. <strong>Si vous tenez à ce que le contenu de vos newsletters ne serve à rien d'autre qu'à produire votre résumé, utilisez une clé rattachée à un palier payant, ou n'activez pas les résumés.</strong></p>
+    <p>Les conditions applicables sont celles de <a href="https://ai.google.dev/gemini-api/terms">l'API Gemini</a>.</p>
+
+    <h2 id="limited-use">6. Engagement de conformité Limited Use</h2>
+    <p>L'utilisation et le transfert par MailFlow des informations reçues des API Google respectent la <a href="https://developers.google.com/terms/api-services-user-data-policy">politique relative aux données utilisateur des services d'API Google</a>, y compris ses exigences d'utilisation limitée (<em>Limited Use</em>).</p>
+
+    <div class="encadre">
+      <p><em>MailFlow's use and transfer of information received from Google APIs to any other app will adhere to <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</em></p>
+    </div>
+
+    <p>Concrètement, les données issues de votre compte Google servent uniquement à faire fonctionner les fonctions que vous voyez à l'écran. Elles ne servent ni à la publicité, ni à la revente, ni à la constitution d'un profil, ni à l'entraînement de modèles d'intelligence artificielle généralistes.</p>
+
+    <h2 id="jamais">7. Ce qui n'arrive jamais</h2>
+    <ul>
+      <li>Vos données Gmail ne sont pas vendues, louées ni cédées à qui que ce soit.</li>
+      <li>Elles ne servent à aucune publicité, à aucun ciblage.</li>
+      <li>Elles ne sont pas utilisées pour entraîner un modèle d'intelligence artificielle.</li>
+      <li>Aucun être humain travaillant sur MailFlow ne peut y accéder : il n'existe aucun moyen technique de le faire.</li>
+      <li>Vos identifiants Google ne transitent jamais par MailFlow. Vous vous connectez sur le site de Google, dans votre navigateur habituel.</li>
+      <li>MailFlow ne supprime définitivement aucun message.</li>
+    </ul>
+
+    <h2 id="effacer">8. Retirer l'accès et tout effacer</h2>
+    <p>Vous gardez la main, à tout moment, par deux gestes indépendants.</p>
+
+    <h3>Couper l'accès à votre compte Google</h3>
+    <p>Rendez-vous sur <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>, sélectionnez MailFlow, retirez l'accès. L'autorisation devient immédiatement inutilisable et l'application ne peut plus rien lire ni modifier. Ce geste ne dépend pas de nous et ne peut pas être empêché.</p>
+
+    <h3>Effacer les données locales</h3>
+    <p>Les réglages de MailFlow comportent un bouton qui efface d'un coup les messages conservés sur le disque. Désinstaller l'application et supprimer son dossier de données produit le même résultat. L'entrée du trousseau se supprime depuis l'utilitaire de trousseau de votre système.</p>
+
+    <h2 id="securite">9. Sécurité</h2>
+    <ul>
+      <li>La connexion suit le standard OAuth 2.0 avec PKCE, la méthode recommandée par Google pour les applications installées. Le retour d'autorisation se fait sur une adresse locale temporaire (<code>127.0.0.1</code>) qui n'accepte qu'une seule requête.</li>
+      <li>L'autorisation durable est confiée au trousseau du système. L'autorisation temporaire ne quitte pas la mémoire vive.</li>
+      <li>Le contenu des messages est affiché dans une zone isolée, sans accès aux fonctions de l'application. Un e-mail piégé ne peut pas s'en servir pour lire votre boîte.</li>
+      <li>Le contenu des messages n'est jamais interprété comme une instruction, y compris par la fonction de résumé.</li>
+    </ul>
+    <p>Aucun logiciel n'est à l'abri d'un défaut. Si vous en découvrez un, écrivez à l'adresse indiquée au paragraphe 13 plutôt que de le publier.</p>
+
+    <h2 id="droits">10. Vos droits</h2>
+    <p>Le règlement général sur la protection des données donne à chacun un droit d'accès, de rectification, d'effacement, d'opposition et de portabilité sur ses données personnelles. Ces droits s'exercent auprès de qui détient les données.</p>
+    <p>Dans le cas de MailFlow, l'éditeur ne détient rien : vous seul avez la main sur les fichiers de votre machine, et le paragraphe 8 explique comment les effacer. Pour les données que Google détient sur votre compte, ces droits s'exercent auprès de Google.</p>
+
+    <h2 id="mineurs">11. Mineurs</h2>
+    <p>MailFlow n'est pas destiné aux personnes de moins de quinze ans et ne collecte sciemment aucune donnée les concernant.</p>
+
+    <h2 id="modifications">12. Modifications de cette politique</h2>
+    <p>Cette politique peut évoluer si les fonctions du logiciel évoluent. La date de version figure en haut de la page, et l'historique complet des modifications est consultable publiquement dans le dépôt du code source. Un changement qui élargirait l'usage de vos données serait signalé dans l'application avant d'entrer en vigueur.</p>
+
+    <h2 id="contact">13. Contact</h2>
+    <p>Pour toute question sur cette politique, sur le traitement de vos données ou pour signaler un problème de sécurité : <span class="a-remplir">[ADRESSE DE CONTACT]</span>.</p>
+
+  </article>
+</main>
+
+<footer>
+  <div class="enveloppe">
+    <span>MailFlow · Logiciel libre</span>
+    <nav>
+      <a href="index.html">Accueil</a>
+      <a href="conditions.html">Conditions</a>
+      <a href="https://github.com/TISEPSE/MailFlow">Code source</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

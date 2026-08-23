@@ -151,3 +151,18 @@ Pour un public non technique, ce détour est rédhibitoire : c'est exactement le
 geste qu'on apprend aux gens à ne pas faire. La signature demande un compte
 Apple Developer (99 $/an) ; les secrets se branchent alors dans le workflow sans
 toucher au reste.
+
+## Site public
+
+Les pages exigées par Google pour la vérification OAuth vivent dans `site/` et
+sont publiées par le workflow `pages.yml` : page d'accueil, politique de
+confidentialité et conditions d'utilisation. Le déploiement échoue tant qu'une
+mention à renseigner subsiste dans ces pages, plutôt que de publier une
+politique de confidentialité trouée.
+
+GitHub Pages exige un dépôt public sur un compte gratuit.
+
+## Licence
+
+MIT, voir [`LICENSE`](LICENSE). Le nom « MailFlow » et le logo ne sont pas
+couverts par cette licence : ils identifient l'application d'origine.

@@ -1,0 +1,375 @@
+/* MailFlow — pages publiques.
+   Palette tiree du logo : nuit violacee, violet et cyan. */
+
+:root {
+  --nuit: #131029;
+  --nuit-profond: #0c0920;
+  --surface: #1b1738;
+  --surface-haute: #241f47;
+  --bord: #322b5e;
+  --violet: #7d5cff;
+  --cyan: #3ee0e0;
+  --lavande: #b0a9dd;
+  --craie: #edebf9;
+  --ambre: #ffc46b;
+
+  --display: "Bricolage Grotesque", "Trebuchet MS", sans-serif;
+  --corps: "Source Serif 4", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --mesure: 68ch;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+body {
+  margin: 0;
+  background: var(--nuit);
+  color: var(--craie);
+  font-family: var(--corps);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.enveloppe {
+  max-width: 74rem;
+  margin: 0 auto;
+  padding: 0 1.75rem;
+}
+
+/* Barre de navigation */
+
+.barre {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(19, 16, 41, 0.86);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--bord);
+}
+
+.barre .enveloppe {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 4.25rem;
+}
+
+.marque {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  color: var(--craie);
+  text-decoration: none;
+}
+
+.marque img { width: 2rem; height: 2rem; display: block; }
+
+.barre nav {
+  margin-left: auto;
+  display: flex;
+  gap: 1.5rem;
+  font-family: var(--display);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.barre nav a {
+  color: var(--lavande);
+  text-decoration: none;
+  padding: 0.35rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.barre nav a:hover,
+.barre nav a[aria-current="page"] {
+  color: var(--craie);
+  border-bottom-color: var(--violet);
+}
+
+/* Titres */
+
+h1, h2, h3 {
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  color: #fff;
+}
+
+h1 { font-size: clamp(2.4rem, 6vw, 4rem); margin: 0 0 1rem; }
+h2 { font-size: clamp(1.5rem, 3vw, 2rem); margin: 3.5rem 0 1rem; }
+h3 { font-size: 1.15rem; margin: 2.25rem 0 0.6rem; font-weight: 600; }
+
+.surtitre {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin: 0 0 1rem;
+}
+
+p, ul, ol { max-width: var(--mesure); }
+p { margin: 0 0 1.15rem; }
+ul, ol { padding-left: 1.25rem; margin: 0 0 1.15rem; }
+li { margin-bottom: 0.5rem; }
+
+a { color: var(--cyan); text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+a:hover { color: #fff; }
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+code, .scope {
+  font-family: var(--mono);
+  font-size: 0.875em;
+  background: var(--surface-haute);
+  border: 1px solid var(--bord);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  word-break: break-all;
+}
+
+/* Accueil */
+
+.hero { padding: clamp(3.5rem, 9vw, 7rem) 0 clamp(3rem, 6vw, 5rem); }
+.hero p.chapeau {
+  font-size: clamp(1.1rem, 2.2vw, 1.35rem);
+  color: var(--lavande);
+  max-width: 46ch;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.85rem; margin-top: 2rem; }
+
+.bouton {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+  text-decoration: none;
+  border: 1px solid var(--bord);
+  color: var(--craie);
+  background: var(--surface);
+}
+
+.bouton.premier {
+  background: linear-gradient(100deg, var(--violet), #4b8ef7 55%, var(--cyan));
+  color: #0d0a1e;
+  border-color: transparent;
+}
+
+.bouton:hover { filter: brightness(1.12); color: #fff; }
+.bouton.premier:hover { color: #0d0a1e; }
+
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.25rem;
+  margin: 2.5rem 0;
+}
+
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-radius: 14px;
+  padding: 1.5rem;
+}
+
+.carte h3 { margin-top: 0; }
+.carte p { margin-bottom: 0; color: var(--lavande); font-size: 0.98rem; }
+
+/* Element signature : la frontiere */
+
+.frontiere {
+  display: grid;
+  grid-template-columns: 1fr 2px 1fr;
+  gap: 0;
+  margin: 2.5rem 0 3rem;
+  border: 1px solid var(--bord);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--surface);
+  max-width: 60rem;
+}
+
+.frontiere > section { padding: 1.75rem; }
+.frontiere > section:first-child { background: var(--surface-haute); }
+
+.frontiere .trait {
+  background: linear-gradient(180deg, transparent, var(--violet) 18%, var(--cyan) 82%, transparent);
+}
+
+.frontiere h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+.frontiere .legende {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lavande);
+  margin: 0 0 1rem;
+}
+
+.frontiere ul { list-style: none; padding: 0; margin: 0; }
+.frontiere li {
+  padding-left: 1.4rem;
+  position: relative;
+  font-size: 0.97rem;
+  color: var(--craie);
+}
+.frontiere li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--violet);
+}
+.frontiere > section:last-child li::before { background: var(--cyan); }
+
+@media (max-width: 46rem) {
+  .frontiere { grid-template-columns: 1fr; }
+  .frontiere .trait { height: 2px; background: linear-gradient(90deg, var(--violet), var(--cyan)); }
+}
+
+/* Document legal */
+
+.document {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3rem;
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0 5rem;
+}
+
+@media (min-width: 62rem) {
+  .document { grid-template-columns: 15rem minmax(0, 1fr); }
+  .sommaire { position: sticky; top: 6rem; align-self: start; }
+}
+
+.sommaire h2 {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lavande);
+  margin: 0 0 0.9rem;
+  font-weight: 500;
+}
+
+.sommaire ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-left: 1px solid var(--bord);
+  font-family: var(--display);
+  font-size: 0.875rem;
+}
+
+.sommaire li { margin: 0; }
+
+.sommaire a {
+  display: block;
+  padding: 0.4rem 0 0.4rem 1rem;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  color: var(--lavande);
+  text-decoration: none;
+}
+
+.sommaire a:hover { color: var(--craie); border-left-color: var(--violet); }
+
+.datation {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--lavande);
+  border-top: 1px solid var(--bord);
+  border-bottom: 1px solid var(--bord);
+  padding: 0.85rem 0;
+  margin: 0 0 2.5rem;
+  max-width: var(--mesure);
+}
+
+.encadre {
+  border-left: 3px solid var(--violet);
+  background: var(--surface);
+  padding: 1.25rem 1.4rem;
+  border-radius: 0 10px 10px 0;
+  margin: 1.75rem 0;
+  max-width: var(--mesure);
+}
+
+.encadre p:last-child { margin-bottom: 0; }
+.encadre.important { border-left-color: var(--cyan); }
+
+.a-remplir {
+  background: rgba(255, 196, 107, 0.16);
+  border: 1px dashed var(--ambre);
+  color: var(--ambre);
+  font-family: var(--mono);
+  font-size: 0.82em;
+  padding: 0.1em 0.45em;
+  border-radius: 4px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: var(--mesure);
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--bord);
+  vertical-align: top;
+}
+
+th {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lavande);
+}
+
+.defilant { overflow-x: auto; max-width: var(--mesure); }
+
+/* Pied de page */
+
+footer {
+  border-top: 1px solid var(--bord);
+  background: var(--nuit-profond);
+  padding: 2.5rem 0;
+  font-size: 0.9rem;
+  color: var(--lavande);
+}
+
+footer .enveloppe { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; }
+footer nav { display: flex; gap: 1.5rem; margin-left: auto; }
+footer a { color: var(--lavande); text-decoration: none; }
+footer a:hover { color: var(--craie); text-decoration: underline; }

@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-22.04
     if: github.ref_type == 'tag'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Trois fichiers portent le numéro de version, et rien ne les tient
       # ensemble. Publier « v0.2.0 » depuis un dépôt resté en 0.1.0 donnerait
@@ -124,7 +124,7 @@ jobs:
             cibles_rust: x86_64-pc-windows-msvc
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Dépendances système Tauri (Linux)
         if: startsWith(matrix.plateforme, 'ubuntu')
@@ -141,7 +141,7 @@ jobs:
             file \
             patchelf
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm

@@ -1006,8 +1006,8 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn le_message_envoye_part_en_base64url_sous_la_cle_raw() {
-        use base64::Engine;
         use crate::gmail::redaction::{Brouillon, composer};
+        use base64::Engine;
 
         let c = client(vec![ok(r#"{"id":"m9"}"#)]);
         let mime = composer(&Brouillon {

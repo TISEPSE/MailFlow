@@ -1,0 +1,69 @@
+# Publication du site public : accueil, politique de confidentialité, CGU.
+#
+# Ces trois pages ne sont pas décoratives. Google exige une politique de
+# confidentialité et une page d'accueil accessibles publiquement pour vérifier
+# l'application, et `gmail.modify` est une portée restreinte : sans ces URL, le
+# dossier de vérification ne peut pas être déposé.
+#
+# Le site ne dépend pas du reste du dépôt : rien à compiler, rien à installer.
+# Le dossier `site/` part tel quel. Un déploiement dure une trentaine de
+# secondes sur un runner Linux, ce qui reste négligeable même sur un quota
+# contraint.
+
+name: Site public
+
+on:
+  push:
+    branches: [main]
+    # Ne se déclenche que si les pages ont bougé : une correction dans le Rust
+    # n'a aucune raison de republier le site.
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  # Permet de republier à la demande, par exemple après avoir renseigné
+  # l'adresse de contact.
+  workflow_dispatch:
+
+# Les jetons nécessaires au déploiement Pages, et rien d'autre.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un déploiement à la fois. `cancel-in-progress: false` : une publication en
+# cours va jusqu'au bout plutôt que d'être interrompue par la suivante, pour ne
+# pas laisser le site dans un état intermédiaire.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publier:
+    name: Publier le site
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Vérifier que les mentions à remplir ont disparu
+        # Les pages sont livrées avec des marqueurs `[NOM…]`, `[ADRESSE…]`,
+        # `[LICENCE…]`, `[VOTRE-COMPTE]`. Publier une politique de
+        # confidentialité qui porte encore ces marqueurs ferait rejeter le
+        # dossier chez Google : autant s'en apercevoir ici.
+        run: |
+          if grep -rn --include='*.html' -E '\[(NOM|ADRESSE|LICENCE|VOTRE-COMPTE)' site/; then
+            echo "::error::Des mentions à remplir subsistent dans site/. Renseignez-les avant publication."
+            exit 1
+          fi
+          echo "Aucune mention à remplir."
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - id: deploiement
+        uses: actions/deploy-pages@v5

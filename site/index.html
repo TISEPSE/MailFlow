@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MailFlow — trier sa boîte Gmail depuis son ordinateur</title>
+<meta name="description" content="MailFlow est un logiciel de bureau qui range une boîte Gmail : le courrier humain d'un côté, les publicités et les newsletters de l'autre. Le courrier reste sur votre machine.">
+<link rel="icon" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="barre">
+  <div class="enveloppe">
+    <a class="marque" href="index.html"><img src="logo.png" alt=""> MailFlow</a>
+    <nav>
+      <a href="index.html" aria-current="page">Accueil</a>
+      <a href="confidentialite.html">Confidentialité</a>
+      <a href="conditions.html">Conditions</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="enveloppe">
+      <p class="surtitre">Logiciel de bureau · macOS et Linux</p>
+      <h1>Votre boîte Gmail,<br>rangée sans vous.</h1>
+      <p class="chapeau">MailFlow sépare le courrier écrit par des humains du reste : publicités, newsletters, notifications. Vous décidez une fois ce qui arrive à chaque expéditeur, l'application s'en souvient.</p>
+      <div class="actions">
+        <a class="bouton premier" href="https://github.com/TISEPSE/MailFlow/releases">Télécharger</a>
+        <a class="bouton" href="https://github.com/TISEPSE/MailFlow">Voir le code source</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="enveloppe">
+    <h2>Ce que fait l'application</h2>
+    <div class="grille">
+      <article class="carte">
+        <h3>Sépare le courrier humain</h3>
+        <p>Les messages écrits par une personne apparaissent seuls, sans être noyés dans les envois automatiques.</p>
+      </article>
+      <article class="carte">
+        <h3>Applique vos règles</h3>
+        <p>Archiver, mettre à la corbeille, laisser passer : la décision prise pour un expéditeur vaut pour les suivants.</p>
+      </article>
+      <article class="carte">
+        <h3>Résume les newsletters</h3>
+        <p>Une fonction facultative, qui ne s'active que si vous fournissez votre propre clé d'API Gemini.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="enveloppe">
+    <h2>Où vont vos messages</h2>
+    <p>MailFlow n'a pas de serveur. Il n'y a pas de compte à créer, rien à nous envoyer, et l'éditeur ne voit jamais votre courrier. Voici la frontière exacte.</p>
+
+    <div class="frontiere">
+      <section>
+        <p class="legende">Ne quitte jamais la machine</p>
+        <h3>Sur votre ordinateur</h3>
+        <ul>
+          <li>Le contenu de vos messages</li>
+          <li>Vos règles de tri</li>
+          <li>L'autorisation Google, dans le trousseau du système</li>
+          <li>Vos identifiants, que MailFlow ne voit jamais : vous vous connectez chez Google</li>
+        </ul>
+      </section>
+      <div class="trait" aria-hidden="true"></div>
+      <section>
+        <p class="legende">Sort sur le réseau</p>
+        <h3>Vers des services nommés</h3>
+        <ul>
+          <li>Vers Google, pour lire et ranger votre boîte</li>
+          <li>Vers l'API Gemini, le texte des newsletters, si et seulement si vous activez les résumés</li>
+          <li>Rien d'autre. Ni statistiques, ni suivi, ni publicité</li>
+        </ul>
+      </section>
+    </div>
+
+    <p>Le détail figure dans la <a href="confidentialite.html">politique de confidentialité</a>.</p>
+  </section>
+
+  <section class="enveloppe" style="padding-bottom: 4rem;">
+    <h2>Ce dont vous avez besoin</h2>
+    <ul>
+      <li>Un compte Gmail.</li>
+      <li>macOS ou Linux.</li>
+      <li>Pour les résumés de newsletters seulement : une clé d'API Gemini, à créer chez Google. Elle est facultative, et son coût est à votre charge.</li>
+    </ul>
+    <p>À la première connexion, votre navigateur habituel s'ouvre sur la page de Google. C'est là que vous vous identifiez, et là que vous accordez ou refusez l'accès. Vous pouvez retirer cet accès à tout moment depuis <a href="https://myaccount.google.com/permissions">la page des autorisations de votre compte Google</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="enveloppe">
+    <span>MailFlow · Logiciel libre</span>
+    <nav>
+      <a href="confidentialite.html">Confidentialité</a>
+      <a href="conditions.html">Conditions</a>
+      <a href="https://github.com/TISEPSE/MailFlow">Code source</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

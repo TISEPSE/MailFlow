@@ -122,7 +122,10 @@ pub fn composer(brouillon: &Brouillon) -> Resultat<String> {
         message.push_str(&format!("Cc: {}\r\n", copies.join(", ")));
     }
 
-    message.push_str(&format!("Subject: {}\r\n", encoder_entete(&brouillon.sujet)));
+    message.push_str(&format!(
+        "Subject: {}\r\n",
+        encoder_entete(&brouillon.sujet)
+    ));
     message.push_str("MIME-Version: 1.0\r\n");
     message.push_str("Content-Type: text/plain; charset=\"UTF-8\"\r\n");
     // Le corps part en base64 plutôt qu'en `quoted-printable` : il n'y a alors
@@ -220,7 +223,9 @@ mod tests {
 
     /// Le décodage du corps, pour éprouver ce qui arrivera vraiment.
     fn corps_decode(mime: &str) -> String {
-        let (_, corps) = mime.split_once("\r\n\r\n").expect("le MIME sépare ses parties");
+        let (_, corps) = mime
+            .split_once("\r\n\r\n")
+            .expect("le MIME sépare ses parties");
         let sans_repli = corps.replace("\r\n", "");
         String::from_utf8(
             base64::engine::general_purpose::STANDARD

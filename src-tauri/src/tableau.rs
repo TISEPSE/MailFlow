@@ -184,9 +184,12 @@ mod tests {
     /// Un fichier écrit avant la correction : pas de version, des positions
     /// pour tout.
     fn ancien_format() -> Tableau {
-        let mut t = Tableau::default();
-        t.version = 0;
-        t.tas.insert("Label_factures".into(), position(500.0, 300.0));
+        let mut t = Tableau {
+            version: 0,
+            ..Default::default()
+        };
+        t.tas
+            .insert("Label_factures".into(), position(500.0, 300.0));
         t.messages.insert("m1".into(), position(700.0, 400.0));
         t.messages.insert("m2".into(), position(900.0, 400.0));
         t
@@ -217,7 +220,8 @@ mod tests {
         // Sans ce garde-fou, la table se déferait à chaque ouverture.
         let mut t = ancien_format();
         t.migrer();
-        t.messages.insert("place_a_la_main".into(), position(24.0, 24.0));
+        t.messages
+            .insert("place_a_la_main".into(), position(24.0, 24.0));
 
         assert!(!t.migrer());
         assert_eq!(t.messages.len(), 1);
