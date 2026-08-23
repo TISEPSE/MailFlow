@@ -2350,7 +2350,13 @@ pub async fn contacts_lister(app: AppHandle) -> Resultat<Vec<crate::contacts::Co
         }
     }
 
-    tous.sort_by_key(|c| std::cmp::Reverse(c.apparitions));
+    // Le carnet propre avant les adresses collectées, puis l'ordre alphabétique
+    // du nom pour que la liste ne bouge pas d'un lancement à l'autre.
+    tous.sort_by(|a, b| {
+        (a.origine != crate::contacts::Origine::Carnet)
+            .cmp(&(b.origine != crate::contacts::Origine::Carnet))
+            .then_with(|| a.nom.cmp(&b.nom))
+    });
     Ok(tous)
 }
 
@@ -2362,29 +2368,19 @@ pub async fn contacts_synchroniser(
 ) -> Resultat<Vec<crate::contacts::ContactConnu>> {
     let compte = compte_actif(&app);
     let dossier = dossier_config(&app)?;
-    let regles = RulesStore::pour_compte(&dossier, &compte).charger()?;
-    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
 
-    // 1. Relève les e-mails envoyés (in:sent)
-    let envoyes = crate::gmail::boite::relever_requete(&client, &regles, &compte, "in:sent", 150)
-        .await
-        .unwrap_or_default();
+    let transport = TransportHttp::nouveau()?;
+    let jetons = JetonsDeSession { etat: &etat };
 
-    // 2. Relève également les messages récents de la boîte
-    let recus =
-        crate::gmail::boite::relever_requete(&client, &regles, &compte, "-in:trash -in:spam", 100)
-            .await
-            .unwrap_or_default();
+    let contacts = crate::contacts::people::relever(&transport, &jetons).await?;
 
-    let mut tous_messages = envoyes;
-    tous_messages.extend(recus);
+    crate::contacts::enregistrer(&dossier, &compte, &contacts)?;
 
-    let existants = crate::contacts::charger(&dossier, &compte);
-    let fusionnes = crate::contacts::fusionner(existants, &tous_messages, &compte);
-    crate::contacts::enregistrer(&dossier, &compte, &fusionnes)?;
-
-    log::info!("{} contact(s) synchronisé(s) depuis Gmail", fusionnes.len());
-    Ok(fusionnes)
+    log::info!(
+        "{} contact(s) relevés dans le carnet Google",
+        contacts.len()
+    );
+    Ok(contacts)
 }
 
 #[cfg(test)]

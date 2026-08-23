@@ -36,6 +36,12 @@ pub enum AppError {
     #[error("l'API Gmail a répondu {statut}")]
     ApiGmail { statut: u16 },
 
+    /// Le jeton ne couvre pas les contacts : l'autorisation a été accordée
+    /// avant que MailFlow ne demande cette portée. Google n'élargit pas un
+    /// accord déjà donné, seule une reconnexion la délivre.
+    #[error("le compte est relié sans l'accès au carnet d'adresses")]
+    PorteeManquante,
+
     #[error("erreur réseau ({0})")]
     Reseau(String),
 
@@ -102,6 +108,7 @@ impl AppError {
             Self::NonAuthentifie => "NON_AUTHENTIFIE",
             Self::Auth(_) => "ECHEC_CONNEXION",
             Self::ApiGmail { .. } => "ERREUR_GMAIL",
+            Self::PorteeManquante => "PORTEE_MANQUANTE",
             Self::Reseau(_) => "ERREUR_RESEAU",
             Self::Config(_) => "CONFIG_INVALIDE",
             Self::Resume(_) => "RESUME_INDISPONIBLE",
@@ -133,6 +140,10 @@ impl AppError {
             }
             Self::ApiGmail { .. } => {
                 "Gmail n'a pas pu traiter la demande. Réessayez dans quelques instants.".into()
+            }
+            Self::PorteeManquante => {
+                "Reliez à nouveau votre compte Google pour accéder à votre carnet d'adresses."
+                    .into()
             }
             Self::Reseau(_) => "Connexion impossible. Vérifiez votre accès internet.".into(),
             Self::Config(_) => "La configuration de MailFlow est invalide.".into(),

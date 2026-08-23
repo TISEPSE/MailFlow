@@ -11,7 +11,10 @@ use serde::Deserialize;
 use url::Url;
 
 use super::jetons::ReponseJeton;
-use super::{SCOPE_EMAIL, SCOPE_GMAIL, SCOPE_PROFIL, URL_AUTORISATION, URL_JETON, URL_REVOCATION};
+use super::{
+    SCOPE_AUTRES_CONTACTS, SCOPE_CONTACTS, SCOPE_EMAIL, SCOPE_GMAIL, SCOPE_PROFIL,
+    URL_AUTORISATION, URL_JETON, URL_REVOCATION,
+};
 use crate::error::{AppError, Resultat};
 
 /// Erreur renvoyée par les endpoints OAuth2 de Google.
@@ -95,7 +98,9 @@ fn url_autorisation(
         .append_pair("redirect_uri", redirect_uri)
         .append_pair(
             "scope",
-            &format!("{SCOPE_GMAIL} {SCOPE_EMAIL} {SCOPE_PROFIL}"),
+            &format!(
+                "{SCOPE_GMAIL} {SCOPE_EMAIL} {SCOPE_PROFIL} {SCOPE_CONTACTS} {SCOPE_AUTRES_CONTACTS}"
+            ),
         )
         .append_pair("code_challenge", code_challenge)
         .append_pair("code_challenge_method", "S256")
@@ -344,6 +349,10 @@ mod tests {
         assert!(p["scope"].contains(SCOPE_GMAIL));
         assert!(p["scope"].contains(SCOPE_EMAIL));
         assert!(p["scope"].contains(SCOPE_PROFIL));
+        assert!(p["scope"].contains(SCOPE_CONTACTS));
+        assert!(p["scope"].contains(SCOPE_AUTRES_CONTACTS));
+        // Lecture seule : MailFlow n'écrit jamais dans le carnet de personne.
+        assert!(!p["scope"].contains("auth/contacts "));
         assert!(!p["scope"].contains("gmail.send"));
         assert!(!p["scope"].contains("gmail.compose"));
     }

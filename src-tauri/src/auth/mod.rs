@@ -72,9 +72,22 @@ pub const SCOPE_EMAIL: &str = "https://www.googleapis.com/auth/userinfo.email";
 /// lequel de ses comptes est relié.
 ///
 /// Portée non sensible : elle ne donne accès qu'à ce que l'utilisateur montre
-/// déjà à toute application Google. On ne demande rien de l'annuaire de
-/// contacts, qui exigerait la People API et une portée restreinte.
+/// déjà à toute application Google.
 pub const SCOPE_PROFIL: &str = "https://www.googleapis.com/auth/userinfo.profile";
+
+/// Le carnet d'adresses, en lecture seule.
+///
+/// C'est lui qui peuple les suggestions de destinataires. Sans lui, il fallait
+/// les déduire des messages reçus, ce qui proposait un robot d'expédition ou une
+/// newsletter aussi volontiers qu'un correspondant.
+pub const SCOPE_CONTACTS: &str = "https://www.googleapis.com/auth/contacts.readonly";
+
+/// Les adresses que Google retient de lui-même quand on écrit à quelqu'un.
+///
+/// Elles n'appartiennent à aucun carnet et n'ont ni nom ni photo, mais ce sont
+/// elles que Gmail propose pour les correspondants qu'on n'a jamais enregistrés.
+/// Sans cette portée, la moitié des suggestions manquerait.
+pub const SCOPE_AUTRES_CONTACTS: &str = "https://www.googleapis.com/auth/contacts.other.readonly";
 
 /// Renseignements publics du compte : `name`, `picture`, `email`.
 pub const URL_USERINFO: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
