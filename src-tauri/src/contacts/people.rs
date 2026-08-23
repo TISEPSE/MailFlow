@@ -186,6 +186,17 @@ pub async fn relever<T: Transport, S: SourceJeton>(
             }
 
             let (contacts, suite) = lecture(&reponse.corps);
+            // Compté par source : un carnet vide et un carnet refusé se
+            // ressemblent trop pour qu'on les distingue après coup.
+            log::info!(
+                "{} adresse(s) rendues par {}",
+                contacts.len(),
+                if base.contains("otherContacts") {
+                    "les autres contacts"
+                } else {
+                    "le carnet Google"
+                }
+            );
             for contact in contacts {
                 par_adresse.insert(contact.adresse.clone(), contact);
             }
