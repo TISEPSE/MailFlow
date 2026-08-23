@@ -510,10 +510,10 @@ export function Modale({
           boxShadow: 'var(--shadow-lg)',
         }}
       >
-        <div
-          className="flex items-center gap-4 border-b px-7 py-4.5"
-          style={{ borderColor: 'var(--line)' }}
-        >
+        {/* Sans filet sous le titre : la modale est déjà détachée du fond par
+            son ombre et son cadre, et le trait ne faisait que redécouper une
+            surface qui tient d'un bloc. */}
+        <div className="flex items-center gap-4 px-7 py-4.5">
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold tracking-tight">{titre}</h2>
             {sous && (
@@ -761,7 +761,7 @@ export function Progression({
             rien apprendre. Une barre qui bouge dit déjà qu'on attend. */}
         {!indetermine && (
           <div
-            className="flex items-baseline justify-between font-mono text-[0.7812rem]"
+            className="flex items-baseline justify-between text-[0.7812rem]"
             style={{ color: 'var(--sub)' }}
           >
             <span>{`${faits} sur ${total} message${total > 1 ? 's' : ''}`}</span>

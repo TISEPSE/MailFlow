@@ -191,10 +191,10 @@ export function Regles({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        className="flex flex-none items-stretch gap-4 border-b px-8 py-4"
-        style={{ borderColor: 'var(--line)' }}
-      >
+      {/* Sans trait sous l'en-tête : la barre de recherche et les boutons se
+          détachent déjà du fond, et le filet ne séparait rien qui ne le fût
+          pas. */}
+      <div className="flex flex-none items-stretch gap-4 px-8 py-4">
         <div
           className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-4 py-2"
           style={{ background: 'var(--sunk)' }}
@@ -286,7 +286,7 @@ export function Regles({
                       />
                       {multiCompte && (
                         <span
-                          className="min-w-0 truncate font-mono text-[0.6562rem]"
+                          className="min-w-0 truncate text-[0.6562rem]"
                           style={{ color: 'var(--accent-fg)' }}
                           title={`Règle du compte ${compte}`}
                         >
@@ -294,7 +294,7 @@ export function Regles({
                         </span>
                       )}
                       <span
-                        className="font-mono text-[0.6562rem]"
+                        className="text-[0.6562rem]"
                         style={{ color: 'var(--sub)' }}
                       >
                         ajoutée le {r.date_ajout}

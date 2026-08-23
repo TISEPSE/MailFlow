@@ -51,7 +51,7 @@ export function ChampAdresse({
             className="inline-flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-1.5"
             style={{ background: fond, color: encre }}
           >
-            <span className="font-mono text-[0.7812rem] leading-5 font-semibold break-all">
+            <span className="text-[0.7812rem] leading-5 font-semibold break-all">
               {adresse}
             </span>
             {/* Une cible carrée de 20 pixels, centrée sur elle-même : la croix
@@ -169,7 +169,7 @@ function Saisie({
         placeholder="promo@offres-tech.fr"
         autoFocus
         autoComplete="off"
-        className="selectionnable h-11 rounded-xl border px-4 font-mono text-[0.8125rem] outline-none"
+        className="selectionnable h-11 rounded-xl border px-4 text-[0.8125rem] outline-none"
         style={{ background: 'var(--sunk)', borderColor: 'var(--line)', color: 'var(--fg)' }}
       />
 
@@ -198,7 +198,7 @@ function Saisie({
                   Tous les messages de {domaineCommun}
                 </span>
                 <span
-                  className="block truncate font-mono text-[0.6875rem]"
+                  className="block truncate text-[0.6875rem]"
                   style={{ color: 'var(--sub)' }}
                 >
                   @{domaineCommun}
@@ -226,7 +226,7 @@ function Saisie({
                     {m.nom}
                   </span>
                   <span
-                    className="block truncate font-mono text-[0.6875rem]"
+                    className="block truncate text-[0.6875rem]"
                     style={{ color: 'var(--sub)' }}
                   >
                     {m.adresse}

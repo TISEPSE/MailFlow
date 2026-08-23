@@ -1588,7 +1588,7 @@ export default function App() {
                           (etat?.compteConnecte ? 'Compte Google' : 'Non connecté'))}
                     </span>
                     <span
-                      className="block truncate font-mono text-[0.6875rem]"
+                      className="block truncate text-[0.6875rem]"
                       style={{ color: 'var(--sub)' }}
                     >
                       {compteAffiche === TOUS_LES_COMPTES
@@ -2056,7 +2056,7 @@ function MenuDeCompte({
               <span className="block truncate text-xs font-semibold">
                 Tous les comptes
               </span>
-              <span className="block truncate font-mono text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+              <span className="block truncate text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
                 {comptes.length} boîtes réunies
               </span>
             </span>
@@ -2090,7 +2090,7 @@ function MenuDeCompte({
             </span>
             {c.nom && (
               <span
-                className="block truncate font-mono text-[0.6875rem]"
+                className="block truncate text-[0.6875rem]"
                 style={{ color: 'var(--sub)' }}
               >
                 {c.adresse}

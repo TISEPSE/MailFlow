@@ -179,7 +179,7 @@ export function ListeMessages({
                   </span>
                 )}
                 <span
-                  className="flex-none font-mono text-[0.6562rem]"
+                  className="flex-none text-[0.6562rem]"
                   style={{ color: 'var(--sub)' }}
                 >
                   {heureCourte(m.date)}
@@ -432,7 +432,7 @@ function AdresseCopiable({
           seule doit s'allumer. `break-all` la fait continuer à la ligne
           suivante plutôt que déborder du cadre. */}
       <span
-        className="valeur font-mono text-[0.6875rem] break-all"
+        className="valeur text-[0.6875rem] break-all"
         style={{ color: 'var(--sub)' }}
       >
         {contact.adresse}

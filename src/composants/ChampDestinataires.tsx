@@ -122,7 +122,7 @@ export function ChampDestinataires({
             className="inline-flex max-w-full items-center gap-1.5 rounded-full py-1 pr-1 pl-2.5"
             style={{ background: 'var(--sunk)' }}
           >
-            <span className="truncate font-mono text-[0.75rem]">{adresse}</span>
+            <span className="truncate text-[0.75rem]">{adresse}</span>
             <button
               type="button"
               onClick={() => retirer(adresse)}
@@ -209,14 +209,14 @@ export function ChampDestinataires({
                           {c.nom}
                         </span>
                         <span
-                          className="truncate font-mono text-[0.6875rem]"
+                          className="truncate text-[0.6875rem]"
                           style={{ color: 'var(--sub)' }}
                         >
                           {c.adresse}
                         </span>
                       </>
                     ) : (
-                      <span className="truncate font-mono text-[0.8125rem] text-[var(--fg)]">
+                      <span className="truncate text-[0.8125rem] text-[var(--fg)]">
                         {c.adresse}
                       </span>
                     )}

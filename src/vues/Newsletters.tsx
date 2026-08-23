@@ -609,7 +609,7 @@ function Synthese({
                 </span>
                 {point.citees.length > 0 && (
                   <span
-                    className="mt-1 block truncate font-mono text-[0.6562rem]"
+                    className="mt-1 block truncate text-[0.6562rem]"
                     style={{ color: 'var(--sub)' }}
                   >
                     {point.citees.map(({ groupe }) => groupe.nom).join(' · ')}
@@ -1068,7 +1068,7 @@ function CarteGroupe({
               {groupe.nom}
             </span>
             <span
-              className="block truncate font-mono text-[0.6562rem]"
+              className="block truncate text-[0.6562rem]"
               style={{ color: 'var(--sub)' }}
             >
               {groupe.adresse}
@@ -1258,7 +1258,7 @@ function CarteGroupe({
                   {resserrerSujet(m.sujet) || '(sans objet)'}
                 </button>
                 <span
-                  className="flex-none font-mono text-[0.6562rem]"
+                  className="flex-none text-[0.6562rem]"
                   style={{ color: 'var(--sub)' }}
                 >
                   {m.date ? heureCourte(m.date) : ''}

@@ -256,7 +256,7 @@ function Illustration({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium">Le Marché du coin</span>
-            <span className="block truncate font-mono text-[0.6562rem]" style={{ color: 'var(--sub)' }}>
+            <span className="block truncate text-[0.6562rem]" style={{ color: 'var(--sub)' }}>
               promos@marche-du-coin.fr
             </span>
           </span>

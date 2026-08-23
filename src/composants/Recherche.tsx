@@ -162,7 +162,7 @@ export function Recherche({
                           {message.nom}
                         </span>
                         <span
-                          className="flex-none font-mono text-[0.6875rem]"
+                          className="flex-none text-[0.6875rem]"
                           style={{ color: 'var(--sub)' }}
                         >
                           {heureCourte(message.date)}
@@ -192,7 +192,7 @@ export function Recherche({
       ) : (
         <p className="px-5 py-8 text-center text-xs" style={{ color: 'var(--sub)' }}>
           Cherchez un expéditeur, un sujet ou une phrase dans toutes les pages à
-          la fois. <kbd className="rounded-md bg-[var(--faint)] px-1.5 py-0.5 font-mono text-[0.6875rem]">Échap</kbd> pour fermer.
+          la fois. <kbd className="rounded-md bg-[var(--faint)] px-1.5 py-0.5 text-[0.6875rem]">Échap</kbd> pour fermer.
         </p>
       )}
     </div>

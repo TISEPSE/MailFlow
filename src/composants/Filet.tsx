@@ -92,7 +92,7 @@ export class Filet extends Component<{ children: ReactNode }, EtatDuFilet> {
             Détail technique
           </summary>
           <pre
-            className="selectionnable mt-2 max-h-64 overflow-auto rounded-lg border p-3 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap"
+            className="selectionnable mt-2 max-h-64 overflow-auto rounded-lg border p-3 text-[0.6875rem] leading-relaxed whitespace-pre-wrap"
             style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
           >
             {detail}

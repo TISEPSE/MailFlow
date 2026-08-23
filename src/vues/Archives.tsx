@@ -1346,7 +1346,7 @@ function VueArchivesMelangees({
                                     <span className="truncate text-[0.8125rem] font-semibold">{nom}</span>
                                   </div>
                                   <span
-                                    className="rounded-md px-2 py-0.5 font-mono text-[0.6875rem]"
+                                    className="rounded-md px-2 py-0.5 text-[0.6875rem]"
                                     style={{ background: 'var(--sunk)', color: 'var(--sub)' }}
                                   >
                                     {msgs.length}

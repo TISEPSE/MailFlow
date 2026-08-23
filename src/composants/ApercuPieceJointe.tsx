@@ -124,7 +124,7 @@ function Contenu({ apercu }: { apercu: Apercu }) {
     case 'texte':
       return (
         <pre
-          className="selectionnable h-full w-full overflow-auto p-6 font-mono text-[0.8125rem] leading-relaxed whitespace-pre-wrap"
+          className="selectionnable h-full w-full overflow-auto p-6 text-[0.8125rem] leading-relaxed whitespace-pre-wrap"
           style={{ color: 'var(--fg)' }}
         >
           {apercu.contenu}

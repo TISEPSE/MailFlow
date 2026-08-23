@@ -293,7 +293,7 @@ export function Parametres({
             detail={etat.cheminRegles}
           >
             <span
-              className="flex-none font-mono text-[0.75rem]"
+              className="flex-none text-[0.75rem]"
               style={{ color: 'var(--sub)' }}
             >
               {etat.nombreDeRegles === null ? 'illisible' : `${etat.nombreDeRegles} règles`}
@@ -549,7 +549,7 @@ function ChoixDeCompte({
                 </span>
                 {c.nom && (
                   <span
-                    className="block truncate font-mono text-[0.6875rem]"
+                    className="block truncate text-[0.6875rem]"
                     style={{ color: 'var(--sub)' }}
                   >
                     {c.adresse}
@@ -1145,7 +1145,7 @@ function ModaleCleResumes({
             }}
             placeholder="AIza…"
             aria-label="Clé d'API pour les résumés"
-            className="champ-de-saisie selectionnable w-full rounded-lg border bg-transparent px-3 font-mono text-[0.8125rem] outline-none"
+            className="champ-de-saisie selectionnable w-full rounded-lg border bg-transparent px-3 text-[0.8125rem] outline-none"
             style={{
               borderColor: refus ? TEINTE_REFUS : 'var(--line)',
               color: 'var(--fg)',

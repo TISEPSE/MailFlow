@@ -222,7 +222,7 @@ export function Redaction({
 
         {/* Barre de formatage riche (Style Gmail Material 3) */}
         {formatageActif && (
-          <div className="flex flex-none items-center overflow-x-auto min-w-0 px-5 pt-1 pb-2">
+          <div className="flex flex-none items-center overflow-x-auto min-w-0 px-5 pt-4 pb-3">
             <div
               className="flex items-center gap-0.5 rounded-full px-3 py-1 text-[0.8125rem] shadow-xs"
               style={{
