@@ -64,6 +64,7 @@ import {
   messageCorps,
   googleConnecter,
   googleDeconnecter,
+  estErreurBackend,
   messageDErreur,
   archivesLister,
   archivesSynchroniser,
@@ -931,16 +932,28 @@ export default function App() {
       // et aucun appel réseau.
       setArchives(await archivesLister().catch(() => []))
 
-      // Charge le carnet de contacts localement et lance la synchronisation en arrière-plan
+      // Le carnet rangé sur le disque s'affiche tout de suite ; celui de Google
+      // le remplace dès qu'il arrive.
       void contactsLister().then(setContactsGmail).catch(console.warn)
-      void contactsSynchroniser().then(setContactsGmail).catch(console.warn)
+      void contactsSynchroniser()
+        .then(setContactsGmail)
+        .catch((e) => {
+          // Un compte relié avant que MailFlow ne demande les contacts ne peut
+          // pas les lire. Sans ce message, l'utilisateur n'aurait qu'un champ
+          // de destinataire muet, sans rien à quoi le rattacher.
+          if (estErreurBackend(e) && e.code === 'PORTEE_MANQUANTE') {
+            annoncer(e.message, true)
+            return
+          }
+          console.warn(e)
+        })
 
       if (lirePreferences().syncAuLancement) {
         await gmailSynchroniser().catch(() => null)
       }
       await chargerLaBoite()
     })
-  }, [rafraichir, chargerLaBoite])
+  }, [rafraichir, chargerLaBoite, annoncer])
 
   /**
    * La table se charge à son ouverture, et se relève à chaque ouverture.
