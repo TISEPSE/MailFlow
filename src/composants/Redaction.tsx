@@ -149,10 +149,7 @@ export function Redaction({
         className="flex h-[75vh] max-h-[75vh] flex-col"
       >
         {/* Section haute : En-têtes (À, Cc, Cci, Objet) - Fixe en haut */}
-        <div
-          className="flex-none space-y-2 border-b px-6 pt-3 pb-2"
-          style={{ borderColor: 'var(--line)' }}
-        >
+        <div className="flex-none space-y-2 px-6 pt-3 pb-1">
           <Ligne titre="À">
             <ChampDestinataires
               valeur={brouillon.destinataires}
@@ -225,10 +222,7 @@ export function Redaction({
 
         {/* Barre de formatage riche (Style Gmail Material 3) */}
         {formatageActif && (
-          <div
-            className="flex flex-none items-center overflow-x-auto min-w-0 px-5 py-2 border-b"
-            style={{ borderColor: 'var(--line)' }}
-          >
+          <div className="flex flex-none items-center overflow-x-auto min-w-0 px-5 pt-1 pb-2">
             <div
               className="flex items-center gap-0.5 rounded-full px-3 py-1 text-[0.8125rem] shadow-xs"
               style={{
@@ -528,9 +522,8 @@ export function Redaction({
 
         {/* Section basse FIXE : Barre d'actions Gmail - Toujours visible et indépendante du scroll ! */}
         <div
-          className="flex flex-none items-center justify-between border-t px-5 py-3"
+          className="flex flex-none items-center justify-between px-5 py-3"
           style={{
-            borderColor: 'var(--line)',
             background: 'var(--card)',
           }}
         >
@@ -818,8 +811,8 @@ export function Redaction({
 function Ligne({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
     <div
-      className="flex items-baseline gap-3 border-b pb-2"
-      style={{ borderColor: 'var(--line)' }}
+      className="flex items-baseline gap-3 border-b pb-1.5"
+      style={{ borderColor: 'rgba(128, 128, 128, 0.12)' }}
     >
       <span
         className="w-10 flex-none pt-1 text-[0.75rem] font-semibold"
