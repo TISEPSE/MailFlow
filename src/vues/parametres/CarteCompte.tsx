@@ -39,7 +39,7 @@ export function CarteCompte({
 
   return (
     <div
-      className="pb-4.5 px-1 relative overflow-hidden transition-all border-b"
+      className="pb-4.5 px-0.5 relative transition-all border-b"
       style={{
         borderColor: 'var(--line)',
       }}
@@ -292,11 +292,11 @@ function Avatar({
 }) {
   if (profil?.photo) {
     return (
-      <div className="relative flex-none">
+      <div className="relative flex-none p-1">
         <img
           src={profil.photo}
           alt=""
-          className="h-11 w-11 rounded-full object-cover ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)] shadow-xs"
+          className="h-11 w-11 rounded-full object-cover ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--bg)] shadow-xs"
           style={{ background: 'var(--card)' }}
         />
       </div>
@@ -305,14 +305,16 @@ function Avatar({
 
   if (!connecte) {
     return (
-      <div
-        className="flex h-11 w-11 flex-none items-center justify-center rounded-full border shadow-inner"
-        style={{
-          background: 'var(--sunk)',
-          borderColor: 'var(--line)',
-        }}
-      >
-        <Icone nom="person_off" taille="1.25rem" style={{ color: 'var(--sub)' }} />
+      <div className="relative flex-none p-1">
+        <div
+          className="flex h-11 w-11 items-center justify-center rounded-full border shadow-inner"
+          style={{
+            background: 'var(--sunk)',
+            borderColor: 'var(--line)',
+          }}
+        >
+          <Icone nom="person_off" taille="1.25rem" style={{ color: 'var(--sub)' }} />
+        </div>
       </div>
     )
   }
@@ -320,11 +322,13 @@ function Avatar({
   const nom = profil?.nom ?? profil?.adresse ?? ''
 
   return (
-    <div
-      className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[0.9375rem] font-bold shadow-xs ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)]"
-      style={{ background: accent, color: '#FFFFFF' }}
-    >
-      {nom ? initiales(nom) : <LogoGoogle taille="1.25rem" />}
+    <div className="relative flex-none p-1">
+      <div
+        className="flex h-11 w-11 items-center justify-center rounded-full text-[0.9375rem] font-bold shadow-xs ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--bg)]"
+        style={{ background: accent, color: '#FFFFFF' }}
+      >
+        {nom ? initiales(nom) : <LogoGoogle taille="1.25rem" />}
+      </div>
     </div>
   )
 }
