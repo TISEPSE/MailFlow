@@ -323,7 +323,6 @@ export function LigneReglage({
   )
 }
 
-/** Regroupement de réglages, avec son titre de section. */
 export function Bloc({
   titre,
   children,
@@ -332,26 +331,19 @@ export function Bloc({
   children: ReactNode
 }) {
   return (
-    <>
+    <div className="space-y-1">
       {titre && (
         <div
-          className="px-1 pt-7 pb-2.5 text-[0.6875rem] font-semibold tracking-wider uppercase"
+          className="px-0.5 pt-4 pb-1 text-[0.6875rem] font-semibold tracking-wider uppercase"
           style={{ color: 'var(--sub)' }}
         >
           {titre}
         </div>
       )}
-      <div
-        className="cloisonne overflow-hidden rounded-2xl border"
-        style={{
-          background: 'var(--card)',
-          borderColor: 'var(--line)',
-          boxShadow: 'var(--shadow)',
-        }}
-      >
+      <div className="cloisonne" style={{ borderColor: 'var(--line)' }}>
         {children}
       </div>
-    </>
+    </div>
   )
 }
 

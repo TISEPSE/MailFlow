@@ -39,10 +39,9 @@ export function CarteCompte({
 
   return (
     <div
-      className="rounded-2xl p-4 relative overflow-hidden transition-all shadow-xs"
+      className="pb-4.5 px-1 relative overflow-hidden transition-all border-b"
       style={{
-        background: connecte ? 'var(--card)' : 'var(--sunk)',
-        border: '1px solid var(--line)',
+        borderColor: 'var(--line)',
       }}
     >
       <div className="flex flex-wrap items-center gap-3.5">

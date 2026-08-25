@@ -14,7 +14,7 @@ export function Reglage({
   children: ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3.5 px-4.5 py-3.5">
+    <div className="flex items-center gap-3.5 px-1 py-3">
       <div className="flex flex-none items-center justify-center text-[var(--sub)]">
         <Icone nom={icone} taille="1.125rem" />
       </div>
