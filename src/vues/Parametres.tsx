@@ -41,6 +41,48 @@ const TEINTE_REFUS = '#C2410C'
 
 const ACCENTS = ['#2F6BFF', '#1F7A5A', '#4C3BCF', '#C2410C'] as const
 
+type OngletParametres = 'compte' | 'apparence' | 'sync' | 'ia' | 'aide'
+
+interface DefOnglet {
+  id: OngletParametres
+  label: string
+  icone: NomIcone
+  description: string
+}
+
+const ONGLETS: DefOnglet[] = [
+  {
+    id: 'compte',
+    label: 'Compte & Profil',
+    icone: 'person',
+    description: 'Gestion du compte Google connecté et des raccourcis',
+  },
+  {
+    id: 'apparence',
+    label: 'Apparence',
+    icone: 'palette',
+    description: 'Thème d’affichage et personnalisation des couleurs',
+  },
+  {
+    id: 'sync',
+    label: 'Synchronisation',
+    icone: 'sync',
+    description: 'Fréquence de relevé Gmail et exécution des règles',
+  },
+  {
+    id: 'ia',
+    label: 'Intelligence Artificielle',
+    icone: 'auto_awesome',
+    description: 'Clé API Gemini, résumés de newsletters et cache',
+  },
+  {
+    id: 'aide',
+    label: 'Aide & Diagnostic',
+    icone: 'info',
+    description: 'Guide de prise en main et état des services',
+  },
+]
+
 export function Parametres({
   etat,
   profil,
@@ -102,211 +144,293 @@ export function Parametres({
   onToucheRecherche: (touche: string) => void
   enCours: boolean
 }) {
+  const [onglet, setOnglet] = useState<OngletParametres>('compte')
+  const ongletCourant = ONGLETS.find((o) => o.id === onglet) ?? ONGLETS[0]!
+
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-8 py-6">
-        {/* `key` sur l'adresse : React remonte la carte quand le compte
-            change, ce qui rejoue l'apparition. Sans elle, seuls les textes
-            seraient remplacés, sans que rien ne signale le changement. */}
-        <CarteCompte
-          key={profil?.adresse ?? 'aucun'}
-          connecte={etat.compteConnecte}
-          profil={profil}
-          accent={accent}
-          bloque={!etat.clientGoogleConfigure || !etat.trousseauDisponible}
-          enCours={enCours}
-          onConnecter={onConnecter}
-          onDeconnecter={onDeconnecter}
-          comptes={comptes}
-          onBasculer={onBasculer}
-          onAjouterCompte={onAjouterCompte}
-          onOublierCompte={onOublierCompte}
-          melange={melange}
-          onMelanger={onMelanger}
-        />
+    <div className="flex flex-1 min-h-0 overflow-hidden bg-[var(--bg)]">
+      {/* Navigation latérale des sous-pages (Style moderne) */}
+      <aside
+        className="w-72 flex-none border-r p-6 overflow-y-auto flex flex-col gap-6"
+        style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+      >
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-[var(--fg)]">Paramètres</h1>
+          <p className="text-xs text-[var(--sub)] mt-1">Gérez vos préférences et votre compte</p>
+        </div>
 
-        <Bloc titre="Apparence">
-          <Reglage
-            icone="dark_mode"
-            titre="Thème sombre"
-            detail="Indépendant du réglage de votre système."
-          >
-            <Interrupteur
-              actif={sombre}
-              onChange={onBasculerTheme}
-              libelle="Thème sombre"
-              grand
-            />
-          </Reglage>
-
-          <Reglage
-            icone="palette"
-            titre="Couleur d'accent"
-            detail="Appliquée aux boutons, filtres et interrupteurs."
-          >
-            <div className="flex flex-none gap-2.5">
-              {ACCENTS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => onAccent(c)}
-                  aria-label={`Couleur d'accent ${c}`}
-                  aria-pressed={c === accent}
-                  className="pastille-accent h-7 w-7 rounded-full"
-                  style={{
-                    background: c,
-                    outline: c === accent ? '2px solid var(--fg)' : 'none',
-                    outlineOffset: 2,
-                  }}
-                />
-              ))}
-            </div>
-          </Reglage>
-        </Bloc>
-
-        <Bloc titre="Prise en main">
-          <Reglage
-            icone="school"
-            titre="Revoir le guide"
-            detail="Les quatre pages, le geste des règles, et ce qui est réversible."
-          >
-            <Bouton icone="chevron_right" onClick={onRevoirLeGuide}>
-              Afficher
-            </Bouton>
-          </Reglage>
-
-          <Reglage
-            icone="search"
-            titre="Raccourci de recherche"
-            detail="Ouvre la recherche depuis n'importe quelle page. Une lettre, combinée à Ctrl (Cmd sur macOS)."
-          >
-            <div className="flex items-center gap-2">
-              <kbd
-                className="rounded-md border px-2 py-1 font-mono text-[0.75rem] font-semibold"
-                style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
-              >
-                Ctrl
-              </kbd>
-              <span style={{ color: 'var(--sub)' }}>+</span>
-              {/* Une seule lettre, mise en majuscule : la comparaison au clavier
-                  se fait dessus, et accepter autre chose rendrait la recherche
-                  inatteignable. */}
-              <input
-                type="text"
-                value={toucheRecherche}
-                onChange={(e) => {
-                  const t = e.target.value.slice(-1).toUpperCase()
-                  if (/^[A-Z0-9]$/.test(t)) onToucheRecherche(t)
-                }}
-                aria-label="Touche du raccourci de recherche"
-                className="w-12 rounded-md border text-center font-mono text-[0.8125rem] font-semibold outline-none"
+        <nav className="flex flex-col gap-1.5">
+          {ONGLETS.map((o) => {
+            const actif = onglet === o.id
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => setOnglet(o.id)}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-[0.8125rem] font-medium transition-all ${
+                  actif
+                    ? 'text-[var(--accent)] font-semibold shadow-xs'
+                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)]'
+                }`}
                 style={{
-                  background: 'var(--card)',
-                  borderColor: 'var(--line)',
-                  color: 'var(--fg)',
-                  height: '2.2em',
+                  background: actif ? 'var(--sunk)' : 'transparent',
                 }}
+              >
+                <div
+                  className="flex h-8 w-8 flex-none items-center justify-center rounded-lg transition-colors"
+                  style={{
+                    background: actif ? 'var(--accent)' : 'var(--sunk)',
+                    color: actif ? '#ffffff' : 'var(--sub)',
+                  }}
+                >
+                  <Icone nom={o.icone} taille="1.0625rem" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[0.8125rem]">{o.label}</div>
+                </div>
+              </button>
+            )
+          })}
+        </nav>
+      </aside>
+
+      {/* Contenu de la sous-page active */}
+      <main className="flex-1 min-w-0 overflow-y-auto p-8 lg:p-10">
+        <div className="max-w-3xl mx-auto space-y-6 menu-apparait" key={onglet}>
+          {/* Titre et description de la sous-page */}
+          <div className="border-b pb-4" style={{ borderColor: 'var(--line)' }}>
+            <h2 className="text-lg font-bold text-[var(--fg)]">{ongletCourant.label}</h2>
+            <p className="text-xs text-[var(--sub)] mt-0.5">{ongletCourant.description}</p>
+          </div>
+
+          {/* 1. Onglet Compte & Profil */}
+          {onglet === 'compte' && (
+            <div className="space-y-6">
+              <CarteCompte
+                key={profil?.adresse ?? 'aucun'}
+                connecte={etat.compteConnecte}
+                profil={profil}
+                accent={accent}
+                bloque={!etat.clientGoogleConfigure || !etat.trousseauDisponible}
+                enCours={enCours}
+                onConnecter={onConnecter}
+                onDeconnecter={onDeconnecter}
+                comptes={comptes}
+                onBasculer={onBasculer}
+                onAjouterCompte={onAjouterCompte}
+                onOublierCompte={onOublierCompte}
+                melange={melange}
+                onMelanger={onMelanger}
               />
+
+              <Bloc titre="Préférences de lecture">
+                <Reglage
+                  icone="groups"
+                  titre="Déplier les destinataires"
+                  detail="À l'ouverture d'un message, montrer l'expéditeur, les destinataires et les copies. Repliés, seul l'expéditeur reste visible."
+                >
+                  <Interrupteur
+                    actif={destinatairesDeplies}
+                    onChange={onDestinatairesDeplies}
+                    libelle="Déplier les destinataires à l'ouverture d'un message"
+                    grand
+                  />
+                </Reglage>
+
+                <Reglage
+                  icone="search"
+                  titre="Raccourci de recherche"
+                  detail="Ouvre la recherche depuis n'importe quelle page. Une lettre, combinée à Ctrl (Cmd sur macOS)."
+                >
+                  <div className="flex items-center gap-2">
+                    <kbd
+                      className="rounded-md border px-2 py-1 font-mono text-[0.75rem] font-semibold"
+                      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
+                    >
+                      Ctrl
+                    </kbd>
+                    <span style={{ color: 'var(--sub)' }}>+</span>
+                    <input
+                      type="text"
+                      value={toucheRecherche}
+                      onChange={(e) => {
+                        const t = e.target.value.slice(-1).toUpperCase()
+                        if (/^[A-Z0-9]$/.test(t)) onToucheRecherche(t)
+                      }}
+                      aria-label="Touche du raccourci de recherche"
+                      className="w-12 rounded-md border text-center font-mono text-[0.8125rem] font-semibold outline-none"
+                      style={{
+                        background: 'var(--card)',
+                        borderColor: 'var(--line)',
+                        color: 'var(--fg)',
+                        height: '2.2em',
+                      }}
+                    />
+                  </div>
+                </Reglage>
+              </Bloc>
             </div>
-          </Reglage>
+          )}
 
-          <Reglage
-            icone="groups"
-            titre="Déplier les destinataires"
-            detail="À l'ouverture d'un message, montrer l'expéditeur, les destinataires et les copies. Repliés, seul l'expéditeur reste visible."
-          >
-            <Interrupteur
-              actif={destinatairesDeplies}
-              onChange={onDestinatairesDeplies}
-              libelle="Déplier les destinataires à l'ouverture d'un message"
-              grand
-            />
-          </Reglage>
+          {/* 2. Onglet Apparence */}
+          {onglet === 'apparence' && (
+            <div className="space-y-6">
+              <Bloc titre="Thème d'affichage">
+                <Reglage
+                  icone="dark_mode"
+                  titre="Thème sombre"
+                  detail="Bascule entre le mode clair et le mode sombre."
+                >
+                  <Interrupteur
+                    actif={sombre}
+                    onChange={onBasculerTheme}
+                    libelle="Thème sombre"
+                    grand
+                  />
+                </Reglage>
 
-          <ResumesIA onErreur={onErreur} />
+                <Reglage
+                  icone="palette"
+                  titre="Couleur d'accentuation"
+                  detail="Appliquée aux boutons, filtres sélectionnés et interrupteurs."
+                >
+                  <div className="flex flex-none gap-3">
+                    {ACCENTS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => onAccent(c)}
+                        aria-label={`Couleur d'accent ${c}`}
+                        aria-pressed={c === accent}
+                        className="pastille-accent h-8 w-8 rounded-full transition-transform hover:scale-105"
+                        style={{
+                          background: c,
+                          outline: c === accent ? '2px solid var(--fg)' : 'none',
+                          outlineOffset: 2,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </Reglage>
+              </Bloc>
+            </div>
+          )}
 
-          <CacheDisque onErreur={onErreur} onEfface={onToutEffacer} />
-        </Bloc>
+          {/* 3. Onglet Synchronisation */}
+          {onglet === 'sync' && (
+            <div className="space-y-6">
+              <Bloc titre="Synchronisation Gmail">
+                <Reglage
+                  icone="sync"
+                  titre="Appliquer les règles au lancement"
+                  detail="Le tri automatique se fait avant même l'ouverture de la boîte."
+                >
+                  <Interrupteur
+                    actif={syncAuLancement}
+                    onChange={onSyncAuLancement}
+                    disabled={!etat.compteConnecte}
+                    libelle="Appliquer les règles au lancement"
+                    grand
+                  />
+                </Reglage>
 
-        <Bloc titre="Synchronisation Gmail">
-          <Reglage
-            icone="sync"
-            titre="Appliquer les règles au lancement"
-            detail="Le tri se fait avant même l'ouverture de la boîte."
-          >
-            <Interrupteur
-              actif={syncAuLancement}
-              onChange={onSyncAuLancement}
-              disabled={!etat.compteConnecte}
-              libelle="Appliquer les règles au lancement"
-              grand
-            />
-          </Reglage>
+                <Reglage
+                  icone="timer"
+                  titre="Fréquence de vérification"
+                  detail="Intervalle régulier entre deux vérifications de nouveaux messages."
+                >
+                  <Segments
+                    valeurs={FREQUENCES}
+                    valeur={frequence}
+                    onChange={onFrequence}
+                    libelle="Fréquence de vérification"
+                  />
+                </Reglage>
+              </Bloc>
 
-          <Reglage
-            icone="timer"
-            titre="Fréquence de vérification"
-            detail="Intervalle entre deux relevés de la boîte de réception."
-          >
-            <Segments
-              valeurs={FREQUENCES}
-              valeur={frequence}
-              onChange={onFrequence}
-              libelle="Fréquence de vérification"
-            />
-          </Reglage>
-        </Bloc>
+              <Bloc titre="Règles actives">
+                <Reglage
+                  icone="rule_folder"
+                  titre="Fichier de règles"
+                  detail={etat.cheminRegles}
+                >
+                  <span
+                    className="flex-none font-semibold text-[0.8125rem]"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    {etat.nombreDeRegles === null ? 'illisible' : `${etat.nombreDeRegles} règle(s)`}
+                  </span>
+                </Reglage>
+              </Bloc>
+            </div>
+          )}
 
-        {/* Un bloc « Résumés IA » vivait ici, avec un interrupteur mort et la
-            mention « aucun moteur de résumé n'est branché ». C'était vrai le
-            jour où il a été écrit, avant Gemini. Ce n'est plus le cas : le
-            réglage réel est `ResumesIA`, quelques lignes plus haut, et il sait
-            enregistrer la clé comme l'effacer.
+          {/* 4. Onglet Intelligence Artificielle */}
+          {onglet === 'ia' && (
+            <div className="space-y-6">
+              <Bloc titre="Synthèses & Modèle IA">
+                <ResumesIA onErreur={onErreur} />
+              </Bloc>
 
-            Deux réglages pour un seul sujet, dont l'un affirme le contraire de
-            l'autre, coûtent plus cher qu'un réglage manquant : l'utilisateur
-            qui a posé sa clé et qui lit ensuite « pas encore disponible » a
-            toutes les raisons de croire que rien ne marche. */}
+              <Bloc titre="Gestion des données">
+                <CacheDisque onErreur={onErreur} onEfface={onToutEffacer} />
+              </Bloc>
+            </div>
+          )}
 
-        <Bloc titre="Diagnostic">
-          <Reglage
-            icone="key"
-            titre="Trousseau du système"
-            detail="Sans lui, la connexion Gmail ne peut pas être conservée."
-          >
-            <Statut ok={etat.trousseauDisponible} />
-          </Reglage>
+          {/* 5. Onglet Aide & Diagnostic (avec le Guide en haut de la page Aide, vers la fin des paramètres) */}
+          {onglet === 'aide' && (
+            <div className="space-y-6">
+              <Bloc titre="Prise en main">
+                <Reglage
+                  icone="school"
+                  titre="Revoir le guide"
+                  detail="Les quatre pages, le geste des règles, et ce qui est réversible."
+                >
+                  <Bouton icone="chevron_right" onClick={onRevoirLeGuide}>
+                    Afficher
+                  </Bouton>
+                </Reglage>
+              </Bloc>
 
-          <Reglage
-            icone="badge"
-            titre="Identifiants Google"
-            detail="Voir docs/connexion-google.md pour les renseigner."
-          >
-            <Statut ok={etat.clientGoogleConfigure} />
-          </Reglage>
+              <Bloc titre="Diagnostic système">
+                <Reglage
+                  icone="key"
+                  titre="Trousseau du système"
+                  detail="Sans lui, la connexion Gmail ne peut pas être conservée."
+                >
+                  <Statut ok={etat.trousseauDisponible} />
+                </Reglage>
 
-          <Reglage
-            icone="rule_folder"
-            titre="Fichier de règles"
-            detail={etat.cheminRegles}
-          >
-            <span
-              className="flex-none text-[0.75rem]"
-              style={{ color: 'var(--sub)' }}
-            >
-              {etat.nombreDeRegles === null ? 'illisible' : `${etat.nombreDeRegles} règles`}
-            </span>
-          </Reglage>
+                <Reglage
+                  icone="badge"
+                  titre="Identifiants Google"
+                  detail="Voir docs/connexion-google.md pour les renseigner."
+                >
+                  <Statut ok={etat.clientGoogleConfigure} />
+                </Reglage>
 
-          <Reglage
-            icone="info"
-            titre="Version"
-            detail={`MailFlow ${etat.version} · ${etat.plateforme}`}
-          >
-            <span />
-          </Reglage>
-        </Bloc>
-      </div>
+                <Reglage
+                  icone="info"
+                  titre="Version de l'application"
+                  detail={`MailFlow ${etat.version} · Plateforme ${etat.plateforme}`}
+                >
+                  <span
+                    className="rounded-full px-2.5 py-0.5 text-[0.6875rem] font-semibold border"
+                    style={{
+                      background: 'var(--sunk)',
+                      borderColor: 'var(--line)',
+                      color: 'var(--sub)',
+                    }}
+                  >
+                    v{etat.version}
+                  </span>
+                </Reglage>
+              </Bloc>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   )
 }
@@ -355,24 +479,30 @@ function CarteCompte({
     // l'espacement — d'où seize pixels de trop sous la ligne, et un avatar qui
     // ne tombait pas au milieu de la carte.
     <div
-      className="rounded-2xl p-4"
+      className="rounded-3xl p-6 relative overflow-hidden transition-all shadow-sm"
       style={{
-        background: connecte ? 'var(--accent-soft)' : 'var(--sunk)',
+        background: connecte ? 'var(--card)' : 'var(--sunk)',
         border: '1px solid var(--line)',
       }}
     >
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-5">
         <Avatar profil={profil} connecte={connecte} accent={accent} />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-[1rem] font-semibold">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="truncate text-[1.125rem] font-bold text-[var(--fg)]">
               {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
             </span>
-            {connecte && profil?.photo && <LogoGoogle taille="1.0625rem" />}
+            {connecte ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.6875rem] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Connecté
+              </span>
+            ) : null}
+            {connecte && profil?.photo && <LogoGoogle taille="1.125rem" />}
           </div>
           <div
-            className="selectionnable truncate pt-0.5 text-[0.8125rem]"
+            className="selectionnable truncate pt-1 text-[0.8125rem] font-mono"
             style={{ color: 'var(--sub)' }}
           >
             {connecte
@@ -383,14 +513,12 @@ function CarteCompte({
           </div>
         </div>
 
-        <div className="flex flex-none items-center gap-3">
+        <div className="flex flex-none items-center gap-2.5">
           {connecte ? (
             <>
               <BoutonCarte onClick={onDeconnecter} disabled={enCours} icone="logout">
                 Déconnecter
               </BoutonCarte>
-              {/* L'accent va sur l'action qui construit, pas sur celle qui
-                  défait. */}
               <BoutonCarte
                 principal
                 onClick={() => setListeOuverte((o) => !o)}
@@ -697,22 +825,27 @@ function Avatar({
 }) {
   if (profil?.photo) {
     return (
-      <img
-        src={profil.photo}
-        alt=""
-        className="h-12 w-12 flex-none rounded-full object-cover"
-        style={{ background: 'var(--card)' }}
-      />
+      <div className="relative flex-none">
+        <img
+          src={profil.photo}
+          alt=""
+          className="h-14 w-14 rounded-full object-cover ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)] shadow-md"
+          style={{ background: 'var(--card)' }}
+        />
+      </div>
     )
   }
 
   if (!connecte) {
     return (
       <div
-        className="flex h-12 w-12 flex-none items-center justify-center rounded-full"
-        style={{ background: 'var(--card)', boxShadow: 'var(--shadow)' }}
+        className="flex h-14 w-14 flex-none items-center justify-center rounded-full border shadow-inner"
+        style={{
+          background: 'var(--sunk)',
+          borderColor: 'var(--line)',
+        }}
       >
-        <Icone nom="person_off" taille="1.375rem" style={{ color: 'var(--sub)' }} />
+        <Icone nom="person_off" taille="1.5rem" style={{ color: 'var(--sub)' }} />
       </div>
     )
   }
@@ -721,10 +854,10 @@ function Avatar({
 
   return (
     <div
-      className="flex h-12 w-12 flex-none items-center justify-center rounded-full text-[1.0625rem] font-semibold"
+      className="flex h-14 w-14 flex-none items-center justify-center rounded-full text-[1.125rem] font-bold shadow-md ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)]"
       style={{ background: accent, color: '#FFFFFF' }}
     >
-      {nom ? initiales(nom) : <LogoGoogle taille="1.5rem" />}
+      {nom ? initiales(nom) : <LogoGoogle taille="1.625rem" />}
     </div>
   )
 }
