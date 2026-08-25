@@ -1,87 +1,22 @@
 /**
- * Vue « Paramètres », reprise de la maquette.
+ * Vue « Paramètres » refactorisée et modulaire.
  *
- * Un principe la gouverne : ne jamais montrer un contrôle qui ne ferait rien.
- * Un interrupteur qui bascule sans rien déclencher fait croire le réglage
- * actif, et c'est pire que son absence.
- *
- * Deux écarts à la maquette en découlaient, et tous deux ont été comblés
- * depuis :
- *
- * - les résumés de newsletters existent — voir [`ResumesIA`] — et le réglage
- *   ouvre désormais une vraie fenêtre de saisie plutôt qu'un contrôle inerte ;
- * - MailFlow gère plusieurs comptes ; « Ajouter un compte » fonctionne, et
- *   « Changer de compte » avec.
+ * Structurée en 5 sous-onglets thématiques avec navigation latérale :
+ * - Compte & Profil
+ * - Apparence
+ * - Synchronisation
+ * - Intelligence Artificielle
+ * - Aide & Diagnostic
  */
-import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
-import { Bloc, Bouton, Icone, Interrupteur, Modale, Segments } from '../composants/base'
-import { LogoGoogle } from '../composants/LogoGoogle'
+import { useState } from 'react'
+import { Bloc, Bouton, Icone, Interrupteur, Segments } from '../composants/base'
 import { FREQUENCES, type Frequence } from '../lib/preferences'
-import { initiales } from '../lib/presentation'
-import {
-  cacheTaille,
-  cacheVider,
-  lienOuvrir,
-  llmCleEffacer,
-  llmCleEnregistrer,
-  llmEtat,
-  messageDErreur,
-} from '../lib/tauri'
-import type {
-  CompteConnu,
-  EtatApplication,
-  EtatLlm,
-  ProfilCompte,
-} from '../types/backend'
-
-/** Même orangé que les notifications d'erreur : un refus se reconnaît d'un
- *  écran à l'autre. */
-const TEINTE_REFUS = '#C2410C'
-
-const ACCENTS = ['#2F6BFF', '#1F7A5A', '#4C3BCF', '#C2410C'] as const
-
-type OngletParametres = 'compte' | 'apparence' | 'sync' | 'ia' | 'aide'
-
-interface DefOnglet {
-  id: OngletParametres
-  label: string
-  icone: NomIcone
-  description: string
-}
-
-const ONGLETS: DefOnglet[] = [
-  {
-    id: 'compte',
-    label: 'Compte & Profil',
-    icone: 'person',
-    description: 'Gestion du compte Google connecté et des raccourcis',
-  },
-  {
-    id: 'apparence',
-    label: 'Apparence',
-    icone: 'palette',
-    description: 'Thème d’affichage et personnalisation des couleurs',
-  },
-  {
-    id: 'sync',
-    label: 'Synchronisation',
-    icone: 'sync',
-    description: 'Fréquence de relevé Gmail et exécution des règles',
-  },
-  {
-    id: 'ia',
-    label: 'Intelligence Artificielle',
-    icone: 'auto_awesome',
-    description: 'Clé API Gemini, résumés de newsletters et cache',
-  },
-  {
-    id: 'aide',
-    label: 'Aide & Diagnostic',
-    icone: 'info',
-    description: 'Guide de prise en main et état des services',
-  },
-]
+import type { CompteConnu, EtatApplication, ProfilCompte } from '../types/backend'
+import { CacheDisque } from './parametres/CacheDisque'
+import { CarteCompte } from './parametres/CarteCompte'
+import { Reglage, Statut } from './parametres/Reglage'
+import { ResumesIA } from './parametres/ResumesIA'
+import { ACCENTS, ONGLETS, type OngletParametres } from './parametres/types'
 
 export function Parametres({
   etat,
@@ -129,17 +64,11 @@ export function Parametres({
   onBasculer: (adresse: string) => void
   onAjouterCompte: () => void
   onOublierCompte: (adresse: string) => void
-  /** Réaffiche le guide de première ouverture. */
   onRevoirLeGuide: () => void
-  /** Annonce une panne réseau sans faire disparaître la page. */
   onErreur: (message: string) => void
-  /** Relance le chargement complet après l'effacement du disque. */
   onToutEffacer: () => void
-  /** Vrai quand la vue mélangée est celle qu'on regarde. */
   melange: boolean
-  /** Ouvre la vue qui réunit les boîtes de tous les comptes. */
   onMelanger: () => void
-  /** Lettre du raccourci de recherche, combinée à Ctrl ou Cmd. */
   toucheRecherche: string
   onToucheRecherche: (touche: string) => void
   enCours: boolean
@@ -149,17 +78,17 @@ export function Parametres({
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden bg-[var(--bg)]">
-      {/* Navigation latérale des sous-pages (Minimaliste, ultra-compacte et sans fond lourd) */}
+      {/* Navigation latérale des sous-pages (Svelte & aérée) */}
       <aside
-        className="w-48 flex-none border-r px-2.5 py-4 overflow-y-auto flex flex-col gap-3"
-        style={{ borderColor: 'var(--line)' }}
+        className="w-60 flex-none border-r p-5 overflow-y-auto flex flex-col gap-4"
+        style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
       >
-        <div className="px-2">
-          <h1 className="text-sm font-bold tracking-tight text-[var(--fg)]">Paramètres</h1>
-          <p className="text-[0.6875rem] text-[var(--sub)]">Préférences</p>
+        <div className="px-1.5">
+          <h1 className="text-base font-bold tracking-tight text-[var(--fg)]">Paramètres</h1>
+          <p className="text-[0.7188rem] text-[var(--sub)] mt-0.5">Gérer vos préférences</p>
         </div>
 
-        <nav className="flex flex-col gap-0.5">
+        <nav className="flex flex-col gap-1">
           {ONGLETS.map((o) => {
             const actif = onglet === o.id
             return (
@@ -167,18 +96,21 @@ export function Parametres({
                 key={o.id}
                 type="button"
                 onClick={() => setOnglet(o.id)}
-                className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-left text-[0.8125rem] transition-colors ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-left text-[0.8125rem] font-medium transition-all ${
                   actif
-                    ? 'text-[var(--accent)] font-semibold bg-[var(--accent-soft)]'
-                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)]/50'
+                    ? 'text-[var(--accent)] font-semibold shadow-xs'
+                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)]'
                 }`}
+                style={{
+                  background: actif ? 'var(--sunk)' : 'transparent',
+                }}
               >
                 <Icone
                   nom={o.icone}
-                  taille="1rem"
+                  taille="1.0625rem"
                   style={{ color: actif ? 'var(--accent)' : 'inherit' }}
                 />
-                <span className="truncate text-[0.7813rem]">{o.label}</span>
+                <span className="truncate text-[0.8125rem]">{o.label}</span>
               </button>
             )
           })}
@@ -186,17 +118,17 @@ export function Parametres({
       </aside>
 
       {/* Contenu de la sous-page active */}
-      <main className="flex-1 min-w-0 overflow-y-auto p-5 lg:p-6">
-        <div className="max-w-2xl mx-auto space-y-4 menu-apparait" key={onglet}>
-          {/* Titre et description de la sous-page */}
-          <div className="border-b pb-3" style={{ borderColor: 'var(--line)' }}>
+      <main className="flex-1 min-w-0 overflow-y-auto p-6 lg:p-8">
+        <div className="max-w-3xl mx-auto space-y-5 menu-apparait" key={onglet}>
+          {/* En-tête de la sous-page */}
+          <div className="border-b pb-3.5" style={{ borderColor: 'var(--line)' }}>
             <h2 className="text-base font-bold text-[var(--fg)]">{ongletCourant.label}</h2>
-            <p className="text-[0.7188rem] text-[var(--sub)] mt-0.5">{ongletCourant.description}</p>
+            <p className="text-[0.75rem] text-[var(--sub)] mt-0.5">{ongletCourant.description}</p>
           </div>
 
-          {/* 1. Onglet Compte & Profil */}
+          {/* 1. Compte & Profil */}
           {onglet === 'compte' && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <CarteCompte
                 key={profil?.adresse ?? 'aucun'}
                 connecte={etat.compteConnecte}
@@ -263,9 +195,9 @@ export function Parametres({
             </div>
           )}
 
-          {/* 2. Onglet Apparence */}
+          {/* 2. Apparence */}
           {onglet === 'apparence' && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <Bloc titre="Thème d'affichage">
                 <Reglage
                   icone="dark_mode"
@@ -293,7 +225,7 @@ export function Parametres({
                         onClick={() => onAccent(c)}
                         aria-label={`Couleur d'accent ${c}`}
                         aria-pressed={c === accent}
-                        className="pastille-accent h-8 w-8 rounded-full transition-transform hover:scale-105"
+                        className="pastille-accent h-7.5 w-7.5 rounded-full transition-transform hover:scale-105"
                         style={{
                           background: c,
                           outline: c === accent ? '2px solid var(--fg)' : 'none',
@@ -307,9 +239,9 @@ export function Parametres({
             </div>
           )}
 
-          {/* 3. Onglet Synchronisation */}
+          {/* 3. Synchronisation */}
           {onglet === 'sync' && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <Bloc titre="Synchronisation Gmail">
                 <Reglage
                   icone="sync"
@@ -356,9 +288,9 @@ export function Parametres({
             </div>
           )}
 
-          {/* 4. Onglet Intelligence Artificielle */}
+          {/* 4. Intelligence Artificielle */}
           {onglet === 'ia' && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <Bloc titre="Synthèses & Modèle IA">
                 <ResumesIA onErreur={onErreur} />
               </Bloc>
@@ -369,9 +301,9 @@ export function Parametres({
             </div>
           )}
 
-          {/* 5. Onglet Aide & Diagnostic (avec le Guide en haut de la page Aide, vers la fin des paramètres) */}
+          {/* 5. Aide & Diagnostic */}
           {onglet === 'aide' && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <Bloc titre="Prise en main">
                 <Reglage
                   icone="school"
@@ -422,751 +354,6 @@ export function Parametres({
           )}
         </div>
       </main>
-    </div>
-  )
-}
-
-/**
- * Carte de compte.
- */
-function CarteCompte({
-  melange,
-  onMelanger,
-  connecte,
-  profil,
-  accent,
-  bloque,
-  enCours,
-  onConnecter,
-  onDeconnecter,
-  comptes,
-  onBasculer,
-  onAjouterCompte,
-  onOublierCompte,
-}: {
-  connecte: boolean
-  profil: ProfilCompte | null
-  accent: string
-  bloque: boolean
-  enCours: boolean
-  onConnecter: () => void
-  onDeconnecter: () => void
-  comptes: CompteConnu[]
-  onBasculer: (adresse: string) => void
-  onAjouterCompte: () => void
-  onOublierCompte: (adresse: string) => void
-  melange: boolean
-  onMelanger: () => void
-}) {
-  const [listeOuverte, setListeOuverte] = useState(false)
-  const autres = comptes.filter((c) => !c.actif)
-
-  return (
-    <div
-      className="rounded-2xl p-4 relative overflow-hidden transition-all shadow-xs"
-      style={{
-        background: connecte ? 'var(--card)' : 'var(--sunk)',
-        border: '1px solid var(--line)',
-      }}
-    >
-      <div className="flex flex-wrap items-center gap-3.5">
-        <Avatar profil={profil} connecte={connecte} accent={accent} />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-[0.9375rem] font-bold text-[var(--fg)]">
-              {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
-            </span>
-            {connecte && profil?.photo && <LogoGoogle taille="1rem" />}
-          </div>
-          <div
-            className="selectionnable truncate pt-0.5 text-[0.75rem] font-mono"
-            style={{ color: 'var(--sub)' }}
-          >
-            {connecte
-              ? (profil?.adresse ?? 'autorisation conservée dans le trousseau')
-              : bloque
-                ? 'configuration incomplète, voir le diagnostic ci-dessous'
-                : 'MailFlow ne peut rien trier tant qu’aucun compte n’est autorisé'}
-          </div>
-        </div>
-
-        <div className="flex flex-none items-center gap-2">
-          {connecte ? (
-            <>
-              <BoutonCarte onClick={onDeconnecter} disabled={enCours} icone="logout">
-                Déconnecter
-              </BoutonCarte>
-              <BoutonCarte
-                principal
-                onClick={() => setListeOuverte((o) => !o)}
-                disabled={enCours || bloque}
-                icone={listeOuverte ? 'close' : 'person'}
-              >
-                {listeOuverte ? 'Fermer' : 'Changer de compte'}
-              </BoutonCarte>
-            </>
-          ) : (
-            <BoutonCarte
-              principal
-              onClick={onConnecter}
-              disabled={enCours || bloque}
-              icone="login"
-            >
-              Connecter mon compte Gmail
-            </BoutonCarte>
-          )}
-        </div>
-      </div>
-
-      {connecte && (
-        <div className="deplie w-full" data-ouvert={listeOuverte} aria-hidden={!listeOuverte}>
-          <div>
-            <ChoixDeCompte
-              autres={autres}
-              enCours={enCours}
-              bloque={bloque}
-              onBasculer={(a) => {
-                setListeOuverte(false)
-                onBasculer(a)
-              }}
-              onAjouterCompte={() => {
-                setListeOuverte(false)
-                onAjouterCompte()
-              }}
-              onOublierCompte={onOublierCompte}
-              melange={melange}
-              onMelanger={() => {
-                setListeOuverte(false)
-                onMelanger()
-              }}
-              plusieurs={comptes.length > 1}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
- * Liste des comptes déjà autorisés.
- */
-function ChoixDeCompte({
-  autres,
-  enCours,
-  bloque,
-  onBasculer,
-  onAjouterCompte,
-  onOublierCompte,
-  melange,
-  onMelanger,
-  plusieurs,
-}: {
-  autres: CompteConnu[]
-  enCours: boolean
-  bloque: boolean
-  onBasculer: (adresse: string) => void
-  onAjouterCompte: () => void
-  onOublierCompte: (adresse: string) => void
-  melange: boolean
-  onMelanger: () => void
-  plusieurs: boolean
-}) {
-  const [aRetirer, setARetirer] = useState<string | null>(null)
-
-  return (
-    <div
-      className="mt-3 w-full rounded-xl border p-1.5"
-      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
-    >
-      {plusieurs && (
-        <>
-          <button
-            type="button"
-            onClick={onMelanger}
-            disabled={enCours || melange}
-            aria-current={melange || undefined}
-            className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left disabled:opacity-100"
-            style={melange ? { background: 'var(--accent-soft)' } : undefined}
-          >
-            <span
-              className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
-              style={{ background: melange ? 'var(--card)' : 'var(--accent-soft)' }}
-            >
-              <Icone
-                nom="inbox"
-                taille="1rem"
-                style={{ color: melange ? 'var(--accent)' : 'inherit' }}
-              />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[0.8125rem] font-semibold">
-                Tous les comptes
-              </span>
-              <span className="block truncate text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
-                Vue réunie
-              </span>
-            </span>
-            {melange && (
-              <span className="text-[0.6875rem] font-medium" style={{ color: 'var(--accent)' }}>
-                Active
-              </span>
-            )}
-          </button>
-          <div className="mx-2 my-1 border-t" style={{ borderColor: 'var(--line)' }} />
-        </>
-      )}
-
-      {autres.map((c) => (
-        <div key={c.adresse} className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onBasculer(c.adresse)}
-            disabled={enCours}
-            className="survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left disabled:opacity-40"
-          >
-            <Vignette photo={c.photo} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[0.8125rem] font-semibold">
-                {c.nom ?? c.adresse}
-              </span>
-              {c.nom && (
-                <span
-                  className="block truncate text-[0.6875rem]"
-                  style={{ color: 'var(--sub)' }}
-                >
-                  {c.adresse}
-                </span>
-              )}
-            </span>
-          </button>
-
-          {aRetirer === c.adresse ? (
-            <div className="flex flex-none items-center gap-1.5 pr-1">
-              <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
-                Retirer ?
-              </span>
-              <BoutonTexte
-                onClick={() => {
-                  setARetirer(null)
-                  onOublierCompte(c.adresse)
-                }}
-                couleur="#C2410C"
-              >
-                Oui
-              </BoutonTexte>
-              <BoutonTexte onClick={() => setARetirer(null)}>Non</BoutonTexte>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setARetirer(c.adresse)}
-              aria-label={`Retirer le compte ${c.adresse}`}
-              className="bouton bouton-icone flex-none rounded-lg p-1.5"
-            >
-              <Icone nom="delete" taille="0.9375rem" />
-            </button>
-          )}
-        </div>
-      ))}
-
-      <div className={`${autres.length > 0 || plusieurs ? 'border-t pt-1.5 mt-1' : ''}`} style={{ borderColor: 'var(--line)' }}>
-        <button
-          type="button"
-          onClick={onAjouterCompte}
-          disabled={enCours || bloque}
-          className="survolable flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[0.8125rem] font-semibold disabled:opacity-40"
-          style={{ color: 'var(--accent-fg)' }}
-        >
-          <Icone nom="login" taille="0.9375rem" />
-          Ajouter un compte Google
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/**
- * Vignette d'un compte de la liste.
- */
-function Vignette({ photo }: { photo: string | null }) {
-  if (photo) {
-    return (
-      <img
-        src={photo}
-        alt=""
-        className="h-7 w-7 flex-none rounded-full object-cover"
-        style={{ background: 'var(--faint)' }}
-      />
-    )
-  }
-
-  return (
-    <span
-      className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
-      style={{ background: 'var(--card)' }}
-    >
-      <LogoGoogle taille="0.875rem" />
-    </span>
-  )
-}
-
-function BoutonTexte({
-  children,
-  onClick,
-  couleur,
-}: {
-  children: React.ReactNode
-  onClick: () => void
-  couleur?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="bouton flex-none rounded-full px-2 py-0.5 text-[0.6875rem] font-medium"
-      style={{ color: couleur ?? 'var(--fg)' }}
-    >
-      {children}
-    </button>
-  )
-}
-
-/** Bouton de la carte de compte. */
-function BoutonCarte({
-  children,
-  onClick,
-  disabled = false,
-  principal = false,
-  icone,
-}: {
-  children: React.ReactNode
-  onClick: () => void
-  disabled?: boolean
-  principal?: boolean
-  icone?: Parameters<typeof Icone>[0]['nom']
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex h-8.5 flex-none items-center justify-center gap-1.5 rounded-full px-3.5 text-xs font-medium`}
-    >
-      {icone && <Icone nom={icone} taille="1rem" />}
-      <span>{children}</span>
-    </button>
-  )
-}
-
-/**
- * Avatar du compte.
- */
-function Avatar({
-  profil,
-  connecte,
-  accent,
-}: {
-  profil: ProfilCompte | null
-  connecte: boolean
-  accent: string
-}) {
-  if (profil?.photo) {
-    return (
-      <div className="relative flex-none">
-        <img
-          src={profil.photo}
-          alt=""
-          className="h-11 w-11 rounded-full object-cover ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)] shadow-xs"
-          style={{ background: 'var(--card)' }}
-        />
-      </div>
-    )
-  }
-
-  if (!connecte) {
-    return (
-      <div
-        className="flex h-11 w-11 flex-none items-center justify-center rounded-full border shadow-inner"
-        style={{
-          background: 'var(--sunk)',
-          borderColor: 'var(--line)',
-        }}
-      >
-        <Icone nom="person_off" taille="1.25rem" style={{ color: 'var(--sub)' }} />
-      </div>
-    )
-  }
-
-  const nom = profil?.nom ?? profil?.adresse ?? ''
-
-  return (
-    <div
-      className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[0.9375rem] font-bold shadow-xs ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)]"
-      style={{ background: accent, color: '#FFFFFF' }}
-    >
-      {nom ? initiales(nom) : <LogoGoogle taille="1.25rem" />}
-    </div>
-  )
-}
-
-function Reglage({
-  icone,
-  titre,
-  detail,
-  children,
-}: {
-  icone: Parameters<typeof Icone>[0]['nom']
-  titre: string
-  detail: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex items-center gap-3.5 px-4.5 py-3">
-      <div className="flex flex-none items-center justify-center text-[var(--sub)]">
-        <Icone nom={icone} taille="1.125rem" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[0.875rem] font-medium text-[var(--fg)]">{titre}</div>
-        <div className="truncate pt-0.5 text-[0.75rem]" style={{ color: 'var(--sub)' }}>
-          {detail}
-        </div>
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function Statut({ ok }: { ok: boolean }) {
-  return (
-    <span
-      className="inline-flex flex-none items-center gap-1.5 text-[0.8125rem] leading-none font-semibold"
-      style={{ color: ok ? 'var(--accent-fg)' : '#C2410C' }}
-    >
-      <Icone nom={ok ? 'check_circle' : 'error'} taille="1.0625rem" rempli />
-      {ok ? 'disponible' : 'indisponible'}
-    </span>
-  )
-}
-
-
-/**
- * Ce que MailFlow pose sur le disque, et qu'il sait refaire seul.
- *
- * # « Effacer » veut dire effacer
- *
- * Le bouton ne couvrait que les relevés et les corps de messages. Il annonçait
- * 33 Mo et en laissait 51 derrière lui — le cache du moteur d'affichage, qui
- * grossit à chaque image de message ouverte et que rien ne nettoyait jamais.
- * Le décompte et l'effacement portent désormais sur la même liste, tenue à un
- * seul endroit côté Rust.
- *
- * # Et l'application se remplit à nouveau, sans redémarrer
- *
- * Effacer laissait une fenêtre pleine de messages qu'on venait de supprimer du
- * disque : rien à l'écran ne disait que le geste avait eu lieu, et il fallait
- * redémarrer pour retrouver un état cohérent. Le relevé repart maintenant dans
- * la foulée, et l'on voit la boîte se reconstruire.
- */
-function CacheDisque({
-  onErreur,
-  onEfface,
-}: {
-  onErreur: (message: string) => void
-  /** Relance le chargement complet, pour que l'écran suive le disque. */
-  onEfface: () => void
-}) {
-  const [octets, setOctets] = useState<number | null>(null)
-  const [enCours, setEnCours] = useState(false)
-
-  useEffect(() => {
-    cacheTaille()
-      .then(setOctets)
-      .catch(() => setOctets(null))
-  }, [])
-
-  const vider = async () => {
-    setEnCours(true)
-    try {
-      await cacheVider()
-      setOctets(await cacheTaille().catch(() => 0))
-      onEfface()
-    } catch (e) {
-      onErreur(messageDErreur(e))
-    } finally {
-      setEnCours(false)
-    }
-  }
-
-  const taille =
-    octets === null
-      ? ''
-      : octets < 1024 * 1024
-        ? ` (${Math.max(1, Math.round(octets / 1024))} Ko)`
-        : ` (${(octets / 1024 / 1024).toFixed(1)} Mo)`
-
-  return (
-    <Reglage
-      icone="delete"
-      titre="Tout ce que MailFlow garde sur cet ordinateur"
-      detail={`Messages, images, journaux${taille}. Tout se retélécharge : vos comptes, vos règles et vos tas ne sont pas touchés.`}
-    >
-      <Bouton
-        variante="danger"
-        icone="delete"
-        enAttente={enCours}
-        disabled={enCours || octets === 0}
-        onClick={() => void vider()}
-      >
-        {enCours ? 'Effacement…' : 'Tout effacer'}
-      </Bouton>
-    </Reglage>
-  )
-}
-
-/**
- * Réglage des résumés de newsletters.
- *
- * # Ce qui est dit franchement
- *
- * Le palier gratuit de Gemini n'est pas confidentiel : Google se réserve le
- * droit d'utiliser ce qu'on lui envoie pour améliorer ses modèles. Ce n'est pas
- * dissimulé dans des conditions d'utilisation — c'est écrit ici, avec ce qui
- * l'atténue : seules les newsletters partent, et les liens de désabonnement,
- * qui portent l'adresse de l'utilisateur, sont retirés avant l'envoi.
- *
- * # Pourquoi un bouton qui essaie vraiment
- *
- * Enregistrer une clé la vérifie par un véritable appel. Une clé bien formée
- * mais révoquée passerait n'importe quel contrôle de syntaxe, et l'utilisateur
- * ne l'apprendrait qu'au premier relevé — sans savoir pourquoi rien ne se
- * résume.
- */
-function ResumesIA({ onErreur }: { onErreur: (message: string) => void }) {
-  const [etat, setEtat] = useState<EtatLlm | null>(null)
-  const [saisie, setSaisie] = useState(false)
-
-  useEffect(() => {
-    void llmEtat().then(setEtat).catch(() => undefined)
-  }, [])
-
-  const effacer = async () => {
-    try {
-      await llmCleEffacer()
-      setEtat(await llmEtat())
-    } catch (e) {
-      onErreur(messageDErreur(e))
-    }
-  }
-
-  return (
-    <>
-      <Reglage
-        icone="auto_awesome"
-        titre="Résumés automatiques des newsletters"
-        detail="Un modèle de Google lit vos newsletters et en écrit une phrase. Facultatif, et gratuit."
-      >
-        {/* Pas de mention « Clé enregistrée » à côté : le bouton « Retirer »
-            ne s'affiche que lorsqu'il y a une clé, et dit donc déjà qu'il y en
-            a une. L'écrire en plus revenait à répondre deux fois. */}
-        {etat?.cleConfiguree ? (
-          <Bouton
-            compact
-            icone="delete"
-            variante="danger"
-            onClick={() => void effacer()}
-          >
-            Retirer
-          </Bouton>
-        ) : (
-          <Bouton compact variante="principal" onClick={() => setSaisie(true)}>
-            Configurer
-          </Bouton>
-        )}
-      </Reglage>
-
-      {saisie && (
-        <ModaleCleResumes
-          onFermer={() => setSaisie(false)}
-          onEnregistree={async () => {
-            setSaisie(false)
-            setEtat(await llmEtat().catch(() => null))
-          }}
-        />
-      )}
-    </>
-  )
-}
-
-/**
- * Fenêtre de saisie de la clé d'API.
- *
- * # Pourquoi une fenêtre et non un champ dans la ligne
- *
- * Le champ tenait dans la ligne de réglage, et c'est bien le problème : il n'y
- * restait de place ni pour dire où l'on obtient la clé, ni pour dire ce que
- * Google en fait. Ces deux phrases ne sont pas du décor — sans la première, on
- * ne peut pas se servir du réglage ; sans la seconde, on accepte quelque chose
- * qu'on n'a pas lu. Une fenêtre leur donne la place, et laisse la ligne de
- * réglage dire une seule chose à la fois.
- *
- * # Pourquoi l'erreur reste ici
- *
- * Une clé refusée s'affiche dans la fenêtre, sous le champ, et non en
- * notification passagère : on est au milieu du geste, la correction se fait
- * sur-le-champ, et un message qui s'efface au bout de trois secondes ferait
- * recommencer.
- */
-function ModaleCleResumes({
-  onFermer,
-  onEnregistree,
-}: {
-  onFermer: () => void
-  onEnregistree: () => void | Promise<void>
-}) {
-  const [cle, setCle] = useState('')
-  const [enCours, setEnCours] = useState(false)
-  const [refus, setRefus] = useState<string | null>(null)
-
-  const enregistrer = async () => {
-    setEnCours(true)
-    setRefus(null)
-    try {
-      await llmCleEnregistrer(cle)
-      setCle('')
-      await onEnregistree()
-    } catch (e) {
-      setRefus(messageDErreur(e))
-    } finally {
-      setEnCours(false)
-    }
-  }
-
-  const pretA = Boolean(cle.trim()) && !enCours
-
-  return (
-    <Modale
-      titre="Résumés automatiques des newsletters"
-      sous="Un modèle de Google lit chaque newsletter et en écrit une phrase."
-      onFermer={onFermer}
-    >
-      <div className="flex flex-col gap-4">
-        <Etape numero={1} titre="Obtenir une clé">
-          <p>
-            Elle s'obtient sur Google AI Studio avec le compte Google que vous
-            avez déjà. Aucune carte bancaire n'est demandée.
-          </p>
-          <Bouton
-            compact
-            icone="open_in_new"
-            onClick={() => {
-              void lienOuvrir('https://aistudio.google.com/apikey').catch((e) =>
-                setRefus(messageDErreur(e)),
-              )
-            }}
-          >
-            Ouvrir Google AI Studio
-          </Bouton>
-        </Etape>
-
-        <Etape numero={2} titre="La coller ici">
-          <input
-            type="password"
-            value={cle}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(e) => setCle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && pretA) void enregistrer()
-            }}
-            placeholder="AIza…"
-            aria-label="Clé d'API pour les résumés"
-            className="champ-de-saisie selectionnable w-full rounded-lg border bg-transparent px-3 text-[0.8125rem] outline-none"
-            style={{
-              borderColor: refus ? TEINTE_REFUS : 'var(--line)',
-              color: 'var(--fg)',
-              height: '2.4rem',
-            }}
-          />
-          {refus && (
-            <p
-              className="flex items-start gap-1.5 text-[0.75rem]"
-              style={{ color: TEINTE_REFUS }}
-            >
-              <Icone nom="error" taille="0.875rem" />
-              <span>{refus}</span>
-            </p>
-          )}
-          <p className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
-            La clé est rangée dans le trousseau du système, jamais dans un
-            fichier de l'application. Elle n'est enregistrée qu'après un
-            véritable appel : une clé révoquée est refusée tout de suite plutôt
-            qu'au premier relevé.
-          </p>
-        </Etape>
-
-        {/* Dit à l'écran, pas enfoui dans des conditions d'utilisation. */}
-        <div
-          className="flex items-start gap-2.5 rounded-xl border p-3"
-          style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
-        >
-          <Icone nom="shield" taille="1rem" style={{ color: 'var(--sub)' }} />
-          <p className="text-[0.75rem] leading-relaxed" style={{ color: 'var(--sub)' }}>
-            <strong style={{ color: 'var(--fg)' }}>
-              Le palier gratuit de Google n'est pas confidentiel :
-            </strong>{' '}
-            ce qui lui est envoyé peut servir à améliorer ses modèles. Seules
-            les newsletters partent — jamais vos messages personnels, jamais vos
-            rappels de formation — et les adresses web, dont les liens de
-            désabonnement qui portent la vôtre, sont retirées avant l'envoi.
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2">
-          <Bouton onClick={onFermer}>Annuler</Bouton>
-          <Bouton
-            variante="principal"
-            icone="check_circle"
-            enAttente={enCours}
-            disabled={!pretA}
-            onClick={() => void enregistrer()}
-          >
-            {enCours ? 'Vérification…' : 'Tester et enregistrer'}
-          </Bouton>
-        </div>
-      </div>
-    </Modale>
-  )
-}
-
-/** Une étape numérotée de la fenêtre de saisie. */
-function Etape({
-  numero,
-  titre,
-  children,
-}: {
-  numero: number
-  titre: string
-  children: ReactNode
-}) {
-  return (
-    <div className="flex gap-3">
-      <span
-        className="flex h-6 w-6 flex-none items-center justify-center rounded-full text-[0.75rem] font-semibold"
-        style={{ background: 'var(--sunk)', color: 'var(--sub)' }}
-      >
-        {numero}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-        <div className="text-[0.8125rem] font-semibold">{titre}</div>
-        <div
-          className="flex w-full flex-col items-start gap-2 text-[0.8125rem] leading-relaxed"
-          style={{ color: 'var(--sub)' }}
-        >
-          {children}
-        </div>
-      </div>
     </div>
   )
 }
