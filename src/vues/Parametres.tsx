@@ -149,17 +149,17 @@ export function Parametres({
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden bg-[var(--bg)]">
-      {/* Navigation latérale des sous-pages (Compacte et optimisée) */}
+      {/* Navigation latérale des sous-pages (Minimaliste, ultra-compacte et sans fond lourd) */}
       <aside
-        className="w-56 flex-none border-r p-4 overflow-y-auto flex flex-col gap-4"
-        style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+        className="w-48 flex-none border-r px-2.5 py-4 overflow-y-auto flex flex-col gap-3"
+        style={{ borderColor: 'var(--line)' }}
       >
-        <div>
-          <h1 className="text-base font-bold tracking-tight text-[var(--fg)]">Paramètres</h1>
-          <p className="text-[0.6875rem] text-[var(--sub)] mt-0.5">Gérer vos préférences</p>
+        <div className="px-2">
+          <h1 className="text-sm font-bold tracking-tight text-[var(--fg)]">Paramètres</h1>
+          <p className="text-[0.6875rem] text-[var(--sub)]">Préférences</p>
         </div>
 
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-0.5">
           {ONGLETS.map((o) => {
             const actif = onglet === o.id
             return (
@@ -167,27 +167,18 @@ export function Parametres({
                 key={o.id}
                 type="button"
                 onClick={() => setOnglet(o.id)}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[0.8125rem] font-medium transition-all ${
+                className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-left text-[0.8125rem] transition-colors ${
                   actif
-                    ? 'text-[var(--accent)] font-semibold shadow-xs'
-                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)]'
+                    ? 'text-[var(--accent)] font-semibold bg-[var(--accent-soft)]'
+                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)]/50'
                 }`}
-                style={{
-                  background: actif ? 'var(--sunk)' : 'transparent',
-                }}
               >
-                <div
-                  className="flex h-6 w-6 flex-none items-center justify-center rounded-md transition-colors"
-                  style={{
-                    background: actif ? 'var(--accent)' : 'var(--sunk)',
-                    color: actif ? '#ffffff' : 'var(--sub)',
-                  }}
-                >
-                  <Icone nom={o.icone} taille="0.9375rem" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[0.7813rem]">{o.label}</div>
-                </div>
+                <Icone
+                  nom={o.icone}
+                  taille="1rem"
+                  style={{ color: actif ? 'var(--accent)' : 'inherit' }}
+                />
+                <span className="truncate text-[0.7813rem]">{o.label}</span>
               </button>
             )
           })}
@@ -820,7 +811,6 @@ function Avatar({
   )
 }
 
-/** Ligne de réglage : icône en pastille, intitulé, explication, contrôle. */
 function Reglage({
   icone,
   titre,
@@ -833,16 +823,13 @@ function Reglage({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3.5 px-4.5 py-3.5">
-      <div
-        className="flex h-9 w-9 flex-none items-center justify-center rounded-[0.625rem]"
-        style={{ background: 'var(--sunk)' }}
-      >
-        <Icone nom={icone} taille="1.125rem" style={{ color: 'var(--sub)' }} />
+    <div className="flex items-center gap-3.5 px-4.5 py-3">
+      <div className="flex flex-none items-center justify-center text-[var(--sub)]">
+        <Icone nom={icone} taille="1.125rem" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[0.875rem] font-semibold">{titre}</div>
-        <div className="truncate pt-0.5 text-[0.7812rem]" style={{ color: 'var(--sub)' }}>
+        <div className="text-[0.875rem] font-medium text-[var(--fg)]">{titre}</div>
+        <div className="truncate pt-0.5 text-[0.75rem]" style={{ color: 'var(--sub)' }}>
           {detail}
         </div>
       </div>
