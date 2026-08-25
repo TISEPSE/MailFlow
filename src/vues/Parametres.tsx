@@ -149,17 +149,17 @@ export function Parametres({
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden bg-[var(--bg)]">
-      {/* Navigation latérale des sous-pages (Style moderne) */}
+      {/* Navigation latérale des sous-pages (Compacte et optimisée) */}
       <aside
-        className="w-72 flex-none border-r p-6 overflow-y-auto flex flex-col gap-6"
+        className="w-56 flex-none border-r p-4 overflow-y-auto flex flex-col gap-4"
         style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
       >
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-[var(--fg)]">Paramètres</h1>
-          <p className="text-xs text-[var(--sub)] mt-1">Gérez vos préférences et votre compte</p>
+          <h1 className="text-base font-bold tracking-tight text-[var(--fg)]">Paramètres</h1>
+          <p className="text-[0.6875rem] text-[var(--sub)] mt-0.5">Gérer vos préférences</p>
         </div>
 
-        <nav className="flex flex-col gap-1.5">
+        <nav className="flex flex-col gap-1">
           {ONGLETS.map((o) => {
             const actif = onglet === o.id
             return (
@@ -167,7 +167,7 @@ export function Parametres({
                 key={o.id}
                 type="button"
                 onClick={() => setOnglet(o.id)}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-[0.8125rem] font-medium transition-all ${
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[0.8125rem] font-medium transition-all ${
                   actif
                     ? 'text-[var(--accent)] font-semibold shadow-xs'
                     : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)]'
@@ -177,16 +177,16 @@ export function Parametres({
                 }}
               >
                 <div
-                  className="flex h-8 w-8 flex-none items-center justify-center rounded-lg transition-colors"
+                  className="flex h-6 w-6 flex-none items-center justify-center rounded-md transition-colors"
                   style={{
                     background: actif ? 'var(--accent)' : 'var(--sunk)',
                     color: actif ? '#ffffff' : 'var(--sub)',
                   }}
                 >
-                  <Icone nom={o.icone} taille="1.0625rem" />
+                  <Icone nom={o.icone} taille="0.9375rem" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[0.8125rem]">{o.label}</div>
+                  <div className="truncate text-[0.7813rem]">{o.label}</div>
                 </div>
               </button>
             )
@@ -195,12 +195,12 @@ export function Parametres({
       </aside>
 
       {/* Contenu de la sous-page active */}
-      <main className="flex-1 min-w-0 overflow-y-auto p-8 lg:p-10">
-        <div className="max-w-3xl mx-auto space-y-6 menu-apparait" key={onglet}>
+      <main className="flex-1 min-w-0 overflow-y-auto p-5 lg:p-6">
+        <div className="max-w-2xl mx-auto space-y-4 menu-apparait" key={onglet}>
           {/* Titre et description de la sous-page */}
-          <div className="border-b pb-4" style={{ borderColor: 'var(--line)' }}>
-            <h2 className="text-lg font-bold text-[var(--fg)]">{ongletCourant.label}</h2>
-            <p className="text-xs text-[var(--sub)] mt-0.5">{ongletCourant.description}</p>
+          <div className="border-b pb-3" style={{ borderColor: 'var(--line)' }}>
+            <h2 className="text-base font-bold text-[var(--fg)]">{ongletCourant.label}</h2>
+            <p className="text-[0.7188rem] text-[var(--sub)] mt-0.5">{ongletCourant.description}</p>
           </div>
 
           {/* 1. Onglet Compte & Profil */}
@@ -437,9 +437,6 @@ export function Parametres({
 
 /**
  * Carte de compte.
- *
- * Teintée de la couleur d'accent quand un compte est relié, neutre sinon : la
- * différence doit sauter aux yeux avant même de lire le texte.
  */
 function CarteCompte({
   melange,
@@ -474,35 +471,25 @@ function CarteCompte({
   const autres = comptes.filter((c) => !c.actif)
 
   return (
-    // Une colonne, et non une seule rangée qui se replie : le bloc dépliant y
-    // était un enfant du même `flex`, et même réduit à rien il consommait
-    // l'espacement — d'où seize pixels de trop sous la ligne, et un avatar qui
-    // ne tombait pas au milieu de la carte.
     <div
-      className="rounded-3xl p-6 relative overflow-hidden transition-all shadow-sm"
+      className="rounded-2xl p-4 relative overflow-hidden transition-all shadow-xs"
       style={{
         background: connecte ? 'var(--card)' : 'var(--sunk)',
         border: '1px solid var(--line)',
       }}
     >
-      <div className="flex flex-wrap items-center gap-5">
+      <div className="flex flex-wrap items-center gap-3.5">
         <Avatar profil={profil} connecte={connecte} accent={accent} />
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="truncate text-[1.125rem] font-bold text-[var(--fg)]">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[0.9375rem] font-bold text-[var(--fg)]">
               {profil?.nom ?? (connecte ? 'Compte Google relié' : 'Aucun compte relié')}
             </span>
-            {connecte ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.6875rem] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Connecté
-              </span>
-            ) : null}
-            {connecte && profil?.photo && <LogoGoogle taille="1.125rem" />}
+            {connecte && profil?.photo && <LogoGoogle taille="1rem" />}
           </div>
           <div
-            className="selectionnable truncate pt-1 text-[0.8125rem] font-mono"
+            className="selectionnable truncate pt-0.5 text-[0.75rem] font-mono"
             style={{ color: 'var(--sub)' }}
           >
             {connecte
@@ -513,7 +500,7 @@ function CarteCompte({
           </div>
         </div>
 
-        <div className="flex flex-none items-center gap-2.5">
+        <div className="flex flex-none items-center gap-2">
           {connecte ? (
             <>
               <BoutonCarte onClick={onDeconnecter} disabled={enCours} icone="logout">
@@ -541,8 +528,6 @@ function CarteCompte({
         </div>
       </div>
 
-      {/* Toujours monté, replié par la grille : c'est ce qui permet à la
-          fermeture de s'animer au lieu de faire sauter tout ce qui suit. */}
       {connecte && (
         <div className="deplie w-full" data-ouvert={listeOuverte} aria-hidden={!listeOuverte}>
           <div>
@@ -575,10 +560,6 @@ function CarteCompte({
 
 /**
  * Liste des comptes déjà autorisés.
- *
- * Basculer ne repasse pas par Google : l'autorisation du compte visé est restée
- * dans le trousseau, la boîte se recharge immédiatement. « Retirer » lui rend
- * cette autorisation et l'efface — c'est irréversible, d'où la confirmation.
  */
 function ChoixDeCompte({
   autres,
@@ -599,21 +580,15 @@ function ChoixDeCompte({
   onOublierCompte: (adresse: string) => void
   melange: boolean
   onMelanger: () => void
-  /** Vrai à partir de deux comptes : à un seul, la vue mélangée montrerait
-   *  exactement la même chose que la boîte. */
   plusieurs: boolean
 }) {
   const [aRetirer, setARetirer] = useState<string | null>(null)
 
   return (
     <div
-      // La marge est ici, à l'intérieur du bloc qui se replie : posée sur la
-      // carte, elle subsisterait une fois la liste fermée.
-      className="mt-4 w-full rounded-xl border p-2"
-      style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+      className="mt-3 w-full rounded-xl border p-1.5"
+      style={{ background: 'var(--sunk)', borderColor: 'var(--line)' }}
     >
-      {/* La vue mélangée est un choix de compte, pas un réglage à part : c'est
-          ici qu'on vient pour décider quelle boîte on regarde. */}
       {plusieurs && (
         <>
           <button
@@ -621,108 +596,99 @@ function ChoixDeCompte({
             onClick={onMelanger}
             disabled={enCours || melange}
             aria-current={melange || undefined}
-            className="survolable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left disabled:opacity-100"
+            className="survolable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left disabled:opacity-100"
             style={melange ? { background: 'var(--accent-soft)' } : undefined}
           >
             <span
-              className="flex h-9 w-9 flex-none items-center justify-center rounded-full"
+              className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
               style={{ background: melange ? 'var(--card)' : 'var(--accent-soft)' }}
             >
-              <Icone nom="groups" taille="1.125rem" style={{ color: 'var(--accent-fg)' }} />
+              <Icone
+                nom="inbox"
+                taille="1rem"
+                style={{ color: melange ? 'var(--accent)' : 'inherit' }}
+              />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[0.8438rem] font-semibold">
+              <span className="block truncate text-[0.8125rem] font-semibold">
                 Tous les comptes
               </span>
-              <span className="block truncate text-[0.75rem]" style={{ color: 'var(--sub)' }}>
-                {melange
-                  ? 'Vue active'
-                  : `Réunit vos ${autres.length + 1} boîtes dans les mêmes pages`}
+              <span className="block truncate text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+                Vue réunie
               </span>
             </span>
             {melange && (
-              <Icone
-                nom="check_circle"
-                taille="1.0625rem"
-                rempli
-                style={{ color: 'var(--accent-fg)' }}
-              />
+              <span className="text-[0.6875rem] font-medium" style={{ color: 'var(--accent)' }}>
+                Active
+              </span>
             )}
           </button>
-          <div className="mx-2 my-1.5 border-t" style={{ borderColor: 'var(--line)' }} />
+          <div className="mx-2 my-1 border-t" style={{ borderColor: 'var(--line)' }} />
         </>
       )}
 
-      {autres.length === 0 ? (
-        <p className="px-3 py-2.5 text-[0.8125rem]" style={{ color: 'var(--sub)' }}>
-          Aucun autre compte enregistré. Ajoutez-en un : celui-ci restera
-          disponible, et vous pourrez passer de l'un à l'autre sans vous
-          reconnecter.
-        </p>
-      ) : (
-        autres.map((c) => (
-          <div key={c.adresse} className="flex items-center gap-2">
+      {autres.map((c) => (
+        <div key={c.adresse} className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onBasculer(c.adresse)}
+            disabled={enCours}
+            className="survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left disabled:opacity-40"
+          >
+            <Vignette photo={c.photo} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[0.8125rem] font-semibold">
+                {c.nom ?? c.adresse}
+              </span>
+              {c.nom && (
+                <span
+                  className="block truncate text-[0.6875rem]"
+                  style={{ color: 'var(--sub)' }}
+                >
+                  {c.adresse}
+                </span>
+              )}
+            </span>
+          </button>
+
+          {aRetirer === c.adresse ? (
+            <div className="flex flex-none items-center gap-1.5 pr-1">
+              <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+                Retirer ?
+              </span>
+              <BoutonTexte
+                onClick={() => {
+                  setARetirer(null)
+                  onOublierCompte(c.adresse)
+                }}
+                couleur="#C2410C"
+              >
+                Oui
+              </BoutonTexte>
+              <BoutonTexte onClick={() => setARetirer(null)}>Non</BoutonTexte>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={() => onBasculer(c.adresse)}
-              disabled={enCours}
-              className="survolable flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left disabled:opacity-40"
+              onClick={() => setARetirer(c.adresse)}
+              aria-label={`Retirer le compte ${c.adresse}`}
+              className="bouton bouton-icone flex-none rounded-lg p-1.5"
             >
-              <Vignette photo={c.photo} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[0.8438rem] font-semibold">
-                  {c.nom ?? c.adresse}
-                </span>
-                {c.nom && (
-                  <span
-                    className="block truncate text-[0.6875rem]"
-                    style={{ color: 'var(--sub)' }}
-                  >
-                    {c.adresse}
-                  </span>
-                )}
-              </span>
+              <Icone nom="delete" taille="0.9375rem" />
             </button>
+          )}
+        </div>
+      ))}
 
-            {aRetirer === c.adresse ? (
-              <div className="flex flex-none items-center gap-1.5 pr-1">
-                <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
-                  Retirer ce compte ?
-                </span>
-                <BoutonTexte
-                  onClick={() => {
-                    setARetirer(null)
-                    onOublierCompte(c.adresse)
-                  }}
-                  couleur="#C2410C"
-                >
-                  Oui
-                </BoutonTexte>
-                <BoutonTexte onClick={() => setARetirer(null)}>Non</BoutonTexte>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setARetirer(c.adresse)}
-                aria-label={`Retirer le compte ${c.adresse}`}
-                className="bouton bouton-icone flex-none rounded-lg p-2"
-              >
-                <Icone nom="delete" taille="1.0625rem" />
-              </button>
-            )}
-          </div>
-        ))
-      )}
-
-      <div className="border-t pt-2 mt-1" style={{ borderColor: 'var(--line)' }}>
+      <div className={`${autres.length > 0 || plusieurs ? 'border-t pt-1.5 mt-1' : ''}`} style={{ borderColor: 'var(--line)' }}>
         <button
           type="button"
           onClick={onAjouterCompte}
           disabled={enCours || bloque}
-          className="survolable flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[0.8438rem] font-semibold disabled:opacity-40"
+          className="survolable flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[0.8125rem] font-semibold disabled:opacity-40"
           style={{ color: 'var(--accent-fg)' }}
         >
-          <Icone nom="login" taille="1.0625rem" />
+          <Icone nom="login" taille="0.9375rem" />
           Ajouter un compte Google
         </button>
       </div>
@@ -732,10 +698,6 @@ function ChoixDeCompte({
 
 /**
  * Vignette d'un compte de la liste.
- *
- * La photo vient de l'annuaire, pas du réseau : un compte inactif n'a pas de
- * jeton en cours, et la liste doit s'afficher instantanément. À défaut, le logo
- * Google dit au moins de quel genre de compte il s'agit.
  */
 function Vignette({ photo }: { photo: string | null }) {
   if (photo) {
@@ -743,7 +705,7 @@ function Vignette({ photo }: { photo: string | null }) {
       <img
         src={photo}
         alt=""
-        className="h-8 w-8 flex-none rounded-full object-cover"
+        className="h-7 w-7 flex-none rounded-full object-cover"
         style={{ background: 'var(--faint)' }}
       />
     )
@@ -751,10 +713,10 @@ function Vignette({ photo }: { photo: string | null }) {
 
   return (
     <span
-      className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
-      style={{ background: 'var(--sunk)' }}
+      className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+      style={{ background: 'var(--card)' }}
     >
-      <LogoGoogle taille="1rem" />
+      <LogoGoogle taille="0.875rem" />
     </span>
   )
 }
@@ -772,7 +734,7 @@ function BoutonTexte({
     <button
       type="button"
       onClick={onClick}
-      className="bouton flex-none rounded-full px-2.5 py-1 text-xs font-medium"
+      className="bouton flex-none rounded-full px-2 py-0.5 text-[0.6875rem] font-medium"
       style={{ color: couleur ?? 'var(--fg)' }}
     >
       {children}
@@ -780,7 +742,7 @@ function BoutonTexte({
   )
 }
 
-/** Bouton de la carte de compte : plus généreux que ceux des listes. */
+/** Bouton de la carte de compte. */
 function BoutonCarte({
   children,
   onClick,
@@ -799,9 +761,9 @@ function BoutonCarte({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex h-10 flex-none items-center justify-center gap-2 rounded-full px-5 text-xs font-medium`}
+      className={`bouton ${principal ? 'bouton-principal' : 'bouton-neutre'} inline-flex h-8.5 flex-none items-center justify-center gap-1.5 rounded-full px-3.5 text-xs font-medium`}
     >
-      {icone && <Icone nom={icone} taille="1.125rem" />}
+      {icone && <Icone nom={icone} taille="1rem" />}
       <span>{children}</span>
     </button>
   )
@@ -809,10 +771,6 @@ function BoutonCarte({
 
 /**
  * Avatar du compte.
- *
- * Photo Google si elle existe, initiales sur fond d'accent sinon. Les initiales
- * ne sont pas un pis-aller : beaucoup de comptes n'ont pas de photo, et c'est
- * ce que montre la maquette.
  */
 function Avatar({
   profil,
@@ -829,7 +787,7 @@ function Avatar({
         <img
           src={profil.photo}
           alt=""
-          className="h-14 w-14 rounded-full object-cover ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)] shadow-md"
+          className="h-11 w-11 rounded-full object-cover ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)] shadow-xs"
           style={{ background: 'var(--card)' }}
         />
       </div>
@@ -839,13 +797,13 @@ function Avatar({
   if (!connecte) {
     return (
       <div
-        className="flex h-14 w-14 flex-none items-center justify-center rounded-full border shadow-inner"
+        className="flex h-11 w-11 flex-none items-center justify-center rounded-full border shadow-inner"
         style={{
           background: 'var(--sunk)',
           borderColor: 'var(--line)',
         }}
       >
-        <Icone nom="person_off" taille="1.5rem" style={{ color: 'var(--sub)' }} />
+        <Icone nom="person_off" taille="1.25rem" style={{ color: 'var(--sub)' }} />
       </div>
     )
   }
@@ -854,10 +812,10 @@ function Avatar({
 
   return (
     <div
-      className="flex h-14 w-14 flex-none items-center justify-center rounded-full text-[1.125rem] font-bold shadow-md ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)]"
+      className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[0.9375rem] font-bold shadow-xs ring-2 ring-[var(--accent)]/40 ring-offset-2 ring-offset-[var(--card)]"
       style={{ background: accent, color: '#FFFFFF' }}
     >
-      {nom ? initiales(nom) : <LogoGoogle taille="1.625rem" />}
+      {nom ? initiales(nom) : <LogoGoogle taille="1.25rem" />}
     </div>
   )
 }
