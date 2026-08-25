@@ -96,21 +96,19 @@ export function Parametres({
                 key={o.id}
                 type="button"
                 onClick={() => setOnglet(o.id)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-left text-[0.8125rem] font-medium transition-all ${
+                className={`group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-[0.8438rem] font-medium transition-all duration-150 cursor-pointer ${
                   actif
-                    ? 'text-[var(--accent)] font-semibold shadow-xs'
-                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)]'
+                    ? 'text-[var(--accent)] font-semibold bg-[var(--accent-soft)] shadow-xs'
+                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)] hover:translate-x-0.5'
                 }`}
-                style={{
-                  background: actif ? 'var(--sunk)' : 'transparent',
-                }}
               >
                 <Icone
                   nom={o.icone}
                   taille="1.0625rem"
+                  className="transition-transform group-hover:scale-110"
                   style={{ color: actif ? 'var(--accent)' : 'inherit' }}
                 />
-                <span className="truncate text-[0.8125rem]">{o.label}</span>
+                <span className="truncate">{o.label}</span>
               </button>
             )
           })}
