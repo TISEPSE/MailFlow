@@ -76,9 +76,9 @@ export function CarteCompte({
                 principal
                 onClick={() => setListeOuverte((o) => !o)}
                 disabled={enCours || bloque}
-                icone={listeOuverte ? 'close' : 'person'}
+                icone={listeOuverte ? 'close' : 'add'}
               >
-                {listeOuverte ? 'Fermer' : 'Changer de compte'}
+                {listeOuverte ? 'Fermer' : 'Ajouter un compte'}
               </BoutonCarte>
             </>
           ) : (
