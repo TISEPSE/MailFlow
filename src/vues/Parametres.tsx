@@ -96,17 +96,26 @@ export function Parametres({
                 key={o.id}
                 type="button"
                 onClick={() => setOnglet(o.id)}
-                className={`group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-[0.8438rem] font-medium transition-all duration-150 cursor-pointer ${
-                  actif
-                    ? 'text-[var(--accent)] font-semibold bg-[var(--accent-soft)] shadow-xs'
-                    : 'text-[var(--sub)] hover:text-[var(--fg)] hover:bg-[var(--sunk)] hover:translate-x-0.5'
-                }`}
+                className="group relative flex h-10 w-full items-center gap-3 rounded-full px-3.5 text-left text-[0.8438rem] font-medium transition-all duration-150 hover:brightness-95 cursor-pointer"
+                style={{
+                  background: actif ? 'var(--selection)' : 'transparent',
+                  color: actif ? 'var(--accent-fg)' : 'var(--fg)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!actif) {
+                    e.currentTarget.style.background = 'color-mix(in oklab, var(--accent) 12%, var(--card))'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!actif) {
+                    e.currentTarget.style.background = 'transparent'
+                  }
+                }}
               >
                 <Icone
                   nom={o.icone}
-                  taille="1.0625rem"
-                  className="transition-transform group-hover:scale-110"
-                  style={{ color: actif ? 'var(--accent)' : 'inherit' }}
+                  taille="1.125rem"
+                  style={{ color: actif ? 'var(--accent-fg)' : 'var(--sub)' }}
                 />
                 <span className="truncate">{o.label}</span>
               </button>
@@ -189,6 +198,10 @@ export function Parametres({
                     />
                   </div>
                 </Reglage>
+              </Bloc>
+
+              <Bloc titre="Données locales">
+                <CacheDisque onErreur={onErreur} onEfface={onToutEffacer} />
               </Bloc>
             </div>
           )}
@@ -291,10 +304,6 @@ export function Parametres({
             <div className="space-y-5">
               <Bloc titre="Synthèses & Modèle IA">
                 <ResumesIA onErreur={onErreur} />
-              </Bloc>
-
-              <Bloc titre="Gestion des données">
-                <CacheDisque onErreur={onErreur} onEfface={onToutEffacer} />
               </Bloc>
             </div>
           )}
