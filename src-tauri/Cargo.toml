@@ -1,6 +1,6 @@
 [package]
 name = "mailflow"
-version = "0.1.9"
+version = "0.1.10"
 description = "Client email de bureau qui automatise le tri de la boite Gmail"
 authors = ["MailFlow"]
 license = "MIT"

@@ -141,6 +141,11 @@ jobs:
             file \
             patchelf
 
+      - name: Outils de packaging macOS (dmgbuild)
+        if: startsWith(matrix.plateforme, 'macos')
+        run: |
+          pip3 install --break-system-packages dmgbuild ds-store || pip3 install dmgbuild ds-store || true
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
