@@ -339,10 +339,12 @@ export default function App() {
       setReglesParCompte(
         Object.fromEntries(jeux.map((j) => [j.compte, j.regles.automations])),
       )
-      setComptes(connus)
       if (!sante.compteConnecte) {
         setProfil(null)
         setPremierReleve(false)
+        setComptes([])
+      } else {
+        setComptes(connus)
       }
       return sante
     } catch (e) {
@@ -407,8 +409,10 @@ export default function App() {
    * ce qui passe pendant qu'elle se repose.
    */
   const idsDesNewsletters = useRef<string[]>([])
+  const boiteRef = useRef<MessageAffiche[]>([])
   useEffect(() => {
     idsDesNewsletters.current = idsNewsletters(boite)
+    boiteRef.current = boite
   }, [boite])
 
   const relever = useCallback(async () => {
@@ -681,8 +685,13 @@ export default function App() {
       return
     }
 
+    if (rapport.enFile === 0) {
+      syntheseDemandee.current = null
+      void rafraichirLaSynthese(messages)
+    }
+
     annoncer(...phraseDuRapport(rapport))
-  }, [boite, annoncer, resumerLesNewsletters])
+  }, [boite, annoncer, resumerLesNewsletters, rafraichirLaSynthese])
 
   /**
    * Résume une seule publication, depuis sa carte.
@@ -717,12 +726,14 @@ export default function App() {
           // et il n'y a rien à dire — soit elle n'a pas un mot à envoyer, et
           // c'est la carte qui le dit désormais, à sa place.
           await relireLesResumes(idsDesNewsletters.current)
+          syntheseDemandee.current = null
+          void rafraichirLaSynthese(boite)
         }
       } catch (e) {
         annoncer(messageDErreur(e), true)
       }
     },
-    [annoncer, relireLesResumes],
+    [annoncer, relireLesResumes, boite, rafraichirLaSynthese],
   )
 
   /** Ouvre la vue mélangée : la réunion des relevés de tous les comptes. */
@@ -908,17 +919,14 @@ export default function App() {
         // deux-là ne valent pas une fin.
         if (avancement.total > 0 && avancement.faits >= avancement.total) {
           syntheseDemandee.current = null
-          setSynthese({ quoi: 'chargement' })
+          void rafraichirLaSynthese(boiteRef.current)
         }
       }),
     ]
     return () => {
       for (const arret of arrets) void arret.then((f) => f())
     }
-  // `relireLesResumes` ne dépend de rien : son identité ne change jamais, et
-  // l'écoute n'est donc posée qu'une fois. La citer ici satisfait la règle sans
-  // rien reposer — une écoute qui se réinstalle perd ce qui passe entre-temps.
-  }, [relireLesResumes])
+  }, [relireLesResumes, rafraichirLaSynthese])
 
   useEffect(() => {
     void rafraichir().then(async (sante) => {
@@ -1563,12 +1571,16 @@ export default function App() {
                 repliee ? 'justify-center px-0 h-11 w-11 mx-auto' : 'px-2.5 text-left h-12'
               }`}
               title={
-                compteAffiche === TOUS_LES_COMPTES
+                !etat?.compteConnecte
+                  ? 'Aucun compte connecté'
+                  : compteAffiche === TOUS_LES_COMPTES
                   ? 'Toutes vos boîtes réunies'
                   : (profil?.adresse ?? undefined)
               }
             >
-              {compteAffiche === TOUS_LES_COMPTES ? (
+              {!etat?.compteConnecte ? (
+                <AvatarCompte profil={null} connecte={false} />
+              ) : compteAffiche === TOUS_LES_COMPTES ? (
                 <span
                   className="flex h-8 w-8 flex-none items-center justify-center rounded-full"
                   style={{ background: 'var(--accent-soft)' }}
@@ -1576,24 +1588,27 @@ export default function App() {
                   <Icone nom="groups" taille="1.125rem" style={{ color: 'var(--accent-fg)' }} />
                 </span>
               ) : (
-                <AvatarCompte profil={profil} connecte={etat?.compteConnecte ?? false} />
+                <AvatarCompte profil={profil} connecte={true} />
               )}
               {!repliee && (
                 <>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-semibold">
-                      {compteAffiche === TOUS_LES_COMPTES
+                      {!etat?.compteConnecte
+                        ? 'Non connecté'
+                        : compteAffiche === TOUS_LES_COMPTES
                         ? 'Tous les comptes'
-                        : (profil?.nom ??
-                          (etat?.compteConnecte ? 'Compte Google' : 'Non connecté'))}
+                        : (profil?.nom ?? 'Compte Google')}
                     </span>
                     <span
                       className="block truncate text-[0.6875rem]"
                       style={{ color: 'var(--sub)' }}
                     >
-                      {compteAffiche === TOUS_LES_COMPTES
+                      {!etat?.compteConnecte
+                        ? 'aucun compte relié'
+                        : compteAffiche === TOUS_LES_COMPTES
                         ? `${comptes.length} boîtes réunies`
-                        : (profil?.adresse ?? 'aucun compte relié')}
+                        : (profil?.adresse ?? 'boîte active')}
                     </span>
                   </span>
                   <Icone

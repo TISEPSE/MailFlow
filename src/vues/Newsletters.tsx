@@ -189,6 +189,18 @@ export function Newsletters({
   /** La publication dont le résumé est en vol, pour n'animer que sa carte. */
   const [enCoursDeResume, setEnCoursDeResume] = useState<string | null>(null)
 
+  const [enLancementAnalyse, setEnLancementAnalyse] = useState(false)
+
+  const gererAnalyserTout = async () => {
+    if (!onAnalyser || enLancementAnalyse || avancementResumes) return
+    setEnLancementAnalyse(true)
+    try {
+      await onAnalyser()
+    } finally {
+      setEnLancementAnalyse(false)
+    }
+  }
+
   const resumerCeGroupe = async (groupe: GroupeNewsletters) => {
     if (!onResumerGroupe || enCoursDeResume) return
     setEnCoursDeResume(groupe.cle)
@@ -251,14 +263,17 @@ export function Newsletters({
   if (chargement) return <SqueletteListe lignes={4} />
   if (!messages.length) return <Vide {...vide} />
 
+  const analyseEnCours = Boolean(avancementResumes) || enLancementAnalyse
+
   return (
     <div className="flex-1 overflow-y-auto anim-entree">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-6">
         <Synthese
           groupes={groupes}
           logos={logos}
-          onAnalyser={onAnalyser}
+          onAnalyser={onAnalyser ? gererAnalyserTout : undefined}
           avancement={attente}
+          enCoursDAnalyse={analyseEnCours}
           onArreter={onArreterResumes}
           synthese={synthese ?? { quoi: 'chargement' }}
           etiquettes={etiquettes}
@@ -279,36 +294,34 @@ export function Newsletters({
           className="grid grid-cols-1 gap-x-4 lg:grid-cols-2"
           style={{ gridAutoRows: `${PAS_MOSAIQUE}px` }}
         >
-          {affiches.map((groupe) => (
-            <Cellule key={groupe.cle}>
-            <CarteGroupe
-              groupe={groupe}
-              // Le rang vient de la liste entière, et non de la liste filtrée :
-              // une carte doit garder sa couleur quand une étiquette en retire
-              // d'autres, sinon toute la grille change de teinte à chaque clic
-              // et l'on croit voir d'autres publications.
-              rang={groupes.indexOf(groupe)}
-              logos={logos}
-              onVoir={(m) => {
-                setOuvert(m)
-                onOuvrir(m.id)
-              }}
-              onArchiver={onArchiver}
-              onSupprimer={onSupprimer}
-              onResumer={onResumerGroupe && (() => void resumerCeGroupe(groupe))}
-              // Pendant une analyse d'ensemble, les publications qui n'ont pas
-              // encore de résumé respirent : le nombre de cartes qui bougent
-              // décroît à mesure que le travail avance, ce qui dit l'avancement
-              // là où il se passe plutôt qu'au sommet de la page.
-              resumeEnCours={
-                enCoursDeResume === groupe.cle ||
-                (Boolean(attente) && !resumes?.[groupe.messages[0]?.id ?? ''])
-              }
-              resumes={resumes}
-              sansTexte={sansTexte}
-            />
-            </Cellule>
-          ))}
+          {affiches.map((groupe) => {
+            const teteId = groupe.messages[0]?.id ?? ''
+            const aDejaResume = Boolean(resumes?.[teteId])
+            const estMuette = Boolean(sansTexte?.has(teteId))
+            const groupeEnResume =
+              enCoursDeResume === groupe.cle ||
+              (analyseEnCours && !aDejaResume && !estMuette)
+
+            return (
+              <Cellule key={groupe.cle}>
+                <CarteGroupe
+                  groupe={groupe}
+                  rang={groupes.indexOf(groupe)}
+                  logos={logos}
+                  onVoir={(m) => {
+                    setOuvert(m)
+                    onOuvrir(m.id)
+                  }}
+                  onArchiver={onArchiver}
+                  onSupprimer={onSupprimer}
+                  onResumer={onResumerGroupe && (() => void resumerCeGroupe(groupe))}
+                  resumeEnCours={groupeEnResume}
+                  resumes={resumes}
+                  sansTexte={sansTexte}
+                />
+              </Cellule>
+            )
+          })}
         </div>
       </div>
 
@@ -364,6 +377,7 @@ function Synthese({
   logos,
   onAnalyser,
   avancement,
+  enCoursDAnalyse: analyseActive = false,
   onArreter,
   synthese,
   etiquettes,
@@ -376,6 +390,7 @@ function Synthese({
   onAnalyser?: () => void | Promise<void>
   /** Avancement de l'analyse en cours, ou `null` quand elle ne tourne pas. */
   avancement: AvancementResumes | null
+  enCoursDAnalyse?: boolean
   onArreter?: () => void
   synthese: EtatSynthese
   /** Celles qui retiennent au moins une publication. Voir `etiquettesUtiles`. */
@@ -384,7 +399,7 @@ function Synthese({
   onEtiquette: (e: string | null) => void
 }) {
   const [enLancement, setEnLancement] = useState(false)
-  const enCoursDAnalyse = Boolean(avancement) || enLancement
+  const enCoursDAnalyse = Boolean(avancement) || enLancement || analyseActive
 
   const sources = groupes.slice(0, 6)
   const numeros = groupes.reduce((n, g) => n + g.messages.length, 0)
@@ -575,7 +590,11 @@ function Synthese({
           ce qui se passait ni sur ce qu'il aurait fallu faire — on attendait
           donc devant, parfois longtemps, pour rien. */}
       {points.length === 0 && !enCoursDAnalyse && (
-        <SansSynthese etat={synthese} onAnalyser={onAnalyser && gererAnalyser} />
+        <SansSynthese
+          etat={synthese}
+          onAnalyser={onAnalyser && gererAnalyser}
+          enCoursDAnalyse={enCoursDAnalyse}
+        />
       )}
 
       {points.length > 0 && (
@@ -663,10 +682,12 @@ function Synthese({
 function SansSynthese({
   etat,
   onAnalyser,
+  enCoursDAnalyse = false,
 }: {
   etat: EtatSynthese
   /** Absent quand la page ne sait pas lancer l'analyse. */
   onAnalyser?: () => void
+  enCoursDAnalyse?: boolean
 }) {
   if (etat.quoi === 'chargement') {
     return (
@@ -737,12 +758,18 @@ function SansSynthese({
             compact
             icone={etat.quoi === 'aucun_resume' ? 'auto_awesome' : 'refresh'}
             onClick={onAnalyser}
+            enAttente={enCoursDAnalyse}
+            disabled={enCoursDAnalyse}
           >
             {/* « Analyser » quand rien n'a encore été fait ; « Réessayer »
                 quand quelque chose a été tenté et n'a pas abouti. Le mot dit
                 lequel des deux, sans quoi on ne sait pas si l'on répète ou si
                 l'on commence. */}
-            {etat.quoi === 'aucun_resume' ? 'Analyser' : 'Réessayer'}
+            {enCoursDAnalyse
+              ? 'Traitement...'
+              : etat.quoi === 'aucun_resume'
+              ? 'Analyser'
+              : 'Réessayer'}
           </Bouton>
         </span>
       )}
@@ -1049,10 +1076,15 @@ function CarteGroupe({
           rien ne prétend mesurer : la carte dit seulement qu'elle travaille, et
           son texte reste lisible pendant ce temps. */}
       <div
-        className={`carte-survolable relative flex flex-col overflow-hidden rounded-2xl border ${
-          resumeEnCours ? 'carte-en-resume mouvement-utile' : ''
+        className={`carte-survolable relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 ${
+          resumeEnCours
+            ? 'carte-en-resume mouvement-utile ring-2 ring-[var(--accent)]/50 shadow-md shadow-[var(--accent)]/10'
+            : ''
         }`}
-        style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+        style={{
+          borderColor: resumeEnCours ? 'var(--accent)' : 'var(--line)',
+          background: 'var(--card)',
+        }}
         aria-busy={resumeEnCours}
       >
         <div className="flex items-center gap-2.5 px-4 pt-4">
@@ -1119,11 +1151,22 @@ function CarteGroupe({
           key={montreLeResume ? 'resume' : courant.id}
           className="glisse-entre px-4 pt-3"
         >
-          {/* Le résumé du modèle prend exactement la place de la ligne
-              composée localement : même emplacement, même hauteur, même
-              graisse. La page ne bouge pas d'un pixel selon qu'il est là ou
-              non — c'est ce qui rend l'IA réellement optionnelle. */}
-          {montreLeResume && resume ? (
+          {resumeEnCours && !resume ? (
+            <div className="space-y-2.5 py-1">
+              <span
+                className="inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold animate-pulse"
+                style={{ background: 'var(--accent-soft)', color: 'var(--accent-fg)' }}
+              >
+                <Icone nom="auto_awesome" taille="0.8125rem" className="animate-spin" rempli />
+                <span>Résumé en cours par l'IA…</span>
+              </span>
+              <div className="space-y-1.5 pt-0.5">
+                <div className="mouvement-utile squelette h-3 w-5/6 rounded" />
+                <div className="mouvement-utile squelette h-3 w-full rounded" />
+                <div className="mouvement-utile squelette h-3 w-3/4 rounded" />
+              </div>
+            </div>
+          ) : montreLeResume && resume ? (
             <>
               {/* Ce repère porte la couleur de la carte — celle de sa pastille.
                   Il dit deux choses d'un coup d'œil : que la phrase qui suit

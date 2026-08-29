@@ -350,6 +350,30 @@ pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<E
             .inspect_err(|e| log::warn!("lecture du trousseau impossible : {e}"))
             .unwrap_or(false);
 
+    if !compte_connecte && trousseau_disponible {
+        // Nettoyage de cohérence : si aucun compte n'est connecté et qu'aucun jeton n'est dans le trousseau,
+        // on s'assure que l'annuaire local est vierge (pas de comptes fantômes après réinstallation).
+        let mut annuaire = comptes::charger(&dossier);
+        if annuaire.actif.is_some() || !annuaire.connus.is_empty() {
+            let mut a_conserver = Vec::new();
+            let store = KeyringStore::new();
+            for compte in &annuaire.connus {
+                if let Ok(Some(_)) = store.get(&comptes::cle_compte(&compte.adresse)) {
+                    a_conserver.push(compte.clone());
+                }
+            }
+            if a_conserver.is_empty() {
+                annuaire.actif = None;
+                annuaire.connus.clear();
+                let _ = comptes::ecrire(&dossier, &annuaire);
+            } else if annuaire.connus.len() != a_conserver.len() {
+                annuaire.actif = None;
+                annuaire.connus = a_conserver;
+                let _ = comptes::ecrire(&dossier, &annuaire);
+            }
+        }
+    }
+
     let client_google_configure = etat.client.is_some();
 
     log::info!(
