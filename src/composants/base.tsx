@@ -80,7 +80,7 @@ export function Pastille({
   squircle?: boolean
 }) {
   const radius = squircle ? `calc(${taille} * 0.32)` : '9999px'
-  const contour = squircle ? '2px solid var(--carte, #FFFFFF)' : undefined
+  const contour = squircle ? '0.125rem solid var(--carte, #FFFFFF)' : undefined
 
   if (logo) {
     return (
@@ -284,7 +284,7 @@ export function Toasts({
               <Icone nom="close" taille="0.875rem" />
             </button>
           </div>
-          <div className="h-[2px]" style={{ background: 'var(--faint)' }}>
+          <div className="h-[0.125rem]" style={{ background: 'var(--faint)' }}>
             <div
               className="toast-decompte h-full"
               style={{ background: t.erreur ? '#d93025' : 'var(--accent)' }}
@@ -423,7 +423,7 @@ export type TailleModale = 'normale' | 'moyenne' | 'grande'
 const LARGEUR_MODALE: Record<TailleModale, string> = {
   normale: 'max-w-2xl',
   moyenne: 'max-w-5xl',
-  grande: 'max-w-[min(1500px,94vw)]',
+  grande: 'max-w-[min(93.75rem,94vw)]',
 }
 
 export function Modale({
@@ -481,8 +481,8 @@ export function Modale({
         background: 'rgb(0 0 0 / 40%)',
         // Le flou détache la fenêtre de la page sans l'effacer : on voit encore
         // où l'on est, sans pouvoir lire ce qui est derrière.
-        backdropFilter: 'blur(10px) saturate(120%)',
-        WebkitBackdropFilter: 'blur(10px) saturate(120%)',
+        backdropFilter: 'blur(0.625rem) saturate(120%)',
+        WebkitBackdropFilter: 'blur(0.625rem) saturate(120%)',
       }}
     >
       <div
@@ -570,7 +570,7 @@ export function Modale({
  * se resserre par paliers sur une fenêtre étroite, ce qu'une constante ne
  * savait pas faire.
  */
-export const HAUTEUR_LIGNE = 88
+export const HAUTEUR_LIGNE = '5.5rem'
 
 /**
  * Squelette d'une liste de messages.
@@ -958,7 +958,7 @@ export function Selecteur<T extends string>({
           style={{
             background: 'var(--card)',
             borderColor: 'var(--line)',
-            boxShadow: '0 12px 32px rgb(0 0 0 / 22%)',
+            boxShadow: '0 0.75rem 2rem rgb(0 0 0 / 22%)',
           }}
         >
           {valeurs.map((v) => {

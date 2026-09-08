@@ -416,7 +416,7 @@ export function Archives({
             // déplacé la tuile ou la table.
             backgroundImage:
               'radial-gradient(circle, color-mix(in srgb, var(--sub) 22%, transparent) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
+            backgroundSize: '1.75rem 1.75rem',
           }}
         >
           {tasVivants.map((id) => {
@@ -882,12 +882,12 @@ function contourDeVisee(vise: boolean, attrape = false) {
   if (vise) {
     return {
       borderColor: 'var(--accent)',
-      boxShadow: '0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)',
+      boxShadow: '0 0 0 0.1875rem color-mix(in srgb, var(--accent) 30%, transparent)',
     }
   }
   return {
     borderColor: 'var(--line)',
-    boxShadow: attrape ? '0 18px 40px rgb(0 0 0 / 26%)' : 'var(--shadow)',
+    boxShadow: attrape ? '0 1.125rem 2.5rem rgb(0 0 0 / 26%)' : 'var(--shadow)',
   }
 }
 

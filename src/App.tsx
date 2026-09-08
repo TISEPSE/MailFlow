@@ -328,7 +328,7 @@ export default function App() {
   // fenêtre n'a plus la place de la porter dépliée. Le réglage n'est pas
   // touché : la barre se redéploie telle qu'il l'avait laissée dès que la
   // fenêtre s'élargit.
-  const etroite = useFenetreEtroite(820)
+  const etroite = useFenetreEtroite(51.25)
   const repliee = prefs.barreRepliee || etroite
 
   const [enCours, setEnCours] = useState(false)
@@ -2060,7 +2060,7 @@ function MenuDeCompte({
         sortant ? 'menu-disparait' : 'menu-apparait'
       } absolute bottom-full left-2 z-40 mb-2 rounded-2xl border p-2`}
       style={{
-        width: 280,
+        width: '17.5rem',
         background: 'var(--card)',
         borderColor: 'var(--line)',
         boxShadow: 'var(--shadow-lg)',

@@ -126,12 +126,19 @@ export function usePreferences() {
  * `matchMedia` plutôt qu'une écoute de `resize` : le navigateur ne prévient
  * qu'au franchissement du seuil, là où `resize` réveillerait React à chaque
  * pixel d'un glissement de bordure.
+ *
+ * Le seuil s'exprime en `em`, l'unité des points de rupture de la feuille de
+ * styles.
  */
 export function useFenetreEtroite(seuil: number) {
   const [etroite, setEtroite] = useState(false)
 
   useEffect(() => {
-    const requete = window.matchMedia(`(max-width: ${seuil}px)`)
+    // Le seuil est en `em`, comme les points de rupture de la feuille de
+    // styles : en pixels, les deux se désaccorderaient dès que la police du
+    // navigateur change de taille, et la barre se replierait sans que la
+    // colonne voisine se resserre.
+    const requete = window.matchMedia(`(max-width: ${seuil}em)`)
     setEtroite(requete.matches)
 
     const suivre = (e: MediaQueryListEvent) => setEtroite(e.matches)

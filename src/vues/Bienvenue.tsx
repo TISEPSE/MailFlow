@@ -146,10 +146,10 @@ export function Bienvenue({
               onClick={() => aller(i)}
               className="point rounded-full"
               // La largeur distingue l'écran courant : un simple changement de
-              // couleur ne se voit pas sur un point de six pixels.
+              // couleur ne se voit pas sur un point aussi petit.
               style={{
-                width: i === rang ? 22 : 6,
-                height: 6,
+                width: i === rang ? '1.375rem' : '0.375rem',
+                height: '0.375rem',
                 background: i === rang ? solide : 'var(--piste)',
               }}
             />

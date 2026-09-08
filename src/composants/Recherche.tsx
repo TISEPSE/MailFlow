@@ -82,7 +82,7 @@ export function Recherche({
       // fenêtres de la même application se remarquent, et rien ne le justifie.
       style={{
         background: 'rgb(0 0 0 / 40%)',
-        backdropFilter: 'blur(10px) saturate(120%)',
+        backdropFilter: 'blur(0.625rem) saturate(120%)',
       }}
     >
     <div

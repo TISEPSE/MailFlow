@@ -464,8 +464,9 @@ export function Courrier({
  * que la sélection est vidée : une barre permanente coûterait une bande de
  * hauteur à tout le monde pour un geste que la plupart ne feront jamais.
  *
- * Elle rappelle le raccourci plutôt que de le laisser deviner — un Ctrl+clic
- * qui n'annonce pas Ctrl+A ne se découvre pas.
+ * Elle rappelle le raccourci plutôt que de le laisser deviner : cliquer les
+ * pastilles une à une se voit, Ctrl+A pour toutes les cocher ne s'annonce nulle
+ * part ailleurs.
  */
 function BarreSelection({
   nombre,

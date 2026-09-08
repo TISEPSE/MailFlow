@@ -6,7 +6,7 @@
  * date. Pas de corps de message — c'est du HTML écrit par un inconnu, et il ne
  * traversera l'IPC que le jour où une `iframe` en bac à sable saura l'afficher.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   HAUTEUR_LIGNE,
   Icone,
@@ -70,42 +70,27 @@ export function ListeMessages({
         const compteRecepteur = comptes?.find((c) => c.adresse === m.compte)
         const coche = coches?.has(m.id) ?? false
         return (
-          <button
+          // Deux boutons frères plutôt qu'un seul : la pastille coche, le reste
+          // ouvre. Imbriqués, ils ne seraient ni du HTML valide ni atteignables
+          // au clavier ; côte à côte, chacun s'annonce pour ce qu'il fait.
+          //
+          // Aucun fond en style en ligne : il l'emporterait sur les règles de
+          // survol et de sélection, qui sont dans la feuille de styles.
+          //
+          // La hauteur est fixe et partagée avec l'en-tête de lecture : un
+          // sujet court et un sujet long donnaient sinon des tuiles de hauteurs
+          // différentes, et le trait de la première ne tombait sur rien.
+          //
+          // Pas de liseré de couleur : ni pour le compte en vue mélangée, ni
+          // pour la coche. Le fond bleuté et la pastille retournée disent déjà
+          // qu'un message est coché ; un trait de plus n'apprenait rien.
+          <div
             key={m.id}
-            type="button"
-            // Ctrl (ou Cmd) coche au lieu d'ouvrir : c'est le geste attendu
-            // partout pour désigner plusieurs éléments, et il n'entre pas en
-            // conflit avec la lecture, qui reste le clic simple.
-            onClick={(e) => {
-              if ((e.ctrlKey || e.metaKey) && onBasculer) {
-                onBasculer(m.id)
-                return
-              }
-              onSelect(m.id)
-            }}
-            aria-current={choisi}
+            data-choisi={choisi || undefined}
             data-neuf={neuf}
             data-coche={coche || undefined}
             className="tuile relative flex flex-none items-center gap-2.5 overflow-hidden border-b px-3 text-left"
-            // Aucun fond en style en ligne : il l'emporterait sur les règles de
-            // survol et de sélection, qui sont dans la feuille de styles.
-            //
-            // La hauteur est fixe et partagée avec l'en-tête de lecture : un
-            // sujet court et un sujet long donnaient sinon des tuiles de
-            // hauteurs différentes, et le trait de la première ne tombait sur
-            // rien.
-            // Pas de liseré de couleur en vue mélangée : la pastille du compte,
-            // en haut à droite de la tuile, suffit à dire d'où vient le
-            // message. Deux repères pour une même information encombraient la
-            // colonne sans rien apprendre de plus.
-            //
-            // Le seul liseré qui subsiste marque la coche, et il est passager :
-            // il disparaît dès que la sélection est vidée.
-            style={{
-              borderColor: 'var(--line)',
-              height: HAUTEUR_LIGNE,
-              boxShadow: coche ? 'inset 3px 0 0 0 var(--accent)' : undefined,
-            }}
+            style={{ borderColor: 'var(--line)', height: HAUTEUR_LIGNE }}
           >
             {/* La pastille de non-lu passe en repère absolu : en colonne, elle
                 coûtait une vingtaine de pixels à toutes les tuiles, y compris
@@ -116,26 +101,48 @@ export function ListeMessages({
                 style={{ background: 'var(--accent)' }}
               />
             )}
-            {/* La pastille cède la place à une coche : c'est le repère le plus
-                lisible, et il occupe exactement la même surface, si bien que
-                rien ne se déplace quand on coche. */}
-            {coche ? (
-              <span className="flex flex-none items-center justify-center">
-                <Icone
-                  nom="check_circle"
-                  taille="1.875rem"
-                  rempli
-                  style={{ color: 'var(--accent)' }}
-                />
+            {/* La pastille se retourne comme une carte : la coche est à son
+                dos, au même endroit et de la même taille. Le mouvement dit ce
+                que le clic vient de faire — c'est le même objet qui change
+                d'état, non un repère qui en remplace un autre.
+
+                Les deux faces sont toujours rendues : ce qu'on n'affiche pas,
+                on ne peut pas le retourner. */}
+            <button
+              type="button"
+              onClick={() => onBasculer?.(m.id)}
+              disabled={!onBasculer}
+              aria-pressed={coche}
+              aria-label={`Sélectionner le message de ${m.nom}`}
+              title={coche ? 'Retirer de la sélection' : 'Sélectionner ce message'}
+              className="zone-de-coche flex-none rounded-full"
+            >
+              <span className="pastille-pivot">
+                <span className="pastille-face">
+                  <Pastille
+                    texte={initiales(m.nom)}
+                    fond={fond}
+                    couleur={encre}
+                    logo={logos[domaineDe(m.adresse)]}
+                  />
+                </span>
+                <span className="pastille-face pastille-dos">
+                  <Icone
+                    nom="check_circle"
+                    taille="1.875rem"
+                    rempli
+                    style={{ color: 'var(--accent)' }}
+                  />
+                </span>
               </span>
-            ) : (
-              <Pastille
-                texte={initiales(m.nom)}
-                fond={fond}
-                couleur={encre}
-                logo={logos[domaineDe(m.adresse)]}
-              />
-            )}
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelect(m.id)}
+              aria-current={choisi}
+              className="flex min-w-0 flex-1 items-center text-left"
+              style={{ height: HAUTEUR_LIGNE }}
+            >
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-2">
                 <span
@@ -152,8 +159,8 @@ export function ListeMessages({
                   <span
                     className="flex flex-none items-center justify-center rounded-full"
                     style={{
-                      width: 18,
-                      height: 18,
+                      width: '1.125rem',
+                      height: '1.125rem',
                       background: teinteDuCompte[0],
                       // Un anneau de la couleur du compte : la photo Google est
                       // ronde et neutre, et deux comptes se ressemblent vite.
@@ -192,7 +199,8 @@ export function ListeMessages({
                 {m.extrait}
               </span>
             </span>
-          </button>
+            </button>
+          </div>
         )
       })}
     </div>
@@ -204,6 +212,94 @@ export function ListeMessages({
  *
  * Il montre l'en-tête puis le corps du message, affiché dans un cadre isolé.
  */
+/**
+ * Le nom de l'expéditeur, et les gestes qu'on peut faire sur son message.
+ *
+ * Les boutons portent leur libellé tant qu'il y a la place, et tombent à
+ * l'icône seule quand il n'y en a plus. Le seuil n'est pas écrit d'avance :
+ * une largeur de fenêtre ne dit rien de la place réelle, qui dépend aussi de
+ * la barre de navigation, de la colonne des messages et du nombre de boutons —
+ * « Répondre à tous » n'apparaît pas sur un message adressé à vous seul. Un
+ * seuil fixe se trompait donc dans les deux sens : il laissait déborder ici, et
+ * repliait là où il restait un large vide.
+ *
+ * La barre se mesure donc elle-même. À chaque rendu et à chaque changement de
+ * largeur, on la remet en clair, on lit ce qu'elle occuperait ainsi, et on
+ * replie seulement si ça ne rentre pas. La décision est écrite directement
+ * dans le DOM plutôt que dans un état React : elle n'a rien à apprendre au
+ * reste de l'arbre, et un aller-retour de rendu se verrait.
+ */
+
+/**
+ * Place laissée au nom de l'expéditeur, qui ne doit jamais tomber à zéro.
+ *
+ * En `rem` comme le reste de la mise en page, mais convertie au moment de la
+ * mesure : on la compare à un `offsetWidth`, qui est en pixels réels. La
+ * réserve suit ainsi la taille de police de la racine — un nom écrit plus gros
+ * a besoin de plus de place, pas de la même.
+ */
+const RESERVE_DU_NOM = 4.5
+
+function enPixels(rem: number) {
+  const racine = parseFloat(getComputedStyle(document.documentElement).fontSize)
+  return rem * (Number.isFinite(racine) ? racine : 16)
+}
+
+function LigneDesGestes({
+  nom,
+  actions,
+}: {
+  nom: string
+  actions?: React.ReactNode
+}) {
+  const ligne = useRef<HTMLDivElement>(null)
+  const barre = useRef<HTMLSpanElement>(null)
+
+  const ajuster = useCallback(() => {
+    const cadre = ligne.current
+    const gestes = barre.current
+    if (!cadre || !gestes) return
+
+    // Toujours mesurer en clair : replié, la barre ne dit plus que sa taille
+    // repliée, et on ne saurait jamais qu'elle peut se rouvrir.
+    gestes.dataset.compact = 'false'
+    const naturelle = gestes.offsetWidth
+    const dispo = cadre.clientWidth - enPixels(RESERVE_DU_NOM)
+    gestes.dataset.compact = naturelle > dispo ? 'true' : 'false'
+  }, [])
+
+  // Avant peinture : la mesure en clair ne doit pas se voir passer à l'écran.
+  useLayoutEffect(ajuster)
+
+  useEffect(() => {
+    const cadre = ligne.current
+    if (!cadre) return
+
+    // On observe la ligne, dont la largeur ne dépend pas de la barre : replier
+    // les boutons rend de la place au nom, jamais au cadre. L'observation ne
+    // peut donc pas se relancer elle-même.
+    const oeil = new ResizeObserver(ajuster)
+    oeil.observe(cadre)
+    return () => oeil.disconnect()
+  }, [ajuster])
+
+  return (
+    <div ref={ligne} className="mt-1.5 flex items-center gap-2 pl-[2.5rem]">
+      <span className="min-w-0 flex-1 truncate text-[0.7812rem] font-semibold">
+        {nom}
+      </span>
+      {actions && (
+        <span
+          ref={barre}
+          className="barre-de-lecture flex flex-none items-center gap-2"
+        >
+          {actions}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function Lecture({
   message,
   corps,
@@ -238,7 +334,7 @@ export function Lecture({
   const [fond, encre] = palette(0)
 
   return (
-    <div className="panneau-de-lecture flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div
         className="selectionnable flex min-w-0 flex-none flex-col justify-center overflow-hidden border-b px-6"
         // Même hauteur qu'une tuile : les deux traits se répondent alors d'un
@@ -266,16 +362,7 @@ export function Lecture({
         {/* Le nom seul sur cette ligne : elle a une hauteur fixe, et une
             adresse entière n'y tiendrait pas sans être coupée. Les adresses
             sont plus bas, où elles ont la place de passer à la ligne. */}
-        <div className="mt-1.5 flex items-center gap-2 pl-[2.5rem]">
-          <span className="min-w-0 flex-1 truncate text-[0.7812rem] font-semibold">
-            {message.nom}
-          </span>
-          {actions && (
-            <span className="barre-de-lecture flex flex-none items-center gap-2">
-              {actions}
-            </span>
-          )}
-        </div>
+        <LigneDesGestes nom={message.nom} actions={actions} />
       </div>
 
       {/* `key` sur l'identifiant du message : chaque message rouvre le panneau
