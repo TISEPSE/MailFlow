@@ -318,13 +318,12 @@ textarea:focus-visible {
   }
 }
 
-/* Sous cette largeur, la barre de navigation ne garde que ses icônes, sans
-   toucher au réglage de l'utilisateur : c'est la fenêtre qui est trop
-   étroite, pas lui qui a demandé le repli. Le jeton suffit — la barre lit sa
-   largeur ici, et les libellés disparaissent avec la place. */
+/* Sous cette largeur, la barre de navigation ne garde que ses icônes. Le repli
+   se décide dans le JSX et non ici (`useFenetreEtroite`, même seuil de 820) :
+   une barre qu'on rétrécit sans replier son contenu laisse ses libellés et ses
+   pastilles de compteur déborder par-dessus la colonne voisine. */
 @media (max-width: 820px) {
   :root {
-    --largeur-nav: var(--largeur-nav-repliee);
     --largeur-liste: 244px;
   }
 }

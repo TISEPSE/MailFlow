@@ -116,6 +116,33 @@ export function usePreferences() {
 }
 
 /**
+ * Vrai tant que la fenêtre est plus étroite que le seuil.
+ *
+ * La barre de navigation ne peut pas se contenter de rétrécir : ses libellés,
+ * son bouton d'écriture et ses pastilles de compteur sont dessinés pour la
+ * version large et débordent dès qu'on leur retire la place. Il lui faut donc
+ * savoir qu'elle est à l'étroit, pas seulement être serrée.
+ *
+ * `matchMedia` plutôt qu'une écoute de `resize` : le navigateur ne prévient
+ * qu'au franchissement du seuil, là où `resize` réveillerait React à chaque
+ * pixel d'un glissement de bordure.
+ */
+export function useFenetreEtroite(seuil: number) {
+  const [etroite, setEtroite] = useState(false)
+
+  useEffect(() => {
+    const requete = window.matchMedia(`(max-width: ${seuil}px)`)
+    setEtroite(requete.matches)
+
+    const suivre = (e: MediaQueryListEvent) => setEtroite(e.matches)
+    requete.addEventListener('change', suivre)
+    return () => requete.removeEventListener('change', suivre)
+  }, [seuil])
+
+  return etroite
+}
+
+/**
  * Logos des expéditeurs, indexés par domaine.
  *
  * Cumulatifs : les logos déjà trouvés sont conservés d'un relevé à l'autre, et

@@ -26,7 +26,7 @@ import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
 import { archivesDuCompte } from './lib/table'
-import { useLogos, usePreferences, useToasts } from './lib/crochets'
+import { useFenetreEtroite, useLogos, usePreferences, useToasts } from './lib/crochets'
 import { autresQueMoi } from './lib/reponse'
 import { grouperNewsletters, phraseDuRapport } from './lib/newsletters'
 import type { GroupeNewsletters } from './lib/newsletters'
@@ -322,7 +322,14 @@ export default function App() {
   const boutonProfil = useRef<HTMLButtonElement>(null)
   const { logos, chercher: chercherLesLogos, oublier: oublierLesLogos } = useLogos()
 
-  const { sombre, accent, barreRepliee: repliee } = prefs
+  const { sombre, accent } = prefs
+
+  // La barre se replie sur décision de l'utilisateur, ou d'elle-même quand la
+  // fenêtre n'a plus la place de la porter dépliée. Le réglage n'est pas
+  // touché : la barre se redéploie telle qu'il l'avait laissée dès que la
+  // fenêtre s'élargit.
+  const etroite = useFenetreEtroite(820)
+  const repliee = prefs.barreRepliee || etroite
 
   const [enCours, setEnCours] = useState(false)
 
@@ -1366,16 +1373,20 @@ export default function App() {
                 Boîte de réception
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => regler({ barreRepliee: !repliee })}
-              aria-expanded={!repliee}
-              title={repliee ? 'Déplier la barre' : 'Replier la barre'}
-              aria-label={repliee ? 'Déplier la barre' : 'Replier la barre'}
-              className="bouton bouton-icone mx-auto h-9 w-9 flex-none rounded-full"
-            >
-              <Icone nom={repliee ? 'left_panel_open' : 'left_panel_close'} taille="1.125rem" />
-            </button>
+            {/* En fenêtre étroite le repli est subi, pas choisi : le bouton
+                ne pourrait que mentir sur ce qu'il fait, alors il s'efface. */}
+            {!etroite && (
+              <button
+                type="button"
+                onClick={() => regler({ barreRepliee: !repliee })}
+                aria-expanded={!repliee}
+                title={repliee ? 'Déplier la barre' : 'Replier la barre'}
+                aria-label={repliee ? 'Déplier la barre' : 'Replier la barre'}
+                className="bouton bouton-icone mx-auto h-9 w-9 flex-none rounded-full"
+              >
+                <Icone nom={repliee ? 'left_panel_open' : 'left_panel_close'} taille="1.125rem" />
+              </button>
+            )}
           </div>
 
           {/* Écrire vient avant lire. Le bouton est en haut de la barre et non
