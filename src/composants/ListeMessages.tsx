@@ -140,7 +140,7 @@ export function ListeMessages({
               <span className="flex items-baseline gap-2">
                 <span
                   className="min-w-0 flex-1 truncate text-[0.8438rem]"
-                  style={{ fontWeight: neuf ? 600 : 500 }}
+                  style={{ fontWeight: neuf ? 600 : 400 }}
                 >
                   {m.nom}
                 </span>
@@ -178,20 +178,17 @@ export function ListeMessages({
                     )}
                   </span>
                 )}
-                <span
-                  className="flex-none text-[0.6562rem]"
-                  style={{ color: 'var(--sub)' }}
-                >
+                <span className="tuile-second flex-none text-[0.6562rem]">
                   {heureCourte(m.date)}
                 </span>
               </span>
-              <span className="mt-0.5 block truncate text-[0.7812rem] font-medium">
+              <span
+                className="mt-0.5 block truncate text-[0.7812rem]"
+                style={{ fontWeight: neuf ? 500 : 400 }}
+              >
                 {m.sujet || '(sans objet)'}
               </span>
-              <span
-                className="mt-0.5 block truncate text-[0.75rem]"
-                style={{ color: 'var(--sub)' }}
-              >
+              <span className="tuile-second mt-0.5 block truncate text-[0.75rem]">
                 {m.extrait}
               </span>
             </span>

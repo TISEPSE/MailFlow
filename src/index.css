@@ -28,6 +28,11 @@
   --line: #e0e3e7;
   --fg: #1f1f1f;
   --sub: #5e5e5e;
+  /* Encres d'un message déjà lu : la même teinte que --fg et --sub, mais
+     nettement délavée. La graisse seule ne suffisait pas à dire « lu » ;
+     l'œil lit d'abord le contraste. */
+  --fg-lu: #7a7d80;
+  --sub-lu: #9aa0a6;
   --faint: #e9eef6;
   --selection: #d3e3fd;
   --accent: #0b57d0;
@@ -48,6 +53,8 @@
   --line: #3c4043;
   --fg: #e3e3e3;
   --sub: #a8aaad;
+  --fg-lu: #8e9295;
+  --sub-lu: #74787b;
   --faint: #2d2f31;
   --selection: #283548;
   --accent: #a8c7fa;
@@ -280,6 +287,24 @@ textarea:focus-visible {
 
 .tuile:hover {
   background: var(--faint);
+}
+
+/* Un message lu s'écrit en encre délavée.
+
+   La pastille et la graisse du nom disaient déjà « non lu », mais de trop
+   près : à l'échelle de la colonne, deux lignes de même noirceur se lisent
+   comme deux messages également neufs. Le contraste, lui, se voit sans
+   qu'on ait à comparer. */
+.tuile:not([data-neuf='true']) {
+  color: var(--fg-lu);
+}
+
+.tuile:not([data-neuf='true']) .tuile-second {
+  color: var(--sub-lu);
+}
+
+.tuile[data-neuf='true'] .tuile-second {
+  color: var(--sub);
 }
 
 /* Le survol d'un message neuf reste plus clair que celui d'un message lu :
