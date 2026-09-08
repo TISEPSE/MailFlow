@@ -421,9 +421,9 @@ export function Confirmation({
 export type TailleModale = 'normale' | 'moyenne' | 'grande'
 
 const LARGEUR_MODALE: Record<TailleModale, string> = {
-  normale: 'max-w-2xl',
-  moyenne: 'max-w-5xl',
-  grande: 'max-w-[min(93.75rem,94vw)]',
+  normale: 'max-w-xl',
+  moyenne: 'max-w-4xl',
+  grande: 'max-w-[min(85rem,90vw)]',
 }
 
 export function Modale({
