@@ -561,12 +561,15 @@ export function Modale({
 /**
  * Géométrie de la liste de messages.
  *
- * Ces deux valeurs sont partagées par la liste, son squelette et l'en-tête du
- * panneau de lecture. La hauteur surtout : c'est elle qui fait tomber le trait
- * sous la première tuile exactement sur celui qui souligne l'en-tête. Deux
- * réglages séparés dérivaient de quelques pixels, ce qui se voit.
+ * La hauteur est ici parce qu'elle est partagée par la liste, son squelette et
+ * l'en-tête du panneau de lecture : c'est elle qui fait tomber le trait sous la
+ * première tuile exactement sur celui qui souligne l'en-tête. Deux réglages
+ * séparés dérivaient de quelques pixels, ce qui se voit.
+ *
+ * La largeur, elle, est passée en feuille de styles (`--largeur-liste`) : elle
+ * se resserre par paliers sur une fenêtre étroite, ce qu'une constante ne
+ * savait pas faire.
  */
-export const LARGEUR_LISTE = 352
 export const HAUTEUR_LIGNE = 88
 
 /**
@@ -581,7 +584,7 @@ export function SqueletteListe({ lignes = 7 }: { lignes?: number }) {
     <div
       className="flex flex-none flex-col overflow-hidden border-r"
       style={{
-        width: LARGEUR_LISTE,
+        width: 'var(--largeur-liste)',
         background: 'var(--sunk)',
         borderColor: 'var(--line)',
       }}
@@ -855,7 +858,10 @@ export function Bouton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      title={titre}
+      // Le libellé peut disparaître sur une fenêtre étroite : à défaut
+      // d'infobulle explicite, c'est le texte du bouton qui la fournit, sans
+      // quoi l'icône seule resterait muette.
+      title={titre ?? (typeof children === 'string' ? children : undefined)}
       className={`bouton ${teintes[variante]} inline-flex ${
         compact ? 'h-8 px-3.5 text-xs' : 'h-9 px-4 text-xs'
       } flex-none items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap ${className}`}
@@ -868,7 +874,7 @@ export function Bouton({
           tourne={enAttente}
         />
       )}
-      <span className="inline-flex items-center">{children}</span>
+      <span className="libelle-de-bouton inline-flex items-center">{children}</span>
     </button>
   )
 }

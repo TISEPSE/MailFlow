@@ -16,7 +16,6 @@ import {
   SqueletteLecture,
   SqueletteListe,
   Vide,
-  LARGEUR_LISTE,
 } from '../composants/base'
 import type { NomIcone } from '../composants/glyphes'
 import { Lecture, ListeMessages } from '../composants/ListeMessages'
@@ -288,7 +287,7 @@ export function Courrier({
       <div
         className="flex flex-none flex-col border-r overflow-hidden h-full min-h-0"
         style={{
-          width: LARGEUR_LISTE,
+          width: 'var(--largeur-liste)',
           background: 'var(--sunk)',
           borderColor: 'var(--line)',
         }}

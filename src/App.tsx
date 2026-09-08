@@ -1348,7 +1348,10 @@ export default function App() {
         <nav
           className="flex flex-none flex-col gap-1 rounded-2xl p-3 transition-[width] duration-150"
           style={{
-            width: repliee ? '4.5rem' : '15.5rem',
+            // Les deux largeurs viennent de la feuille de styles : sur une
+            // fenêtre étroite, la barre se resserre d'elle-même sans que le
+            // réglage de repli de l'utilisateur soit touché.
+            width: repliee ? 'var(--largeur-nav-repliee)' : 'var(--largeur-nav)',
             background: 'var(--side)',
             border: '1px solid var(--line)',
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)',

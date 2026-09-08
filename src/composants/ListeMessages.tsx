@@ -238,7 +238,7 @@ export function Lecture({
   const [fond, encre] = palette(0)
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="panneau-de-lecture flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div
         className="selectionnable flex min-w-0 flex-none flex-col justify-center overflow-hidden border-b px-6"
         // Même hauteur qu'une tuile : les deux traits se répondent alors d'un
@@ -271,7 +271,9 @@ export function Lecture({
             {message.nom}
           </span>
           {actions && (
-            <span className="flex flex-none items-center gap-2">{actions}</span>
+            <span className="barre-de-lecture flex flex-none items-center gap-2">
+              {actions}
+            </span>
           )}
         </div>
       </div>

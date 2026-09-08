@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "MailFlow",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "identifier": "fr.mailflow.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -16,7 +16,7 @@
         "title": "MailFlow",
         "width": 1280,
         "height": 820,
-        "minWidth": 940,
+        "minWidth": 720,
         "minHeight": 620,
         "resizable": true,
         "fullscreen": false,
