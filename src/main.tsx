@@ -42,13 +42,24 @@ function surveillerLesErreursNonRattrapees() {
 
 surveillerLesErreursNonRattrapees()
 
-// Le filet enveloppe l'application entière, et non telle ou telle vue : une
-// exception levée n'importe où démonte l'arbre depuis la racine, et c'est donc
-// à la racine qu'il faut être pour en rester quelque chose à l'écran.
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Filet>
-      <App />
-    </Filet>
-  </StrictMode>,
-)
+function afficher() {
+  // Le filet enveloppe l'application entière, et non telle ou telle vue : une
+  // exception levée n'importe où démonte l'arbre depuis la racine, et c'est donc
+  // à la racine qu'il faut être pour en rester quelque chose à l'écran.
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <Filet>
+        <App />
+      </Filet>
+    </StrictMode>,
+  )
+}
+
+// Le mode démo remplace le backend avant le premier rendu : l'application
+// interroge le backend dès son montage. Hors `vite --mode demo`, la condition
+// est fausse à la compilation et le module n'entre pas dans le bundle.
+if (import.meta.env.MODE === 'demo') {
+  void import('./demo').then(afficher)
+} else {
+  afficher()
+}
