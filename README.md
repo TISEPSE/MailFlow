@@ -1,58 +1,91 @@
-# MailFlow
+<p align="center">
+  <img src="branding/mailflow-logo-512.png" alt="MailFlow" width="120">
+</p>
 
-Client email de bureau qui automatise le tri d'une boîte Gmail : séparation du
-courrier humain, nettoyage des publicités, résumés de newsletters et rappels de
-formations. Destiné à un public non technique — aucune configuration ne passe
-par du code.
+<h1 align="center">MailFlow</h1>
 
-Cibles : macOS et Linux.
+<p align="center">
+  Le client mail de bureau qui trie votre boîte Gmail à votre place.<br>
+  Les vrais messages d'un côté, les publicités nettoyées, les newsletters résumées.<br>
+  Fonctionne sur Linux, macOS et Windows.
+</p>
 
-## État du projet
+<p align="center">
+  <a href="https://github.com/TISEPSE/MailFlow/releases/latest"><img src="https://img.shields.io/github/v/release/TISEPSE/MailFlow" alt="Dernière version"></a>
+  <a href="https://github.com/TISEPSE/MailFlow/actions/workflows/ci.yml"><img src="https://github.com/TISEPSE/MailFlow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/TISEPSE/MailFlow" alt="Licence MIT"></a>
+</p>
 
-Mise en place terminée, moteur de règles écrit, authentification Google en
-place. Le backend expose sa surface d'erreurs, le stockage des secrets, la
-persistance des règles, le calcul du plan d'actions, le flux OAuth2 PKCE complet
-et le client Gmail. Les cinq vues du cahier des charges et les résumés de
-newsletters restent à implémenter.
+## Captures d'écran
 
-Pour connecter votre compte, une étape se fait de votre côté, chez Google : voir
-[`docs/connexion-google.md`](docs/connexion-google.md).
+<p align="center">
+  <img src="docs/captures/courrier.png" alt="Les mails directs, écrits par de vraies personnes" width="100%">
+</p>
 
-Voir [`Cahier-des-Charges-MailFlow.md`](Cahier-des-Charges-MailFlow.md) pour la
-spécification fonctionnelle, et
-[`docs/specs/`](docs/specs/) pour les décisions d'architecture.
+Les newsletters regroupées par publication et résumées, en thème clair ou sombre :
 
-## Architecture
+<p align="center">
+  <img src="docs/captures/newsletters.png" alt="Newsletters en thème clair" width="49%">
+  <img src="docs/captures/newsletters-sombre.png" alt="Newsletters en thème sombre" width="49%">
+</p>
 
-Le backend Rust détient tout ce qui est sensible : jetons OAuth, appels à l'API
-Gmail, moteur de règles, accès disque. Le frontend React n'a accès qu'aux
-commandes déclarées dans `src-tauri/src/commands/`.
+| | |
+|:---:|:---:|
+| ![Triage et publicités](docs/captures/triage.png) | ![Rappels de formations](docs/captures/formations.png) |
+| Triage & publicités | Rappels de formations |
+| ![Règles automatiques](docs/captures/regles.png) | ![Archives](docs/captures/archives.png) |
+| Règles automatiques | Table des archives |
+| ![Paramètres](docs/captures/parametres.png) | ![Mails directs en thème sombre](docs/captures/courrier-sombre.png) |
+| Paramètres | Mails directs, thème sombre |
 
-Cette séparation est la raison du choix de Tauri sur ce projet. L'application
-affiche du HTML d'e-mail, c'est-à-dire du contenu écrit par des tiers inconnus.
-Une injection dans le rendu ne doit pas suffire à lire la boîte mail.
+Les captures montrent une boîte fictive : voir [le mode démo](#mode-démo).
 
-```
-src/                  Frontend React + TypeScript + Tailwind
-  lib/tauri.ts        Seul point d'appel du backend
-  types/backend.ts    Miroir TypeScript des types Rust
-  views/              Les cinq vues (à venir)
+## Télécharger
 
-src-tauri/src/
-  commands/           Surface exposée au webview
-  error.rs            Erreurs, et leur réduction avant passage à l'IPC
-  secrets.rs          Trousseau système (Keychain / Secret Service)
-  rules/              Modèle, persistance et moteur de planification
-  auth/               OAuth2 PKCE Google
-  config.rs           Identifiant client Google
-  gmail/              Client API Gmail
-  llm/                Résumés de newsletters (surface déclarée)
-```
+Prenez la dernière version pour votre système sur la
+[page des releases](https://github.com/TISEPSE/MailFlow/releases/latest).
 
-## Prérequis
+| Système | Formats |
+|---------|---------|
+| Linux | `.deb`, `.AppImage` |
+| macOS | `.dmg` (Apple Silicon et Intel) |
+| Windows | `.exe` |
 
-- Node.js 24+
-- Rust 1.88+
+Sur macOS, l'application n'est pas encore signée : au premier lancement, il faut
+l'autoriser dans *Réglages Système > Confidentialité et sécurité*. Le détail est
+dans [`docs/publier-une-version.md`](docs/publier-une-version.md#le-cas-de-macos).
+
+## Fonctionnalités
+
+- **Mails directs** : seuls les messages écrits par de vraies personnes, avec la
+  lecture à côté de la liste
+- **Triage des publicités** : archiver, supprimer, ou créer une règle qui s'en
+  chargera la prochaine fois
+- **Newsletters** regroupées par publication, résumées par IA, avec une synthèse
+  du jour et un filtre par thème
+- **Rappels de formations** : webinaires, cours en ligne et examens au même
+  endroit
+- **Règles automatiques** sans une ligne de code : les activer, les couper, les
+  programmer (tous les vendredis à 18 h, par exemple)
+- **Table des archives** : les messages se rangent en tas, et chaque tas devient
+  un libellé Gmail
+- Plusieurs comptes Gmail, et une vue qui les réunit
+- Recherche au clavier avec `Ctrl+K`
+- Thème clair ou sombre, couleur d'accentuation au choix
+
+Côté vie privée : les jetons de connexion restent dans le trousseau du système,
+le contenu des messages s'affiche dans un cadre isolé, et seules les newsletters
+sont envoyées au modèle de langage. Les mails de vos proches ne quittent jamais
+votre machine.
+
+## Développement
+
+MailFlow est construit avec Tauri 2 (Rust + React + TypeScript).
+
+### Prérequis
+
+- Node.js 24 ou plus
+- Rust 1.88 ou plus
 - Sur Linux :
 
   ```bash
@@ -62,105 +95,55 @@ src-tauri/src/
   ```
 
 - Un agent de trousseau actif (GNOME Keyring, KWallet). Sans lui, MailFlow ne
-  peut pas conserver la connexion Gmail ; l'écran de diagnostic le signale.
+  peut pas garder la connexion Gmail ; l'écran de diagnostic le signale.
 
-## Développement
+### Démarrer
 
 ```bash
+git clone https://github.com/TISEPSE/MailFlow.git
+cd MailFlow
 npm install
 cp .env.example .env     # renseigner MAILFLOW_GOOGLE_CLIENT_ID
 npm run tauri:dev
 ```
 
-## Vérifications
+L'identifiant client se crée chez Google : voir
+[`docs/connexion-google.md`](docs/connexion-google.md).
+
+### Mode démo
 
 ```bash
+npm run demo             # http://localhost:1421
+```
+
+L'interface tourne dans le navigateur avec une boîte inventée, sans compte
+Google ni backend Rust. C'est elle qui sert aux captures d'écran :
+`npm run captures` les refait toutes dans `docs/captures/` (Google Chrome doit
+être installé).
+
+### Commandes utiles
+
+```bash
+npm run tauri:dev        # lancer l'application
 npm run lint             # oxlint
-npm test                 # vitest
+npm test                 # tests de l'interface (vitest)
 npm run build            # types + bundle frontend
+npm run tauri:build      # construire les paquets
 
 cd src-tauri
 cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
-cargo test
+cargo test               # tests du backend
 ```
 
-## Builds
+## Documentation
 
-```bash
-npm run tauri:build
-```
-
-Produit un AppImage et un `.deb` sur Linux, un `.app` et un `.dmg` sur macOS.
-Tauri ne sait pas compiler vers macOS depuis Linux : les artefacts macOS
-viennent de la chaîne de publication.
-
-## Publier une version
-
-Les deux plateformes sont compilées par
-[`.github/workflows/release.yml`](.github/workflows/release.yml) : un `.dmg`
-macOS universel, qui tourne aussi bien sur Intel que sur Apple Silicon, et un
-AppImage plus un `.deb` pour Linux x86\_64. La publication reste un **brouillon**
-de release GitHub : rien n'est visible tant qu'on ne l'a pas relu et publié à la
-main.
-
-**Une fois pour toutes**, dans *Settings > Secrets and variables > Actions* du
-dépôt :
-
-| Secret | Rôle |
-| --- | --- |
-| `MAILFLOW_GOOGLE_CLIENT_ID` | Identifiant du client OAuth de bureau |
-| `MAILFLOW_GOOGLE_CLIENT_SECRET` | Son secret, exigé par l'endpoint de jetons |
-
-Ils sont figés dans le binaire à la compilation : une application installée n'a
-pas de `.env` à côté d'elle, et l'utilisateur final n'a pas à créer un projet
-Google Cloud pour lire son courrier. Ce ne sont pas des secrets au sens strict —
-Google admet qu'une application de bureau ne peut rien cacher dans un binaire
-distribué, et la sécurité du flux repose sur PKCE. Sans eux la compilation
-réussit quand même, mais la version publiée ne pourra pas se connecter : le
-workflow le signale par un avertissement.
-
-**À chaque version**, le même numéro dans les trois fichiers qui le portent,
-puis le tag :
-
-```bash
-# package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml
-git commit -am "chore: version 0.2.0"
-git tag v0.2.0
-git push origin main v0.2.0
-```
-
-Un travail dédié refuse le tag si l'un des trois fichiers ne suit pas : un
-installeur dont le nom ment sur son contenu se remarque trop tard. La CI
-complète — lint, types, tests, clippy, audit des dépendances — tourne avant
-toute compilation, car un tag ne déclenche pas les workflows attachés aux
-branches.
-
-`workflow_dispatch` permet un build d'essai sans tag : il produit une
-préversion en brouillon, sans contrôle de version.
-
-### Le cas de macOS
-
-Les binaires macOS ne sont pas signés à ce stade, et Gatekeeper les bloque au
-premier lancement. Depuis macOS 15, le clic droit puis « Ouvrir » ne suffit plus
-— Apple a retiré ce raccourci. Il faut lancer l'application une première fois,
-la voir refusée, puis ouvrir  > Réglages Système > Confidentialité et sécurité
-et cliquer sur **Ouvrir quand même** sous « Sécurité ». Une seule fois.
-
-Pour un public non technique, ce détour est rédhibitoire : c'est exactement le
-geste qu'on apprend aux gens à ne pas faire. La signature demande un compte
-Apple Developer (99 $/an) ; les secrets se branchent alors dans le workflow sans
-toucher au reste.
-
-## Site public
-
-Les pages exigées par Google pour la vérification OAuth vivent dans `site/` et
-sont publiées par le workflow `pages.yml` : page d'accueil, politique de
-confidentialité et conditions d'utilisation. Le déploiement échoue tant qu'une
-mention à renseigner subsiste dans ces pages, plutôt que de publier une
-politique de confidentialité trouée.
-
-GitHub Pages exige un dépôt public sur un compte gratuit.
+- [Architecture](docs/architecture.md) : qui détient quoi, entre Rust et React
+- [Connexion Google](docs/connexion-google.md) : créer l'identifiant client OAuth
+- [Publier une version](docs/publier-une-version.md) : builds, release, macOS,
+  site public
+- [Cahier des charges](docs/cahier-des-charges.md) et [décisions de
+  conception](docs/specs/)
 
 ## Licence
 
