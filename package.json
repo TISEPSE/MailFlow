@@ -39,7 +39,7 @@
     "playwright-core": "^1.61.1",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
-    "vite": "^8.2.0",
+    "vite": "^8.3.4",
     "vitest": "^4.1.10"
   },
   "description": "Client email de bureau qui automatise le tri de la boite Gmail",
