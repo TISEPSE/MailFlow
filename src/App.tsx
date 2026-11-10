@@ -62,6 +62,7 @@ import {
   contactsSynchroniser,
   gmailSynchroniser,
   messageCorps,
+  googleAnnuler,
   googleConnecter,
   googleDeconnecter,
   estErreurBackend,
@@ -189,6 +190,10 @@ export default function App() {
   const [vue, setVue] = useState<Vue>('humain')
   const { prefs, regler } = usePreferences()
   const [profil, setProfil] = useState<ProfilCompte | null>(null)
+  // Vrai jusqu'à ce que le démarrage sache qui est relié. Sans lui, la barre
+  // latérale affichait « Non connecté » le temps de la première lecture, puis
+  // un compte sans nom le temps que le profil arrive.
+  const [compteEnLecture, setCompteEnLecture] = useState(true)
   const [comptes, setComptes] = useState<CompteConnu[]>([])
   const [libelles, setLibelles] = useState<LibelleGmail[]>([])
 
@@ -937,8 +942,12 @@ export default function App() {
 
   useEffect(() => {
     void rafraichir().then(async (sante) => {
-      if (!interrogeable(sante)) return
+      if (!interrogeable(sante)) {
+        setCompteEnLecture(false)
+        return
+      }
       setProfil(await compteProfil().catch(() => null))
+      setCompteEnLecture(false)
       // Une seule lecture par session : la liste des libellés bouge rarement,
       // et la relire à chaque relevé dépenserait du quota pour rien.
       setLibelles(await libellesLister().catch(() => []))
@@ -1058,7 +1067,10 @@ export default function App() {
       const dit = await travail()
       if (dit) annoncer(dit)
     } catch (e) {
-      annoncer(messageDErreur(e), true)
+      // Une annulation demandée par l'utilisateur n'est pas une panne : rien
+      // en rouge, juste le retour à l'écran d'avant.
+      if (estErreurBackend(e) && e.code === 'CONNEXION_ANNULEE') annoncer(e.message)
+      else annoncer(messageDErreur(e), true)
     } finally {
       // Le rafraîchissement fait partie de l'action : rendre la main avant lui
       // arrêtait l'animation alors que la boîte se chargeait encore, ce qui
@@ -1585,14 +1597,18 @@ export default function App() {
                 repliee ? 'justify-center px-0 h-11 w-11 mx-auto' : 'px-2.5 text-left h-12'
               }`}
               title={
-                !etat?.compteConnecte
+                compteEnLecture
+                  ? 'Lecture du compte…'
+                  : !etat?.compteConnecte
                   ? 'Aucun compte connecté'
                   : compteAffiche === TOUS_LES_COMPTES
                   ? 'Toutes vos boîtes réunies'
                   : (profil?.adresse ?? undefined)
               }
             >
-              {!etat?.compteConnecte ? (
+              {compteEnLecture ? (
+                <span className="squelette h-8 w-8 flex-none" style={{ borderRadius: '9999px' }} />
+              ) : !etat?.compteConnecte ? (
                 <AvatarCompte profil={null} connecte={false} />
               ) : compteAffiche === TOUS_LES_COMPTES ? (
                 <span
@@ -1604,7 +1620,13 @@ export default function App() {
               ) : (
                 <AvatarCompte profil={profil} connecte={true} />
               )}
-              {!repliee && (
+              {!repliee && compteEnLecture && (
+                <span className="flex min-w-0 flex-1 flex-col gap-1.5" aria-label="Lecture du compte">
+                  <span className="squelette block h-3 w-24" />
+                  <span className="squelette block h-2.5 w-32" />
+                </span>
+              )}
+              {!repliee && !compteEnLecture && (
                 <>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-semibold">
@@ -1667,6 +1689,7 @@ export default function App() {
               faits={avancement.faits}
               total={avancement.total}
               etape={avancement.etape}
+              onAnnuler={() => void googleAnnuler().catch(console.warn)}
             />
           ) : !etat ? (
             <Vide icone="hourglass_empty" titre="Démarrage…" detail="Lecture de l'état du backend." />

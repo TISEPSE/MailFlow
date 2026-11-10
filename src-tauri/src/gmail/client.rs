@@ -31,6 +31,11 @@ use crate::error::{AppError, Resultat};
 pub enum Methode {
     Get,
     Post,
+    /// `POST` dont le corps est un message MIME brut et non du JSON.
+    ///
+    /// Sert au seul envoi d'un message avec pièces jointes : l'endpoint de
+    /// téléversement de Gmail attend le message tel quel, en `message/rfc822`.
+    PostMessage,
     /// Le seul verbe destructeur, et le seul appel de tout MailFlow qui
     /// détruise quelque chose chez Google : la suppression d'un libellé.
     Delete,
@@ -169,6 +174,16 @@ fn url_modify(id: &str) -> String {
 /// Envoi d'un message composé par l'utilisateur.
 fn url_envoi() -> String {
     format!("{BASE_API}/users/me/messages/send")
+}
+
+/// Envoi par téléversement, pour un message qui porte des fichiers.
+///
+/// L'endpoint ordinaire reçoit le message dans un champ JSON et refuse ce qui
+/// dépasse quelques mégaoctets ; celui-ci accepte le message brut jusqu'à
+/// 35 Mo. Il vit sous `/upload/`, à côté de l'API et non dedans.
+fn url_envoi_televerse() -> String {
+    let base = BASE_API.replacen("/gmail/v1", "/upload/gmail/v1", 1);
+    format!("{base}/users/me/messages/send?uploadType=media")
 }
 
 fn url_trash(id: &str) -> String {
@@ -365,6 +380,22 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
     /// [`crate::gmail::redaction::composer`] : c'est là que se refusent les
     /// fins de ligne dans les en-têtes, et nulle part ailleurs.
     pub async fn envoyer_message(&self, mime: &str) -> Resultat<()> {
+        // Au-delà, le message porte des fichiers : il part tel quel par
+        // l'endpoint de téléversement. Une lettre seule garde le chemin
+        // ordinaire, qui n'a jamais posé de difficulté.
+        const SEUIL_TELEVERSEMENT: usize = 1024 * 1024;
+
+        if mime.len() > SEUIL_TELEVERSEMENT {
+            return self
+                .appeler(
+                    Methode::PostMessage,
+                    &url_envoi_televerse(),
+                    Some(mime.to_string()),
+                )
+                .await
+                .map(|_| ());
+        }
+
         let corps = serde_json::json!({
             "raw": crate::gmail::redaction::encoder_pour_gmail(mime),
         })
@@ -994,6 +1025,7 @@ mod tests {
             copies: vec![],
             sujet: "Bonjour".into(),
             corps: "Un mot.".into(),
+            pieces: vec![],
         })
         .unwrap();
 
@@ -1002,6 +1034,34 @@ mod tests {
         assert_eq!(c.appels(), 1);
         assert_eq!(c.methodes()[0], Methode::Post);
         assert!(c.urls()[0].ends_with("/users/me/messages/send"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_message_lourd_part_brut_par_l_endpoint_de_televersement() {
+        use crate::gmail::redaction::{Brouillon, PieceJointe, composer};
+
+        let c = client(vec![ok(r#"{"id":"m9"}"#)]);
+        let mime = composer(&Brouillon {
+            de: "moi@exemple.fr".into(),
+            destinataires: vec!["toi@exemple.fr".into()],
+            copies: vec![],
+            sujet: "Bonjour".into(),
+            corps: "Un mot.".into(),
+            pieces: vec![PieceJointe {
+                nom: "photo.jpg".into(),
+                type_mime: "image/jpeg".into(),
+                contenu: vec![7u8; 2 * 1024 * 1024],
+            }],
+        })
+        .unwrap();
+
+        c.client.envoyer_message(&mime).await.unwrap();
+
+        assert_eq!(c.methodes()[0], Methode::PostMessage);
+        assert!(c.urls()[0].contains("/upload/gmail/v1/users/me/messages/send"));
+        assert!(c.urls()[0].ends_with("uploadType=media"));
+        // Le message part tel que composé : pas de JSON, pas de second encodage.
+        assert_eq!(c.corps_envoyes()[0], mime);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1016,6 +1076,7 @@ mod tests {
             copies: vec![],
             sujet: "Bonjour".into(),
             corps: "Un mot.".into(),
+            pieces: vec![],
         })
         .unwrap();
 

@@ -2,11 +2,15 @@
 //!
 //! # Ce que ce module fait, et pourquoi il est petit
 //!
-//! Il assemble un message `text/plain` en UTF-8 et rien d'autre : ni pièces
-//! jointes, ni corps enrichi, ni signature. Le besoin est d'écrire à quelqu'un
-//! et de transférer une lettre, pas de refaire un éditeur de courrier. Chaque
-//! forme MIME ajoutée ici est une forme de plus à vérifier avant d'envoyer
-//! quelque chose au nom de l'utilisateur.
+//! Il assemble un message `text/plain` en UTF-8, accompagné le cas échéant de
+//! fichiers joints, et rien d'autre : ni corps enrichi, ni signature. Le
+//! besoin est d'écrire à quelqu'un, de lui joindre un document et de
+//! transférer une lettre, pas de refaire un éditeur de courrier. Chaque forme
+//! MIME ajoutée ici est une forme de plus à vérifier avant d'envoyer quelque
+//! chose au nom de l'utilisateur.
+//!
+//! Sans fichier joint, le message reste le `text/plain` nu d'avant : la forme
+//! `multipart/mixed` n'apparaît que lorsqu'il y a quelque chose à y mettre.
 //!
 //! # Le point de sécurité, et il n'y en a qu'un
 //!
@@ -37,7 +41,27 @@ pub struct Brouillon {
     pub copies: Vec<String>,
     pub sujet: String,
     pub corps: String,
+    /// Fichiers joints, dans l'ordre où l'utilisateur les a ajoutés.
+    pub pieces: Vec<PieceJointe>,
 }
+
+/// Un fichier joint au message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PieceJointe {
+    /// Nom montré au destinataire. Jamais un chemin : voir [`nom_de_piece`].
+    pub nom: String,
+    /// Type annoncé par l'interface. Il n'est repris que s'il a la forme d'un
+    /// type MIME : voir [`type_de_piece`].
+    pub type_mime: String,
+    pub contenu: Vec<u8>,
+}
+
+/// Poids total des fichiers joints au-delà duquel on refuse d'envoyer.
+///
+/// C'est la limite de Gmail lui-même : 25 Mo de pièces, qui en font un peu
+/// moins de 35 une fois encodées — le plafond de son API d'envoi. Refuser ici
+/// vaut mieux que de téléverser trente mégaoctets pour s'entendre dire non.
+pub const POIDS_MAX_PIECES: usize = 25 * 1024 * 1024;
 
 /// Caractères qu'aucun en-tête ne peut porter.
 ///
@@ -127,16 +151,138 @@ pub fn composer(brouillon: &Brouillon) -> Resultat<String> {
         encoder_entete(&brouillon.sujet)
     ));
     message.push_str("MIME-Version: 1.0\r\n");
-    message.push_str("Content-Type: text/plain; charset=\"UTF-8\"\r\n");
+
+    if brouillon.pieces.is_empty() {
+        message.push_str(&partie_texte(&brouillon.corps));
+        return Ok(message);
+    }
+
+    let poids: usize = brouillon.pieces.iter().map(|p| p.contenu.len()).sum();
+    if poids > POIDS_MAX_PIECES {
+        return Err(AppError::Config(
+            "Les fichiers joints dépassent 25 Mo au total.".into(),
+        ));
+    }
+
+    let frontiere = frontiere();
+    message.push_str(&format!(
+        "Content-Type: multipart/mixed; boundary=\"{frontiere}\"\r\n\r\n"
+    ));
+
+    message.push_str(&format!("--{frontiere}\r\n"));
+    message.push_str(&partie_texte(&brouillon.corps));
+    message.push_str("\r\n");
+
+    for piece in &brouillon.pieces {
+        let nom = encoder_entete(&nom_de_piece(&piece.nom)?);
+        let type_mime = type_de_piece(&piece.type_mime);
+
+        message.push_str(&format!("--{frontiere}\r\n"));
+        message.push_str(&format!("Content-Type: {type_mime}; name=\"{nom}\"\r\n"));
+        message.push_str(&format!(
+            "Content-Disposition: attachment; filename=\"{nom}\"\r\n"
+        ));
+        message.push_str("Content-Transfer-Encoding: base64\r\n");
+        message.push_str("\r\n");
+        message.push_str(&en_base64_replie(&piece.contenu));
+        message.push_str("\r\n");
+    }
+
+    message.push_str(&format!("--{frontiere}--\r\n"));
+
+    Ok(message)
+}
+
+/// Les en-têtes et le contenu de la partie texte.
+///
+/// Les mêmes qu'elle soit le message entier ou la première partie d'un
+/// `multipart` : c'est ce qui garantit qu'ajouter un fichier ne change rien à
+/// la façon dont la lettre elle-même arrive.
+fn partie_texte(corps: &str) -> String {
+    let mut partie = String::new();
+    partie.push_str("Content-Type: text/plain; charset=\"UTF-8\"\r\n");
     // Le corps part en base64 plutôt qu'en `quoted-printable` : il n'y a alors
     // aucune ligne à replier, aucun caractère à échapper, et donc aucune
     // occasion de produire un corps qui se relit mal. Le surcoût de taille est
     // d'un tiers sur du texte, ce qui ne se remarque pas sur une lettre.
-    message.push_str("Content-Transfer-Encoding: base64\r\n");
-    message.push_str("\r\n");
-    message.push_str(&corps_encode(&brouillon.corps));
+    partie.push_str("Content-Transfer-Encoding: base64\r\n");
+    partie.push_str("\r\n");
+    partie.push_str(&corps_encode(corps));
+    partie
+}
 
-    Ok(message)
+/// La ligne qui sépare les parties d'un message à pièces jointes.
+///
+/// Elle ne peut pas apparaître dans une partie : toutes sont en base64, dont
+/// l'alphabet ne contient pas `_` et ne place `=` qu'en fin de contenu. Aucune
+/// vérification du contenu n'est donc nécessaire, et un fichier ne peut pas
+/// fabriquer une fausse frontière pour glisser une partie de son cru.
+///
+/// L'horloge n'est là que pour distinguer deux messages dans un fil de
+/// transferts imbriqués, pas pour la sécurité.
+fn frontiere() -> String {
+    let instant = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+
+    format!("=_mailflow_{instant:x}")
+}
+
+/// Le nom sous lequel un fichier part, ou un refus.
+///
+/// Le nom vient de l'interface, donc du disque de l'utilisateur — mais il
+/// figure dans un en-tête, et la règle du module vaut pour lui comme pour
+/// l'objet : une fin de ligne est refusée, pas rafistolée.
+///
+/// Les guillemets et la barre oblique inverse fermeraient ou échapperaient la
+/// valeur entre guillemets : ils deviennent des tirets bas, ce qui ne change
+/// rien au fichier et se relit sans surprise. Seul le dernier segment d'un
+/// chemin est gardé : le destinataire n'a pas à apprendre où le fichier était
+/// rangé.
+fn nom_de_piece(brut: &str) -> Resultat<String> {
+    if !entete_sure(brut) {
+        return Err(AppError::Config(
+            "Le nom d'un fichier joint ne peut pas contenir de retour à la ligne.".into(),
+        ));
+    }
+
+    let dernier = brut.rsplit(['/', '\\']).next().unwrap_or(brut).trim();
+    let propre: String = dernier
+        .chars()
+        .map(|c| if c == '"' || c.is_control() { '_' } else { c })
+        .collect();
+
+    if propre.is_empty() {
+        return Ok("fichier".to_string());
+    }
+
+    Ok(propre)
+}
+
+/// Le type MIME annoncé pour un fichier joint.
+///
+/// Celui que donne l'interface est repris s'il a la forme `type/sous-type` et
+/// rien de plus : il part dans un en-tête, où un point-virgule ajouterait des
+/// paramètres et une fin de ligne un en-tête entier. À défaut, le type
+/// générique — le client du destinataire se fiera alors à l'extension.
+fn type_de_piece(annonce: &str) -> String {
+    const GENERIQUE: &str = "application/octet-stream";
+
+    let annonce = annonce.trim().to_ascii_lowercase();
+    let permis = |c: char| c.is_ascii_alphanumeric() || "!#$&^_.+-".contains(c);
+
+    match annonce.split_once('/') {
+        Some((genre, sous_type))
+            if !genre.is_empty()
+                && !sous_type.is_empty()
+                && genre.chars().all(permis)
+                && sous_type.chars().all(permis) =>
+        {
+            annonce
+        }
+        _ => GENERIQUE.to_string(),
+    }
 }
 
 /// Le corps en base64, replié à 76 colonnes comme le veut MIME.
@@ -144,7 +290,12 @@ pub fn composer(brouillon: &Brouillon) -> Resultat<String> {
 /// Une ligne trop longue est refusée par des serveurs qui appliquent la RFC à
 /// la lettre. Le repli ne coûte rien et évite d'avoir à découvrir lesquels.
 fn corps_encode(corps: &str) -> String {
-    let encode = base64::engine::general_purpose::STANDARD.encode(corps);
+    en_base64_replie(corps.as_bytes())
+}
+
+/// Des octets en base64, repliés à 76 colonnes.
+fn en_base64_replie(octets: &[u8]) -> String {
+    let encode = base64::engine::general_purpose::STANDARD.encode(octets);
 
     encode
         .as_bytes()
@@ -218,7 +369,189 @@ mod tests {
             copies: vec![],
             sujet: "Bonjour".into(),
             corps: "Un mot.".into(),
+            pieces: vec![],
         }
+    }
+
+    fn piece(nom: &str, type_mime: &str, contenu: &[u8]) -> PieceJointe {
+        PieceJointe {
+            nom: nom.into(),
+            type_mime: type_mime.into(),
+            contenu: contenu.to_vec(),
+        }
+    }
+
+    /// Les parties d'un message à pièces jointes : (en-têtes, contenu décodé).
+    fn parties(mime: &str) -> Vec<(String, Vec<u8>)> {
+        let frontiere = mime
+            .split_once("boundary=\"")
+            .and_then(|(_, suite)| suite.split_once('"'))
+            .map(|(f, _)| f.to_string())
+            .expect("le message annonce sa frontière");
+        let (_, corps) = mime.split_once("\r\n\r\n").unwrap();
+
+        corps
+            .split(&format!("--{frontiere}"))
+            .filter(|p| !p.trim().is_empty() && p.trim() != "--")
+            .map(|p| {
+                let (entetes, contenu) = p
+                    .trim_start_matches("\r\n")
+                    .split_once("\r\n\r\n")
+                    .expect("chaque partie a ses en-têtes");
+                let octets = base64::engine::general_purpose::STANDARD
+                    .decode(contenu.replace("\r\n", ""))
+                    .expect("contenu en base64");
+                (entetes.to_string(), octets)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn un_fichier_joint_part_dans_un_message_en_plusieurs_parties() {
+        let mut b = brouillon();
+        b.pieces = vec![piece("devis.pdf", "application/pdf", b"%PDF-1.7 contenu")];
+
+        let mime = composer(&b).unwrap();
+
+        assert!(mime.contains("Content-Type: multipart/mixed; boundary=\""));
+        let parties = parties(&mime);
+        assert_eq!(parties.len(), 2);
+
+        assert!(parties[0].0.contains("text/plain"));
+        assert_eq!(parties[0].1, b"Un mot.");
+
+        assert!(
+            parties[1]
+                .0
+                .contains("Content-Type: application/pdf; name=\"devis.pdf\"")
+        );
+        assert!(
+            parties[1]
+                .0
+                .contains("Content-Disposition: attachment; filename=\"devis.pdf\"")
+        );
+        assert_eq!(parties[1].1, b"%PDF-1.7 contenu");
+    }
+
+    #[test]
+    fn le_contenu_d_un_fichier_arrive_a_l_octet_pres() {
+        // Tous les octets possibles, sur plus d'une ligne repliée : un encodage
+        // qui passerait par du texte en perdrait en route.
+        let contenu: Vec<u8> = (0..=255u8).cycle().take(1000).collect();
+        let mut b = brouillon();
+        b.pieces = vec![piece("donnees.bin", "application/octet-stream", &contenu)];
+
+        let mime = composer(&b).unwrap();
+
+        assert_eq!(parties(&mime)[1].1, contenu);
+        assert!(mime.lines().all(|l| l.len() <= 78), "lignes repliées");
+    }
+
+    #[test]
+    fn plusieurs_fichiers_gardent_leur_ordre() {
+        let mut b = brouillon();
+        b.pieces = vec![
+            piece("a.txt", "text/plain", b"premier"),
+            piece("b.txt", "text/plain", b"second"),
+        ];
+
+        let parties = parties(&composer(&b).unwrap());
+
+        assert_eq!(parties.len(), 3);
+        assert_eq!(parties[1].1, b"premier");
+        assert_eq!(parties[2].1, b"second");
+    }
+
+    #[test]
+    fn sans_fichier_le_message_reste_un_texte_simple() {
+        let mime = composer(&brouillon()).unwrap();
+
+        assert!(!mime.contains("multipart"));
+        assert!(!mime.contains("boundary"));
+    }
+
+    #[test]
+    fn un_nom_de_fichier_accentue_est_encode() {
+        let mut b = brouillon();
+        b.pieces = vec![piece("résumé été.pdf", "application/pdf", b"x")];
+
+        let mime = composer(&b).unwrap();
+
+        assert!(!mime.contains("résumé"));
+        assert!(mime.contains("filename=\"=?UTF-8?B?"));
+        assert!(
+            mime.is_ascii(),
+            "un message MIME est en ASCII de bout en bout"
+        );
+    }
+
+    #[test]
+    fn un_nom_de_fichier_avec_fin_de_ligne_est_refuse() {
+        // La règle du module vaut pour le nom comme pour l'objet : sans elle,
+        // un fichier bien nommé ajouterait ses propres en-têtes à la partie.
+        let mut b = brouillon();
+        b.pieces = vec![piece(
+            "a.txt\r\nContent-Type: text/html",
+            "text/plain",
+            b"x",
+        )];
+
+        assert_eq!(composer(&b).unwrap_err().code(), "CONFIG_INVALIDE");
+    }
+
+    #[test]
+    fn un_nom_de_fichier_ne_peut_pas_fermer_ses_guillemets() {
+        let mut b = brouillon();
+        b.pieces = vec![piece("a\".txt; x=\"y", "text/plain", b"x")];
+
+        let mime = composer(&b).unwrap();
+
+        assert!(mime.contains("filename=\"a_.txt; x=_y\""));
+    }
+
+    #[test]
+    fn un_chemin_ne_part_pas_avec_le_fichier() {
+        assert_eq!(
+            nom_de_piece("C:\\Users\\moi\\Documents\\devis.pdf").unwrap(),
+            "devis.pdf"
+        );
+        assert_eq!(nom_de_piece("/home/moi/devis.pdf").unwrap(), "devis.pdf");
+        assert_eq!(nom_de_piece("  ").unwrap(), "fichier");
+    }
+
+    #[test]
+    fn un_type_fantaisiste_retombe_sur_le_type_generique() {
+        assert_eq!(type_de_piece("application/pdf"), "application/pdf");
+        assert_eq!(type_de_piece("Image/PNG"), "image/png");
+        assert_eq!(type_de_piece(""), "application/octet-stream");
+        assert_eq!(type_de_piece("pdf"), "application/octet-stream");
+        assert_eq!(
+            type_de_piece("text/html; charset=x"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            type_de_piece("text/plain\r\nBcc: x@y.z"),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn des_fichiers_trop_lourds_sont_refuses_avant_l_envoi() {
+        let mut b = brouillon();
+        b.pieces = vec![piece(
+            "film.mp4",
+            "video/mp4",
+            &vec![0u8; POIDS_MAX_PIECES + 1],
+        )];
+
+        assert_eq!(composer(&b).unwrap_err().code(), "CONFIG_INVALIDE");
+    }
+
+    #[test]
+    fn la_frontiere_ne_peut_pas_figurer_dans_une_partie() {
+        // Elle porte un `_`, que l'alphabet base64 ne contient pas.
+        assert!(frontiere().contains('_'));
+        assert!(frontiere().starts_with("=_"));
     }
 
     /// Le décodage du corps, pour éprouver ce qui arrivera vraiment.

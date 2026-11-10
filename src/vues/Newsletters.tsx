@@ -717,8 +717,11 @@ function SansSynthese({
         ]
       : etat.quoi === 'echec'
         ? [
-            "Le modèle n'a pas répondu.",
-            'Rien n’est perdu : les résumés déjà faits sont gardés.',
+            // « Le modèle n'a pas répondu » se lisait comme une panne de
+            // toute l'IA, juste au-dessus de résumés qu'elle venait d'écrire.
+            // Seule la synthèse a manqué, et la phrase le dit.
+            "La synthèse du jour n'a pas pu être écrite pour le moment.",
+            'Les résumés de vos publications, eux, sont bien là. Réessayez dans un instant.',
           ]
         : etat.quoi === 'faite'
           ? // La synthèse a bien été produite, mais aucun de ses points n'a

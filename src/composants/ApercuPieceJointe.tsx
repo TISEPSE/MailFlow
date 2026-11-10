@@ -108,6 +108,107 @@ export function ApercuPieceJointe({
   )
 }
 
+/**
+ * Un fichier que l'utilisateur s'apprête à envoyer, montré dans la même fenêtre
+ * que ceux qu'il reçoit.
+ *
+ * # Ce qui diffère, et pourquoi
+ *
+ * Le fichier vient du disque de l'utilisateur, pas d'un expéditeur : il n'y a
+ * rien à reconstruire côté Rust, et aucun aller-retour à faire. L'image est
+ * donc montrée telle quelle, depuis l'URL d'objet que la fenêtre de rédaction
+ * tient déjà. Le PDF passe quand même par le fil séparé — c'est le seul lecteur
+ * de PDF de l'application, et il n'y a aucune raison d'en écrire un second
+ * moins prudent.
+ *
+ * Pas de bouton « Enregistrer » : le fichier est déjà chez l'utilisateur.
+ */
+export function ApercuPieceLocale({
+  nom,
+  taille,
+  typeMime,
+  contenu,
+  image,
+  onFermer,
+}: {
+  nom: string
+  taille: number
+  typeMime: string
+  /** Contenu du fichier, en base64 standard. */
+  contenu: string
+  /** URL d'objet de l'image, quand c'en est une. */
+  image: string | null
+  onFermer: () => void
+}) {
+  return (
+    <Modale titre={nom} sous={poids(taille)} onFermer={onFermer} taille="grande">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div
+          className="flex min-h-[18rem] flex-1 items-center justify-center overflow-auto rounded-xl"
+          style={{ background: 'var(--sunk)' }}
+        >
+          {image ? (
+            <img
+              src={image}
+              alt={`Aperçu de ${nom}`}
+              className="max-h-full max-w-full object-contain"
+            />
+          ) : (
+            <Contenu apercu={apercuLocal(typeMime, nom, contenu)} />
+          )}
+        </div>
+
+        <div className="flex flex-none items-center justify-between gap-3">
+          <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+            Ce fichier partira avec le message, tel qu'il est sur votre ordinateur.
+          </span>
+          <Bouton onClick={onFermer}>Fermer</Bouton>
+        </div>
+      </div>
+    </Modale>
+  )
+}
+
+/** Au-delà, un texte n'est plus un aperçu : c'est une lecture, et elle fige la page. */
+const TEXTE_MAX = 200_000
+
+/** Extensions qu'on lit comme du texte quand le système ne dit pas leur type. */
+const EXTENSIONS_DE_TEXTE = /\.(txt|md|csv|json|xml|log|ini|yml|yaml|html?|css|js|ts)$/i
+
+/**
+ * Ce que la fenêtre peut montrer d'un fichier local, d'après son type.
+ *
+ * Un fichier qu'on ne sait pas montrer n'est pas une erreur : il partira très
+ * bien, on dit seulement qu'il n'y a rien à en voir ici.
+ */
+function apercuLocal(typeMime: string, nom: string, contenu: string): Apercu {
+  if (typeMime === 'application/pdf' || /\.pdf$/i.test(nom)) {
+    return { genre: 'pdf', donnees: contenu }
+  }
+
+  if (typeMime.startsWith('text/') || typeMime === 'application/json' || EXTENSIONS_DE_TEXTE.test(nom)) {
+    try {
+      const brut = atob(contenu)
+      const octets = new Uint8Array(brut.length)
+      for (let i = 0; i < brut.length; i += 1) octets[i] = brut.charCodeAt(i)
+      const texte = new TextDecoder().decode(octets)
+      return {
+        genre: 'texte',
+        contenu: texte.slice(0, TEXTE_MAX),
+        tronque: texte.length > TEXTE_MAX,
+      }
+    } catch {
+      // Retombe sur l'explication ci-dessous.
+    }
+  }
+
+  return {
+    genre: 'impossible',
+    raison:
+      "Ce type de fichier ne peut pas être affiché ici. Il sera joint au message tel quel.",
+  }
+}
+
 function Contenu({ apercu }: { apercu: Apercu }) {
   switch (apercu.genre) {
     case 'image':

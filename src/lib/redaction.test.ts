@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   brouillonDeTransfert,
   decouperAdresses,
+  joindre,
+  POIDS_MAX_PIECES,
   prefixerTransfert,
   texteCitable,
 } from './redaction'
@@ -139,5 +141,38 @@ describe('brouillonDeTransfert', () => {
 
     expect(b.sujet).toBe('Tr : La facture de juillet')
     expect(b.corps).toContain('Un extrait.')
+  })
+})
+
+describe('fichiers joints', () => {
+  const piece = (nom: string, taille: number) => ({
+    nom,
+    typeMime: 'application/pdf',
+    taille,
+    contenu: '',
+  })
+
+  it('ajoute les fichiers à la suite de ceux déjà joints', () => {
+    const { pieces, refusees } = joindre([piece('a.pdf', 10)], [piece('b.pdf', 20)])
+
+    expect(pieces.map((p) => p.nom)).toEqual(['a.pdf', 'b.pdf'])
+    expect(refusees).toEqual([])
+  })
+
+  it('ne joint pas deux fois le même fichier', () => {
+    const { pieces } = joindre([piece('a.pdf', 10)], [piece('a.pdf', 10)])
+
+    expect(pieces).toHaveLength(1)
+  })
+
+  it('écarte ce qui ferait dépasser la limite de Gmail, et le nomme', () => {
+    const { pieces, refusees } = joindre(
+      [piece('a.pdf', POIDS_MAX_PIECES - 100)],
+      [piece('trop.mp4', 200), piece('petit.txt', 50)],
+    )
+
+    // Le fichier trop lourd n'empêche pas le suivant de passer.
+    expect(pieces.map((p) => p.nom)).toEqual(['a.pdf', 'petit.txt'])
+    expect(refusees).toEqual(['trop.mp4'])
   })
 })

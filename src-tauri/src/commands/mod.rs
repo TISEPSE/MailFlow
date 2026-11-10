@@ -46,6 +46,13 @@ pub struct EtatAuth {
     /// En mémoire seulement : un jeton d'accès vit une heure, et l'écrire sur
     /// le disque n'apporterait qu'un secret de plus à protéger.
     autres_jetons: Mutex<std::collections::HashMap<String, crate::auth::jetons::Jetons>>,
+
+    /// Réveille le parcours d'autorisation en attente pour l'interrompre.
+    ///
+    /// Fermer l'onglet Google ne prévient personne : sans ce signal,
+    /// l'application attendait seule les cinq minutes du délai, sans que
+    /// l'utilisateur puisse reprendre la main. Voir [`google_annuler`].
+    annulation: tokio::sync::Notify,
 }
 
 impl EtatAuth {
@@ -77,6 +84,7 @@ impl EtatAuth {
             session: Mutex::new(SessionAuth::nouvelle(KeyringStore::new())),
             client,
             autres_jetons: Mutex::new(std::collections::HashMap::new()),
+            annulation: tokio::sync::Notify::new(),
         }
     }
 
@@ -316,6 +324,44 @@ pub struct EtatApplication {
 #[tauri::command]
 pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<EtatApplication> {
     let dossier = dossier_config(&app)?;
+
+    let trousseau_disponible = KeyringStore::disponible().is_ok();
+
+    // Sans trousseau joignable, on ne peut rien affirmer sur la connexion.
+    //
+    // Fait avant toute lecture du compte actif : la reprise ci-dessous peut le
+    // changer, et les règles lues plus bas doivent être celles du bon compte.
+    let compte_connecte = trousseau_disponible && {
+        let mut session = etat.session.lock().await;
+
+        // L'emplacement actif peut être vide alors que des comptes attendent
+        // en réserve (ajout abandonné, jeton refusé par Google). Sans cette
+        // reprise, toutes les boîtes paraissaient déconnectées à l'ouverture.
+        // Voir `comptes::reprendre_une_reserve`.
+        let mut annuaire = comptes::charger(&dossier);
+        let avant = annuaire.clone();
+        match session
+            .basculer_si(|secrets| comptes::reprendre_une_reserve(secrets, &mut annuaire, None))
+        {
+            Ok(repris) => {
+                if annuaire != avant
+                    && let Err(e) = comptes::ecrire(&dossier, &annuaire)
+                {
+                    log::warn!("annuaire des comptes non enregistré : {e}");
+                }
+                if repris.is_some() {
+                    log::info!("emplacement actif vide : un compte en réserve a été repris");
+                }
+            }
+            Err(e) => log::warn!("reprise d'un compte en réserve impossible : {e}"),
+        }
+
+        session
+            .est_connecte()
+            .inspect_err(|e| log::warn!("lecture du trousseau impossible : {e}"))
+            .unwrap_or(false)
+    };
+
     let actif = compte_actif(&app);
 
     // Migration des règles d'avant le cloisonnement, ici parce que c'est le
@@ -337,42 +383,6 @@ pub async fn app_health(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<E
             None
         }
     };
-
-    let trousseau_disponible = KeyringStore::disponible().is_ok();
-
-    // Sans trousseau joignable, on ne peut rien affirmer sur la connexion.
-    let compte_connecte = trousseau_disponible
-        && etat
-            .session
-            .lock()
-            .await
-            .est_connecte()
-            .inspect_err(|e| log::warn!("lecture du trousseau impossible : {e}"))
-            .unwrap_or(false);
-
-    if !compte_connecte && trousseau_disponible {
-        // Nettoyage de cohérence : si aucun compte n'est connecté et qu'aucun jeton n'est dans le trousseau,
-        // on s'assure que l'annuaire local est vierge (pas de comptes fantômes après réinstallation).
-        let mut annuaire = comptes::charger(&dossier);
-        if annuaire.actif.is_some() || !annuaire.connus.is_empty() {
-            let mut a_conserver = Vec::new();
-            let store = KeyringStore::new();
-            for compte in &annuaire.connus {
-                if let Ok(Some(_)) = store.get(&comptes::cle_compte(&compte.adresse)) {
-                    a_conserver.push(compte.clone());
-                }
-            }
-            if a_conserver.is_empty() {
-                annuaire.actif = None;
-                annuaire.connus.clear();
-                let _ = comptes::ecrire(&dossier, &annuaire);
-            } else if annuaire.connus.len() != a_conserver.len() {
-                annuaire.actif = None;
-                annuaire.connus = a_conserver;
-                let _ = comptes::ecrire(&dossier, &annuaire);
-            }
-        }
-    }
 
     let client_google_configure = etat.client.is_some();
 
@@ -405,7 +415,7 @@ pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resu
     // simultanées écraseraient mutuellement leur `refresh_token`.
     let mut session = etat.session.lock().await;
 
-    connecter(
+    let parcours = connecter(
         client,
         &mut session,
         |url| {
@@ -416,8 +426,17 @@ pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resu
                 .map_err(|e| AppError::Auth(format!("ouverture du navigateur impossible : {e}")))
         },
         DELAI_AUTORISATION,
-    )
-    .await
+    );
+
+    // Abandonner le parcours suffit à tout défaire : le serveur de redirection
+    // se ferme avec lui, et rien n'a encore été écrit dans le trousseau.
+    // `biased` : une autorisation déjà aboutie l'emporte sur une annulation
+    // arrivée au même instant.
+    tokio::select! {
+        biased;
+        issue = parcours => issue,
+        () = etat.annulation.notified() => Err(AppError::ConnexionAnnulee),
+    }
     .inspect_err(|e| log::warn!("connexion Google interrompue : {e}"))?;
 
     log::info!("compte Gmail connecté");
@@ -429,6 +448,16 @@ pub async fn google_connecter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resu
         let _ = fenetre.set_focus();
     }
 
+    Ok(())
+}
+
+/// Interrompt le parcours de connexion Google en attente, s'il y en a un.
+///
+/// Sans effet quand rien n'attend : le signal ne se garde pas, il ne peut donc
+/// pas faire échouer une connexion lancée plus tard.
+#[tauri::command]
+pub async fn google_annuler(etat: State<'_, EtatAuth>) -> Resultat<()> {
+    etat.annulation.notify_waiters();
     Ok(())
 }
 
@@ -1926,11 +1955,30 @@ pub async fn message_envoyer(
     copies: Vec<String>,
     sujet: String,
     corps: String,
+    pieces: Option<Vec<PieceAEnvoyer>>,
 ) -> Resultat<()> {
+    use base64::Engine;
+
     let de = compte_actif(&app);
     if de.trim().is_empty() {
         return Err(AppError::NonAuthentifie);
     }
+
+    let pieces = pieces
+        .unwrap_or_default()
+        .into_iter()
+        .map(|piece| {
+            let contenu = base64::engine::general_purpose::STANDARD
+                .decode(piece.contenu.as_bytes())
+                .map_err(|_| AppError::Config("fichier joint illisible".into()))?;
+            Ok(crate::gmail::redaction::PieceJointe {
+                nom: piece.nom,
+                type_mime: piece.type_mime,
+                contenu,
+            })
+        })
+        .collect::<Resultat<Vec<_>>>()?;
+    let nombre_de_pieces = pieces.len();
 
     let mime = crate::gmail::redaction::composer(&crate::gmail::redaction::Brouillon {
         de,
@@ -1938,6 +1986,7 @@ pub async fn message_envoyer(
         copies,
         sujet,
         corps,
+        pieces,
     })?;
 
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
@@ -1945,8 +1994,22 @@ pub async fn message_envoyer(
 
     // Le journal ne porte ni destinataire ni objet : ce sont les deux choses
     // qu'un fichier de log ne doit pas conserver d'un courrier privé.
-    log::info!("message envoyé depuis MailFlow");
+    log::info!("message envoyé depuis MailFlow, {nombre_de_pieces} fichier(s) joint(s)");
     Ok(())
+}
+
+/// Un fichier joint, tel que l'interface le confie à `message_envoyer`.
+///
+/// Le contenu traverse l'IPC en base64 : c'est l'interface qui a lu le fichier,
+/// parce que c'est elle qui tient le sélecteur du système. Le backend ne reçoit
+/// donc jamais de chemin — une commande qui lirait le fichier qu'on lui nomme
+/// lirait aussi celui qu'une page compromise lui nommerait.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PieceAEnvoyer {
+    pub nom: String,
+    pub type_mime: String,
+    pub contenu: String,
 }
 
 /// Ouvre dans le navigateur du système un lien cliqué dans un message.
@@ -2155,9 +2218,15 @@ async fn identifier_l_actif(etat: &State<'_, EtatAuth>, annuaire: &mut Annuaire)
 /// l'autorisation à Google.
 #[tauri::command]
 pub async fn compte_ajouter(app: AppHandle, etat: State<'_, EtatAuth>) -> Resultat<()> {
+    // Avant de toucher à quoi que ce soit : sans client OAuth, l'autorisation
+    // ne peut pas aboutir, et mettre l'actif de côté pour rien laissait
+    // l'application sans aucun compte relié.
+    etat.client()?;
+
     let dossier = dossier_config(&app)?;
     let mut annuaire = comptes::charger(&dossier);
     identifier_l_actif(&etat, &mut annuaire).await;
+    let precedent = annuaire.actif.clone();
 
     {
         let mut session = etat.session.lock().await;
@@ -2165,10 +2234,29 @@ pub async fn compte_ajouter(app: AppHandle, etat: State<'_, EtatAuth>) -> Result
     }
     comptes::ecrire(&dossier, &annuaire)?;
 
-    // Si l'autorisation échoue ou est refusée, l'application se retrouve sans
-    // compte actif — mais l'ancien est en réserve, et la liste le propose
-    // toujours. Rien n'est perdu.
-    google_connecter(app, etat).await
+    let issue = google_connecter(app.clone(), etat.clone()).await;
+
+    // Autorisation refusée, abandonnée ou hors délai : l'emplacement actif est
+    // resté vide. On y remet le compte qu'on venait de ranger, sans quoi
+    // l'application se disait déconnectée de toutes ses boîtes.
+    if issue.is_err() {
+        let mut annuaire = comptes::charger(&dossier);
+        let mut session = etat.session.lock().await;
+        match session.basculer_si(|secrets| {
+            comptes::reprendre_une_reserve(secrets, &mut annuaire, precedent.as_deref())
+        }) {
+            Ok(Some(_)) => {
+                if let Err(e) = comptes::ecrire(&dossier, &annuaire) {
+                    log::warn!("annuaire des comptes non enregistré : {e}");
+                }
+                log::info!("ajout de compte non abouti : retour au compte précédent");
+            }
+            Ok(None) => {}
+            Err(e) => log::warn!("retour au compte précédent impossible : {e}"),
+        }
+    }
+
+    issue
 }
 
 /// Retire un compte de la liste et efface son autorisation.

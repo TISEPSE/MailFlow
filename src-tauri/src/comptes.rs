@@ -212,9 +212,144 @@ pub fn mettre_de_cote<S: SecretStore>(secrets: &S, annuaire: &mut Annuaire) -> R
     Ok(())
 }
 
+/// Remonte un compte en réserve quand l'emplacement actif est vide.
+///
+/// # Le défaut que cela corrige
+///
+/// L'application ne se dit connectée que si un jeton occupe l'emplacement
+/// actif. Or il peut se vider alors que d'autres comptes attendent en réserve :
+/// un ajout de compte abandonné en route (l'actif a été mis de côté, le nouveau
+/// n'est jamais arrivé), ou un jeton actif que Google a refusé. À la
+/// réouverture, toutes les boîtes paraissaient déconnectées — puis revenaient
+/// d'un coup dès qu'on en reliait une, puisque leurs jetons n'avaient jamais
+/// quitté le trousseau.
+///
+/// Les comptes dont le jeton a disparu sont retirés au passage : les garder
+/// afficherait des boîtes sur lesquelles on ne peut plus basculer.
+///
+/// Rend l'adresse du compte remonté, ou `None` s'il n'y avait rien à faire.
+/// Une erreur de trousseau interrompt tout sans rien modifier d'irréversible :
+/// mieux vaut retenter au prochain appel que d'oublier un compte sur une
+/// lecture ratée.
+pub fn reprendre_une_reserve<S: SecretStore>(
+    secrets: &S,
+    annuaire: &mut Annuaire,
+    de_preference: Option<&str>,
+) -> Resultat<Option<String>> {
+    if secrets.get(CLE_REFRESH_TOKEN_GOOGLE)?.is_some() {
+        return Ok(None);
+    }
+
+    let mut joignables = Vec::with_capacity(annuaire.connus.len());
+    for compte in &annuaire.connus {
+        if secrets.get(&cle_compte(&compte.adresse))?.is_some() {
+            joignables.push(compte.clone());
+        }
+    }
+
+    // L'emplacement actif est vide : personne n'est actif, quoi qu'en dise
+    // l'annuaire.
+    annuaire.actif = None;
+    annuaire.connus = joignables;
+
+    // Le compte qu'on vient de quitter d'abord, s'il est encore joignable :
+    // après un ajout manqué, l'utilisateur s'attend à retrouver sa boîte, pas
+    // la première de la liste.
+    let preferee = de_preference
+        .map(|adresse| adresse.trim().to_lowercase())
+        .filter(|adresse| annuaire.est_connu(adresse));
+    let Some(cible) = preferee.or_else(|| annuaire.connus.first().map(|c| c.adresse.clone()))
+    else {
+        return Ok(None);
+    };
+
+    basculer(secrets, annuaire, &cible)?;
+    Ok(Some(cible))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn un_emplacement_actif_vide_reprend_un_compte_en_reserve() {
+        // Ajout de compte abandonné : l'actif a été mis de côté, rien n'a pris
+        // sa place. L'application se croyait déconnectée de tout.
+        let secrets = MemoryStore::new();
+        let mut a = annuaire_avec(&["a@x.fr", "b@x.fr"]);
+        a.actif = None;
+        secrets.set(&cle_compte("a@x.fr"), "jeton-a").unwrap();
+        secrets.set(&cle_compte("b@x.fr"), "jeton-b").unwrap();
+
+        let repris = reprendre_une_reserve(&secrets, &mut a, None).unwrap();
+
+        assert_eq!(repris.as_deref(), Some("a@x.fr"));
+        assert_eq!(a.actif.as_deref(), Some("a@x.fr"));
+        assert_eq!(a.connus.len(), 2);
+        assert_eq!(
+            secrets.get(CLE_REFRESH_TOKEN_GOOGLE).unwrap().as_deref(),
+            Some("jeton-a")
+        );
+        assert_eq!(secrets.get(&cle_compte("a@x.fr")).unwrap(), None);
+        assert_eq!(
+            secrets.get(&cle_compte("b@x.fr")).unwrap().as_deref(),
+            Some("jeton-b")
+        );
+    }
+
+    #[test]
+    fn la_reprise_prefere_le_compte_qu_on_vient_de_quitter() {
+        let secrets = MemoryStore::new();
+        let mut a = annuaire_avec(&["a@x.fr", "b@x.fr"]);
+        a.actif = None;
+        secrets.set(&cle_compte("a@x.fr"), "jeton-a").unwrap();
+        secrets.set(&cle_compte("b@x.fr"), "jeton-b").unwrap();
+
+        let repris = reprendre_une_reserve(&secrets, &mut a, Some("B@x.fr")).unwrap();
+
+        assert_eq!(repris.as_deref(), Some("b@x.fr"));
+        assert_eq!(a.actif.as_deref(), Some("b@x.fr"));
+    }
+
+    #[test]
+    fn la_reprise_ecarte_le_compte_dont_le_jeton_a_ete_refuse() {
+        // Google a rejeté le jeton de l'actif : la session l'a effacé, mais
+        // l'annuaire le désigne encore. C'est le suivant qui doit remonter.
+        let secrets = MemoryStore::new();
+        let mut a = annuaire_avec(&["a@x.fr", "b@x.fr"]);
+        a.actif = Some("a@x.fr".into());
+        secrets.set(&cle_compte("b@x.fr"), "jeton-b").unwrap();
+
+        let repris = reprendre_une_reserve(&secrets, &mut a, None).unwrap();
+
+        assert_eq!(repris.as_deref(), Some("b@x.fr"));
+        assert_eq!(a.actif.as_deref(), Some("b@x.fr"));
+        assert!(!a.est_connu("a@x.fr"));
+    }
+
+    #[test]
+    fn la_reprise_ne_touche_pas_a_un_compte_actif_en_place() {
+        let secrets = MemoryStore::new();
+        let mut a = annuaire_avec(&["a@x.fr", "b@x.fr"]);
+        a.actif = Some("a@x.fr".into());
+        secrets.set(CLE_REFRESH_TOKEN_GOOGLE, "jeton-a").unwrap();
+        secrets.set(&cle_compte("b@x.fr"), "jeton-b").unwrap();
+        let avant = a.clone();
+
+        assert_eq!(reprendre_une_reserve(&secrets, &mut a, None).unwrap(), None);
+        assert_eq!(a, avant);
+    }
+
+    #[test]
+    fn sans_aucun_jeton_la_reprise_vide_l_annuaire() {
+        // Réinstallation : le trousseau est vide, les comptes de l'annuaire
+        // ne sont plus que des fantômes.
+        let secrets = MemoryStore::new();
+        let mut a = annuaire_avec(&["a@x.fr", "b@x.fr"]);
+
+        assert_eq!(reprendre_une_reserve(&secrets, &mut a, None).unwrap(), None);
+        assert_eq!(a, Annuaire::default());
+    }
     use crate::secrets::MemoryStore;
 
     fn annuaire_avec(adresses: &[&str]) -> Annuaire {

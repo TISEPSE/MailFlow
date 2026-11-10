@@ -9,10 +9,17 @@
  * - La barre d'actions inférieure (Envoyer, pièces jointes, Drive, emoji, corbeille...)
  *   reste TOUJOURS visible et indépendante du défilement.
  */
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icone, Modale } from './base'
-import { decouperAdresses, type Brouillon } from '../lib/redaction'
+import {
+  decouperAdresses,
+  joindre,
+  type Brouillon,
+  type PieceChoisie,
+} from '../lib/redaction'
 import { ChampDestinataires } from './ChampDestinataires'
+import { ApercuPieceLocale } from './ApercuPieceJointe'
+import { poids } from '../lib/presentation'
 import type { Connaissance } from '../lib/contacts'
 import { messageDErreur, messageEnvoyer } from '../lib/tauri'
 
@@ -27,6 +34,186 @@ const POLICES = [
   'Trebuchet MS',
   'Verdana',
 ]
+
+/**
+ * Un fichier joint, tel que la fenêtre le montre.
+ *
+ * `apercu` est une URL d'objet vers le fichier lui-même, pour les images
+ * seulement : c'est elle qui alimente la vignette. Passer le contenu base64
+ * dans un attribut `src` ferait recopier plusieurs mégaoctets à chaque frappe
+ * dans le corps du message.
+ */
+type PieceAffichee = PieceChoisie & { apercu: string | null }
+
+/** Un fichier en cours de lecture : sa tuile s'affiche avant qu'il soit prêt. */
+interface Lecture {
+  cle: string
+  nom: string
+  taille: number
+  /** Part déjà lue, de 0 à 100. */
+  part: number
+}
+
+/**
+ * Lit un fichier choisi par l'utilisateur.
+ *
+ * Par `FileReader` et une URL de données plutôt que par `arrayBuffer` : le
+ * navigateur fait l'encodage base64 lui-même, là où le construire à la main
+ * sur vingt mégaoctets figerait la fenêtre le temps de la boucle.
+ */
+function lireLeFichier(
+  fichier: File,
+  onAvance: (part: number) => void,
+): Promise<PieceAffichee> {
+  return new Promise((resoudre, rejeter) => {
+    const lecteur = new FileReader()
+    lecteur.onerror = () => rejeter(new Error(`lecture de ${fichier.name} impossible`))
+    lecteur.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onAvance(Math.round((e.loaded / e.total) * 100))
+    }
+    lecteur.onload = () => {
+      const url = String(lecteur.result)
+      resoudre({
+        nom: fichier.name,
+        typeMime: fichier.type,
+        taille: fichier.size,
+        // Tout ce qui suit la virgule de `data:<type>;base64,<contenu>`.
+        contenu: url.slice(url.indexOf(',') + 1),
+        apercu: fichier.type.startsWith('image/') ? URL.createObjectURL(fichier) : null,
+      })
+    }
+    lecteur.readAsDataURL(fichier)
+  })
+}
+
+/** Rend au navigateur la mémoire d'une vignette qu'on ne montrera plus. */
+function libererLApercu(piece: PieceAffichee) {
+  if (piece.apercu) URL.revokeObjectURL(piece.apercu)
+}
+
+/** Largeur et hauteur communes aux tuiles : rien ne saute quand l'image arrive. */
+const TUILE = 'relative flex w-[9.5rem] flex-none flex-col overflow-hidden rounded-xl border'
+
+/**
+ * La tuile d'un fichier joint.
+ *
+ * Une image se montre : c'est ce qui permet de vérifier d'un coup d'œil qu'on
+ * envoie la bonne photo, et pas celle d'à côté dans le dossier. Tant qu'elle
+ * n'est pas décodée, un squelette occupe sa place — une vignette qui surgit
+ * dans un cadre vide donne l'impression d'un raté.
+ */
+function TuileDePiece({
+  piece,
+  verrouillee,
+  onOuvrir,
+  onRetirer,
+}: {
+  piece: PieceAffichee
+  verrouillee: boolean
+  onOuvrir: () => void
+  onRetirer: () => void
+}) {
+  const [imagePrete, setImagePrete] = useState(false)
+  const [imageIllisible, setImageIllisible] = useState(false)
+  const montreLImage = Boolean(piece.apercu) && !imageIllisible
+
+  return (
+    <li className={TUILE} style={{ borderColor: 'var(--line)', background: 'var(--card)' }}>
+      {/* La croix est posée à côté du bouton d'ouverture, pas dedans : un bouton
+          dans un bouton n'est pas du HTML valide, et le clic sur la croix
+          ouvrirait l'aperçu du fichier qu'on est en train de retirer. */}
+      <button
+        type="button"
+        onClick={onOuvrir}
+        title={`Voir ${piece.nom}`}
+        aria-label={`Voir ${piece.nom}`}
+        className="relative flex h-24 w-full cursor-pointer items-center justify-center overflow-hidden transition-[filter] hover:brightness-95"
+        style={{ background: 'var(--sunk)' }}
+      >
+        {montreLImage ? (
+          <>
+            {!imagePrete && (
+              <span
+                aria-hidden
+                className="mouvement-utile squelette absolute inset-0"
+                style={{ borderRadius: 0 }}
+              />
+            )}
+            <img
+              src={piece.apercu ?? undefined}
+              alt={`Aperçu de ${piece.nom}`}
+              onLoad={() => setImagePrete(true)}
+              onError={() => setImageIllisible(true)}
+              className="h-full w-full object-cover"
+              style={{ opacity: imagePrete ? 1 : 0, transition: 'opacity 180ms ease' }}
+            />
+          </>
+        ) : (
+          <Icone nom="description" taille="2rem" style={{ color: 'var(--sub)' }} />
+        )}
+      </button>
+
+      <button
+        type="button"
+        onClick={onRetirer}
+        disabled={verrouillee}
+        title={`Retirer ${piece.nom}`}
+        aria-label={`Retirer ${piece.nom}`}
+        className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full text-white transition-colors hover:bg-black/75 disabled:opacity-50"
+        style={{ background: 'rgba(0,0,0,0.55)' }}
+      >
+        <Icone nom="close" taille="0.875rem" />
+      </button>
+
+      <div className="flex flex-col gap-0.5 px-2.5 py-2">
+        <span className="truncate text-[0.75rem] font-medium" title={piece.nom}>
+          {piece.nom}
+        </span>
+        <span className="text-[0.6875rem]" style={{ color: 'var(--sub)' }}>
+          {poids(piece.taille)}
+        </span>
+      </div>
+    </li>
+  )
+}
+
+/** La tuile d'un fichier encore en lecture, avec sa barre d'avancement. */
+function TuileEnLecture({ lecture }: { lecture: Lecture }) {
+  return (
+    <li
+      className={TUILE}
+      style={{ borderColor: 'var(--line)', background: 'var(--card)' }}
+      aria-busy
+    >
+      <div className="mouvement-utile squelette h-24" style={{ borderRadius: 0 }} />
+      <div className="flex flex-col gap-1.5 px-2.5 py-2">
+        <span className="truncate text-[0.75rem] font-medium" title={lecture.nom}>
+          {lecture.nom}
+        </span>
+        <div
+          role="progressbar"
+          aria-label={`Ajout de ${lecture.nom}`}
+          aria-valuenow={lecture.part}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="h-1 w-full overflow-hidden rounded-full"
+          style={{ background: 'var(--faint)' }}
+        >
+          <div
+            className={`h-full rounded-full ${
+              lecture.part === 0 ? 'mouvement-utile barre-indeterminee' : ''
+            }`}
+            style={{
+              width: lecture.part === 0 ? undefined : `${lecture.part}%`,
+              background: 'var(--accent)',
+              transition: 'width 120ms ease',
+            }}
+          />
+        </div>
+      </div>
+    </li>
+  )
+}
 
 const TAILLES = [
   { nom: 'Petit', taille: '0.75rem' },
@@ -59,6 +246,82 @@ export function Redaction({
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
 
+  // Fichiers joints. Ils vivent à côté du brouillon et non dedans : un
+  // transfert prépare un brouillon, jamais des fichiers.
+  const [pieces, setPieces] = useState<PieceAffichee[]>([])
+  // Les fichiers en cours de lecture ont leur tuile dès le choix : sans elle,
+  // rien ne bougeait entre le sélecteur qui se ferme et le fichier qui
+  // apparaît, et l'on recliquait sur le trombone.
+  const [lectures, setLectures] = useState<Lecture[]>([])
+  const lectureEnCours = lectures.length > 0
+  const selecteur = useRef<HTMLInputElement>(null)
+
+  // Les vignettes tiennent de la mémoire tant qu'on ne la rend pas. Rendue ici
+  // à la fermeture de la fenêtre, quelle que soit la façon dont elle se ferme.
+  const piecesCourantes = useRef(pieces)
+  piecesCourantes.current = pieces
+  useEffect(() => () => piecesCourantes.current.forEach(libererLApercu), [])
+
+  // Le fichier ouvert en grand, s'il y en a un.
+  const [pieceOuverte, setPieceOuverte] = useState<PieceAffichee | null>(null)
+  const fermerLApercu = useCallback(() => setPieceOuverte(null), [])
+
+  // Échap ferme la fenêtre du dessus, pas les deux : sans ce garde-fou, quitter
+  // l'aperçu d'un fichier refermait aussi le message en cours d'écriture, et
+  // avec lui tout ce qu'on venait de taper.
+  const apercuOuvert = useRef(false)
+  apercuOuvert.current = pieceOuverte !== null
+  const fermerLaRedaction = useCallback(() => {
+    if (!apercuOuvert.current) onFermer()
+  }, [onFermer])
+
+  const retirerLaPiece = (piece: PieceAffichee) => {
+    libererLApercu(piece)
+    setPieces((liste) => liste.filter((p) => p !== piece))
+  }
+
+  const ajouterDesFichiers = async (fichiers: File[]) => {
+    if (fichiers.length === 0) return
+
+    const lot = `${Date.now()}`
+    const enAttente: Lecture[] = fichiers.map((f, rang) => ({
+      cle: `${lot}-${rang}`,
+      nom: f.name,
+      taille: f.size,
+      part: 0,
+    }))
+    setLectures((liste) => [...liste, ...enAttente])
+    setErreur(null)
+
+    try {
+      const lues = await Promise.all(
+        fichiers.map((fichier, rang) =>
+          lireLeFichier(fichier, (part) =>
+            setLectures((liste) =>
+              liste.map((l) => (l.cle === enAttente[rang]!.cle ? { ...l, part } : l)),
+            ),
+          ),
+        ),
+      )
+      const { pieces: suite, refusees } = joindre(piecesCourantes.current, lues)
+      // Ce qui n'a pas été retenu — doublon ou fichier de trop — ne sera
+      // jamais montré : sa vignette n'a plus de raison d'occuper la mémoire.
+      lues.filter((p) => !suite.includes(p)).forEach(libererLApercu)
+      setPieces(suite)
+      if (refusees.length > 0) {
+        setErreur(
+          `Gmail n'accepte pas plus de 25 Mo de fichiers par message. Non joint${
+            refusees.length > 1 ? 's' : ''
+          } : ${refusees.join(', ')}.`,
+        )
+      }
+    } catch {
+      setErreur("Un des fichiers n'a pas pu être lu.")
+    } finally {
+      setLectures((liste) => liste.filter((l) => !enAttente.some((a) => a.cle === l.cle)))
+    }
+  }
+
   // Champs d'en-tête repliables
   const [copiesVisibles, setCopiesVisibles] = useState(Boolean(depart.copies))
   const [cciVisibles, setCciVisibles] = useState(false)
@@ -87,7 +350,7 @@ export function Redaction({
   const envoyable = destinataires.length > 0 && Boolean(brouillon.sujet.trim())
 
   const envoyer = async () => {
-    if (!envoyable || enCours) return
+    if (!envoyable || enCours || lectureEnCours) return
 
     setEnCours(true)
     setErreur(null)
@@ -102,6 +365,7 @@ export function Redaction({
         toutesCopies,
         brouillon.sujet,
         brouillon.corps,
+        pieces.map(({ nom, typeMime, contenu }) => ({ nom, typeMime, contenu })),
       )
       onEnvoye('Message envoyé.')
       onFermer()
@@ -134,11 +398,12 @@ export function Redaction({
   }
 
   return (
+    <>
     <Modale
       taille="moyenne"
       titre={depart.sujet ? 'Transférer le message' : 'Nouveau message'}
       sous={de ? `Envoyé depuis ${de}` : undefined}
-      onFermer={onFermer}
+      onFermer={fermerLaRedaction}
       sansRembourrage
     >
       <form
@@ -485,14 +750,14 @@ export function Redaction({
         )}
 
         {/* Section médiane : Corps du message (défile indépendamment) */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-4">
           <textarea
             value={brouillon.corps}
             onChange={(e) => changer('corps')(e.target.value)}
             aria-label="Corps du message"
             placeholder="Écrivez votre message…"
             rows={14}
-            className={`champ-de-saisie selectionnable h-full min-h-[14rem] w-full resize-none bg-transparent leading-relaxed outline-none placeholder:text-[var(--sub)] ${policeStyle()} ${
+            className={`champ-de-saisie selectionnable min-h-[7rem] w-full flex-1 resize-none bg-transparent leading-relaxed outline-none placeholder:text-[var(--sub)] ${policeStyle()} ${
               gras ? 'font-bold' : ''
             } ${italique ? 'italic' : ''} ${souligne ? 'underline' : ''}`}
             style={{
@@ -501,6 +766,23 @@ export function Redaction({
               textAlign: alignement,
             }}
           />
+
+          {(pieces.length > 0 || lectureEnCours) && (
+            <ul className="mt-3 flex flex-none flex-wrap gap-2.5" aria-label="Fichiers joints">
+              {pieces.map((piece) => (
+                <TuileDePiece
+                  key={`${piece.nom}-${piece.taille}`}
+                  piece={piece}
+                  verrouillee={enCours}
+                  onOuvrir={() => setPieceOuverte(piece)}
+                  onRetirer={() => retirerLaPiece(piece)}
+                />
+              ))}
+              {lectures.map((lecture) => (
+                <TuileEnLecture key={lecture.cle} lecture={lecture} />
+              ))}
+            </ul>
+          )}
 
           {erreur && (
             <div
@@ -533,7 +815,7 @@ export function Redaction({
             <div className="relative mr-1.5 flex items-center rounded-full bg-[#0b57d0] text-white shadow-xs transition-colors hover:bg-[#0842a0]">
               <button
                 type="submit"
-                disabled={!envoyable || enCours}
+                disabled={!envoyable || enCours || lectureEnCours}
                 className="flex items-center gap-2 rounded-l-full py-2 pr-3 pl-4 text-[0.875rem] font-medium disabled:opacity-50"
               >
                 {enCours ? 'Envoi…' : 'Envoyer'}
@@ -619,11 +901,28 @@ export function Redaction({
             </button>
 
             {/* 📎 Joindre des fichiers */}
+            <input
+              ref={selecteur}
+              type="file"
+              multiple
+              hidden
+              aria-hidden
+              tabIndex={-1}
+              onChange={(e) => {
+                const choisis = Array.from(e.target.files ?? [])
+                // Vidé aussitôt : sans cela, rechoisir un fichier qu'on vient
+                // de retirer ne déclenche aucun changement, et rien ne se joint.
+                e.target.value = ''
+                void ajouterDesFichiers(choisis)
+              }}
+            />
             <button
               type="button"
-              onClick={() => afficherInfoBulle('Joindre des fichiers')}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)]"
+              onClick={() => selecteur.current?.click()}
+              disabled={enCours || lectureEnCours}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-[var(--fg)] disabled:opacity-50"
               title="Joindre des fichiers"
+              aria-label="Joindre des fichiers"
             >
               <Icone nom="attach_file" taille="1.125rem" />
             </button>
@@ -804,6 +1103,21 @@ export function Redaction({
         </div>
       </form>
     </Modale>
+
+    {/* Hors de la fenêtre de rédaction, et après elle : c'est ce qui la place
+        au-dessus, et ce qui évite qu'un bouton de l'aperçu ne soumette le
+        formulaire du message. */}
+    {pieceOuverte && (
+      <ApercuPieceLocale
+        nom={pieceOuverte.nom}
+        taille={pieceOuverte.taille}
+        typeMime={pieceOuverte.typeMime}
+        contenu={pieceOuverte.contenu}
+        image={pieceOuverte.apercu}
+        onFermer={fermerLApercu}
+      />
+    )}
+    </>
   )
 }
 

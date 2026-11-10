@@ -141,6 +141,22 @@ impl<S: SecretStore> SessionAuth<S> {
         resultat
     }
 
+    /// Comme [`Self::basculer`], pour un travail qui peut n'avoir rien à faire.
+    ///
+    /// `Ok(None)` signifie que le trousseau n'a pas bougé : le jeton en mémoire
+    /// reste alors valable. Le jeter quand même obligerait à en redemander un à
+    /// Google à chaque vérification de routine.
+    pub fn basculer_si<T>(
+        &mut self,
+        travail: impl FnOnce(&S) -> Resultat<Option<T>>,
+    ) -> Resultat<Option<T>> {
+        let resultat = travail(&self.secrets);
+        if !matches!(resultat, Ok(None)) {
+            self.jetons = None;
+        }
+        resultat
+    }
+
     /// Lecture d'une entrée du trousseau applicatif, pour les comptes en
     /// réserve. La session ne les interprète pas : elle ne fait que passer.
     pub fn secret(&self, cle: &str) -> Resultat<Option<String>> {

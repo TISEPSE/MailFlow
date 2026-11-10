@@ -675,7 +675,7 @@ const EXPLICATIONS: Record<EtapeChargement, string> = {
   resumes:
     "Vous pouvez continuer à lire votre courrier pendant ce temps : cette étape ne bloque rien.",
   connexion:
-    "Terminez la connexion dans l'onglet qui vient de s'ouvrir. MailFlow attend cinq minutes, puis abandonne. Vous pourrez relancer.",
+    "Terminez la connexion dans l'onglet qui vient de s'ouvrir. Si vous avez fermé l'onglet ou changé d'avis, annulez : vous pourrez relancer quand vous voudrez.",
 }
 
 /**
@@ -692,10 +692,14 @@ export function Progression({
   faits,
   total,
   etape = 'corps',
+  onAnnuler,
 }: {
   faits: number
   total: number
   etape?: EtapeChargement
+  /** Proposé pendant l'attente de Google : fermer l'onglet ne prévient pas
+   *  l'application, qui tournait sinon seule jusqu'au bout du délai. */
+  onAnnuler?: () => void
 }) {
   // Total inconnu : la bascule de compte affiche cet écran dès le clic, avant
   // même de savoir combien de messages seront à charger. Une barre à zéro
@@ -768,6 +772,12 @@ export function Progression({
       <p className="max-w-md text-center text-[0.8438rem]" style={{ color: 'var(--sub)' }}>
         {EXPLICATIONS[etape]}
       </p>
+
+      {etape === 'connexion' && onAnnuler && (
+        <Bouton icone="close" onClick={onAnnuler}>
+          Annuler
+        </Bouton>
+      )}
     </div>
   )
 }

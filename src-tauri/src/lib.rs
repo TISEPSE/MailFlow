@@ -98,6 +98,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_health,
             commands::google_connecter,
+            commands::google_annuler,
             commands::google_deconnecter,
             commands::gmail_synchroniser,
             commands::regles_lister,

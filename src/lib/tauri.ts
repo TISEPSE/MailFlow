@@ -66,6 +66,16 @@ export function googleConnecter(): Promise<void> {
   return invoke<void>('google_connecter')
 }
 
+/**
+ * Interrompt le parcours de connexion en attente.
+ *
+ * `googleConnecter` (ou `compteAjouter`) rejette alors avec le code
+ * `CONNEXION_ANNULEE`, que l'interface ne présente pas comme une erreur.
+ */
+export function googleAnnuler(): Promise<void> {
+  return invoke<void>('google_annuler')
+}
+
 /** Déconnecte le compte et révoque l'autorisation chez Google. */
 export function googleDeconnecter(): Promise<void> {
   return invoke<void>('google_deconnecter')
@@ -402,8 +412,22 @@ export function messageEnvoyer(
   copies: string[],
   sujet: string,
   corps: string,
+  pieces: PieceAEnvoyer[] = [],
 ): Promise<void> {
-  return invoke<void>('message_envoyer', { destinataires, copies, sujet, corps })
+  return invoke<void>('message_envoyer', { destinataires, copies, sujet, corps, pieces })
+}
+
+/**
+ * Un fichier joint à un message en partance.
+ *
+ * Le contenu voyage en base64 : c'est l'interface qui lit le fichier choisi,
+ * le backend ne reçoit jamais de chemin à ouvrir.
+ */
+export interface PieceAEnvoyer {
+  nom: string
+  typeMime: string
+  /** Contenu du fichier, en base64 standard. */
+  contenu: string
 }
 
 /** Adresse du compte relié, ou `null` si aucun ne l'est. */

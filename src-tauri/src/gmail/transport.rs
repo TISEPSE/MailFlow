@@ -12,6 +12,12 @@ use crate::error::{AppError, Resultat};
 /// Au-delà, on considère que Google ne répondra pas.
 const DELAI_REQUETE: Duration = Duration::from_secs(30);
 
+/// Délai laissé à l'envoi d'un message avec pièces jointes.
+///
+/// Trente secondes suffisent à une requête ordinaire, pas à trente mégaoctets
+/// sur une connexion domestique dont le débit montant est le parent pauvre.
+const DELAI_TELEVERSEMENT: Duration = Duration::from_secs(10 * 60);
+
 /// Interprète l'en-tête `Retry-After`.
 ///
 /// La RFC 9110 en autorise deux formes : un nombre de secondes, ou une date
@@ -50,13 +56,18 @@ impl Transport for TransportHttp {
         let mut requete = match methode {
             Methode::Get => self.http.get(url),
             Methode::Post => self.http.post(url),
+            Methode::PostMessage => self.http.post(url).timeout(DELAI_TELEVERSEMENT),
             Methode::Delete => self.http.delete(url),
         }
         .bearer_auth(jeton);
 
         if let Some(corps) = corps {
+            let type_contenu = match methode {
+                Methode::PostMessage => "message/rfc822",
+                _ => "application/json",
+            };
             requete = requete
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .header(reqwest::header::CONTENT_TYPE, type_contenu)
                 .body(corps);
         }
 

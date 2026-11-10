@@ -33,6 +33,14 @@ pub enum AppError {
     #[error("échec de l'autorisation Google : {0}")]
     Auth(String),
 
+    /// L'utilisateur a renoncé à l'autorisation depuis l'application.
+    ///
+    /// À part de [`Self::Auth`] parce que ce n'est pas un échec : c'est lui qui
+    /// l'a demandé, et lui annoncer en rouge que « la connexion n'a pas
+    /// abouti » reviendrait à lui reprocher son propre geste.
+    #[error("autorisation Google annulée par l'utilisateur")]
+    ConnexionAnnulee,
+
     #[error("l'API Gmail a répondu {statut}")]
     ApiGmail { statut: u16 },
 
@@ -107,6 +115,7 @@ impl AppError {
             Self::FormatRegles(_) => "REGLES_CORROMPUES",
             Self::NonAuthentifie => "NON_AUTHENTIFIE",
             Self::Auth(_) => "ECHEC_CONNEXION",
+            Self::ConnexionAnnulee => "CONNEXION_ANNULEE",
             Self::ApiGmail { .. } => "ERREUR_GMAIL",
             Self::PorteeManquante => "PORTEE_MANQUANTE",
             Self::Reseau(_) => "ERREUR_RESEAU",
@@ -138,6 +147,7 @@ impl AppError {
             Self::Auth(_) => {
                 "La connexion à votre compte Gmail n'a pas abouti. Vous pouvez réessayer.".into()
             }
+            Self::ConnexionAnnulee => "Connexion annulée.".into(),
             Self::ApiGmail { .. } => {
                 "Gmail n'a pas pu traiter la demande. Réessayez dans quelques instants.".into()
             }

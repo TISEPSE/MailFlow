@@ -19,6 +19,59 @@ export function brouillonVierge(): Brouillon {
   return { destinataires: '', copies: '', sujet: '', corps: '' }
 }
 
+/** Un fichier que l'utilisateur a joint au message qu'il écrit. */
+export interface PieceChoisie {
+  nom: string
+  typeMime: string
+  /** Poids du fichier, en octets. */
+  taille: number
+  /** Contenu, en base64 standard. */
+  contenu: string
+}
+
+/**
+ * Poids total des fichiers joints au-delà duquel Gmail refuse le message.
+ *
+ * Miroir de `gmail::redaction::POIDS_MAX_PIECES`. Vérifié ici aussi parce que
+ * c'est ici qu'on peut le dire au moment où le fichier est choisi, plutôt
+ * qu'au moment d'envoyer.
+ */
+export const POIDS_MAX_PIECES = 25 * 1024 * 1024
+
+/**
+ * Ajoute des fichiers à ceux déjà joints.
+ *
+ * Rend la nouvelle liste et, s'il y en a, les noms des fichiers écartés parce
+ * qu'ils feraient dépasser la limite. Les fichiers sont pris dans l'ordre :
+ * un fichier trop lourd n'empêche pas le suivant, plus léger, de passer.
+ *
+ * Un fichier déjà joint — même nom, même poids — n'est pas ajouté deux fois :
+ * le sélecteur du système laisse rechoisir le même, et l'envoyer en double
+ * n'est jamais ce qu'on voulait.
+ */
+export function joindre<P extends PieceChoisie>(
+  deja: readonly P[],
+  nouvelles: readonly P[],
+): { pieces: P[]; refusees: string[] } {
+  const pieces = [...deja]
+  const refusees: string[] = []
+  let poids = deja.reduce((somme, p) => somme + p.taille, 0)
+
+  for (const piece of nouvelles) {
+    if (pieces.some((p) => p.nom === piece.nom && p.taille === piece.taille)) continue
+
+    if (poids + piece.taille > POIDS_MAX_PIECES) {
+      refusees.push(piece.nom)
+      continue
+    }
+
+    pieces.push(piece)
+    poids += piece.taille
+  }
+
+  return { pieces, refusees }
+}
+
 /**
  * Découpe une saisie d'adresses en adresses.
  *
