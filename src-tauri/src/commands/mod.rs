@@ -602,11 +602,10 @@ pub async fn regles_toutes(app: AppHandle) -> Resultat<Vec<ReglesDuCompte>> {
 
 #[tauri::command]
 pub async fn regle_ajouter(app: AppHandle, compte: String, regle: Rule) -> Resultat<RuleSet> {
-    let magasin = magasin_regles(&app, &compte)?;
-    let mut regles = magasin.charger()?;
-
-    regles.ajouter(regle);
-    magasin.enregistrer(&regles)?;
+    let regles = magasin_regles(&app, &compte)?.modifier(|regles| {
+        regles.ajouter(regle);
+        true
+    })?;
 
     log::info!(
         "règle enregistrée, {} au total pour ce compte",
@@ -627,40 +626,31 @@ pub async fn regle_modifier(
     id: String,
     regle: Rule,
 ) -> Resultat<RuleSet> {
-    let magasin = magasin_regles(&app, &compte)?;
-    let mut regles = magasin.charger()?;
-
-    if regles.modifier(&id, regle) {
-        magasin.enregistrer(&regles)?;
-        log::info!("règle {id} modifiée");
-    } else {
-        log::warn!("règle {id} introuvable, rien de modifié");
-    }
-
-    Ok(regles)
+    magasin_regles(&app, &compte)?.modifier(|regles| {
+        let modifiee = regles.modifier(&id, regle);
+        if modifiee {
+            log::info!("règle {id} modifiée");
+        } else {
+            log::warn!("règle {id} introuvable, rien de modifié");
+        }
+        modifiee
+    })
 }
 
 #[tauri::command]
 pub async fn regle_supprimer(app: AppHandle, compte: String, id: String) -> Resultat<RuleSet> {
-    let magasin = magasin_regles(&app, &compte)?;
-    let mut regles = magasin.charger()?;
-
-    if regles.supprimer(&id) {
-        magasin.enregistrer(&regles)?;
-        log::info!("règle {id} supprimée");
-    }
-    Ok(regles)
+    magasin_regles(&app, &compte)?.modifier(|regles| {
+        let supprimee = regles.supprimer(&id);
+        if supprimee {
+            log::info!("règle {id} supprimée");
+        }
+        supprimee
+    })
 }
 
 #[tauri::command]
 pub async fn regle_basculer(app: AppHandle, compte: String, id: String) -> Resultat<RuleSet> {
-    let magasin = magasin_regles(&app, &compte)?;
-    let mut regles = magasin.charger()?;
-
-    if regles.basculer(&id) {
-        magasin.enregistrer(&regles)?;
-    }
-    Ok(regles)
+    magasin_regles(&app, &compte)?.modifier(|regles| regles.basculer(&id))
 }
 
 // ---------------------------------------------------------------------------
@@ -880,12 +870,12 @@ pub async fn archives_synchroniser(
     .await
     .inspect_err(|e| log::warn!("classement Gmail non relu : {e}"))?;
 
-    let mut registre = crate::archives::charger(&config, &compte);
-    for message in classes {
-        registre = crate::archives::poser(registre, message);
-    }
-
-    crate::archives::enregistrer(&config, &compte, &registre)?;
+    let registre = crate::archives::modifier(&config, &compte, |mut registre| {
+        for message in classes {
+            registre = crate::archives::poser(registre, message);
+        }
+        registre
+    })?;
 
     let mut archives = registre;
     cache::reclasser(&mut archives, &regles);
@@ -925,8 +915,7 @@ pub async fn archive_retirer(
         .poser_libelle(&id, crate::gmail::libelles::INBOX)
         .await?;
 
-    let registre = crate::archives::retirer(crate::archives::charger(&config, &compte), &id);
-    crate::archives::enregistrer(&config, &compte, &registre)?;
+    crate::archives::modifier(&config, &compte, |r| crate::archives::retirer(r, &id))?;
 
     log::info!("message retiré de la table, remis dans la boîte de réception (INBOX) sur Gmail");
     Ok(())
@@ -1018,16 +1007,16 @@ fn noter_le_libelle(app: &AppHandle, id: &str, changer: impl FnOnce(&mut Vec<Str
     };
     let compte = compte_du_message(app, id).unwrap_or_else(|| compte_actif(app));
 
-    let registre = crate::archives::charger(&config, &compte);
-    let Some(message) = registre.iter().find(|m| m.id == id) else {
-        return;
-    };
+    let ecrit = crate::archives::modifier(&config, &compte, |registre| {
+        let Some(message) = registre.iter().find(|m| m.id == id) else {
+            return registre;
+        };
 
-    let mut libelles = message.libelles.clone();
-    changer(&mut libelles);
-
-    let registre = crate::archives::noter_les_libelles(registre, id, libelles);
-    if let Err(e) = crate::archives::enregistrer(&config, &compte, &registre) {
+        let mut libelles = message.libelles.clone();
+        changer(&mut libelles);
+        crate::archives::noter_les_libelles(registre, id, libelles)
+    });
+    if let Err(e) = ecrit {
         log::warn!("libellé non reporté au registre : {e}");
     }
 }
@@ -1809,8 +1798,9 @@ fn inscrire_aux_archives(app: &AppHandle, compte: &str, id: &str, libelle: Optio
         message.libelles.push(pose.to_string());
     }
 
-    let registre = crate::archives::poser(crate::archives::charger(&config, compte), message);
-    if let Err(e) = crate::archives::enregistrer(&config, compte, &registre) {
+    if let Err(e) =
+        crate::archives::modifier(&config, compte, |r| crate::archives::poser(r, message))
+    {
         log::warn!("registre des archives non écrit : {e}");
     }
 }
@@ -1885,10 +1875,7 @@ fn composer_le_brouillon(de: String, message: MessageAEcrire) -> Resultat<String
 /// en-têtes — appartient à [`crate::gmail::redaction`], qui rend une erreur
 /// affichable. Un second contrôle les ferait diverger le jour où l'un des deux
 /// changerait.
-fn assembler(
-    de: String,
-    message: MessageAEcrire,
-) -> Resultat<crate::gmail::redaction::Brouillon> {
+fn assembler(de: String, message: MessageAEcrire) -> Resultat<crate::gmail::redaction::Brouillon> {
     use base64::Engine;
 
     if de.trim().is_empty() {
@@ -1902,7 +1889,12 @@ fn assembler(
         .map(|piece| {
             let contenu = base64::engine::general_purpose::STANDARD
                 .decode(piece.contenu.as_bytes())
-                .map_err(|_| AppError::Config("fichier joint illisible".into()))?;
+                .map_err(|_| {
+                    AppError::Refus(
+                        "Un fichier joint n'a pas pu être lu. Retirez-le et joignez-le de nouveau."
+                            .into(),
+                    )
+                })?;
             Ok(crate::gmail::redaction::PieceJointe {
                 nom: piece.nom,
                 type_mime: piece.type_mime,
@@ -1918,12 +1910,10 @@ fn assembler(
         sujet: message.sujet,
         corps: message.corps,
         pieces,
-        reponse_a: message
-            .reponse
-            .map(|r| crate::gmail::redaction::Reference {
-                message_id: r.message_id,
-                references: r.references,
-            }),
+        reponse_a: message.reponse.map(|r| crate::gmail::redaction::Reference {
+            message_id: r.message_id,
+            references: r.references,
+        }),
     })
 }
 
@@ -1971,8 +1961,9 @@ pub struct ReponseA {
 /// et rien à reconnecter. Ce qui change est le pouvoir donné à l'application,
 /// pas la portée du jeton.
 ///
-/// Le bouton « Répondre » reste sur `mailto:` : le déplacer ici aurait mêlé
-/// deux décisions dans un même geste.
+/// Répondre et Répondre à tous passent aussi par ici, avec `reponse` renseigné
+/// pour rattacher le message à son fil : plus aucun `mailto:` ne sort de
+/// l'application pour écrire.
 ///
 /// # Ce qui est vérifié, et où
 ///
@@ -2139,7 +2130,7 @@ pub async fn lien_ouvrir(url: String) -> Resultat<()> {
         .filter(crate::sortie_autorisee)
         .ok_or_else(|| {
             log::warn!("lien de message refusé : schéma non autorisé ou adresse relative");
-            AppError::Config("Ce lien ne peut pas être ouvert.".into())
+            AppError::Refus("Ce lien ne peut pas être ouvert.".into())
         })?;
 
     // Le journal ne porte que le schéma et l'hôte : une adresse complète de
@@ -2182,8 +2173,7 @@ pub async fn message_corbeille(
     // plus serait une invitation à un geste sans effet.
     if let Ok(config) = dossier_config(&app) {
         let compte = compte_du_message(&app, &id).unwrap_or_else(|| compte_actif(&app));
-        let registre = crate::archives::retirer(crate::archives::charger(&config, &compte), &id);
-        let _ = crate::archives::enregistrer(&config, &compte, &registre);
+        let _ = crate::archives::modifier(&config, &compte, |r| crate::archives::retirer(r, &id));
     }
 
     log::info!("message mis à la corbeille");
@@ -2691,13 +2681,25 @@ mod tests_brouillons {
         // jointe est éprouvée par le test suivant plutôt qu'ici.
         let envoi = composer_le_message(
             "moi@exemple.fr".into(),
-            ecrire(&["toi@exemple.fr"], &["elle@exemple.fr"], "Bonjour", "Un mot.", None),
+            ecrire(
+                &["toi@exemple.fr"],
+                &["elle@exemple.fr"],
+                "Bonjour",
+                "Un mot.",
+                None,
+            ),
         )
         .unwrap();
 
         let brouillon = composer_le_brouillon(
             "moi@exemple.fr".into(),
-            ecrire(&["toi@exemple.fr"], &["elle@exemple.fr"], "Bonjour", "Un mot.", None),
+            ecrire(
+                &["toi@exemple.fr"],
+                &["elle@exemple.fr"],
+                "Bonjour",
+                "Un mot.",
+                None,
+            ),
         )
         .unwrap();
 
@@ -2710,7 +2712,13 @@ mod tests_brouillons {
         // qui l'oublierait ferait perdre plus que du texte.
         let mime = composer_le_brouillon(
             "moi@exemple.fr".into(),
-            ecrire(&[], &[], "", "Un mot.", Some(vec![piece("note.txt", "dW4gbW90")])),
+            ecrire(
+                &[],
+                &[],
+                "",
+                "Un mot.",
+                Some(vec![piece("note.txt", "dW4gbW90")]),
+            ),
         )
         .unwrap();
 

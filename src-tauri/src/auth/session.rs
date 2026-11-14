@@ -354,7 +354,9 @@ mod tests {
         // compilation, et c'est exactement ce qui est arrivé.
         let mut s = session_ouverte();
         let faux = FauxRenouvelleur::qui_echoue(|| {
-            Err(AppError::ConfigDistante("Google ne reconnaît pas cette installation : invalid_client".into()))
+            Err(AppError::ConfigDistante(
+                "Google ne reconnaît pas cette installation : invalid_client".into(),
+            ))
         });
 
         let _ = s

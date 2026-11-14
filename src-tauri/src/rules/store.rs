@@ -130,6 +130,24 @@ impl RulesStore {
         })
     }
 
+    /// Relit les règles, les change, et les écrit si `changer` dit qu'il a
+    /// changé quelque chose, sans qu'une autre commande ne s'intercale.
+    ///
+    /// Deux bascules rapides partaient en parallèle, chacune sur sa lecture
+    /// du fichier : la seconde écriture effaçait la première, et une règle
+    /// coupée se rallumait au lancement suivant. Le temporaire, au nom fixe,
+    /// était en plus partagé par les deux écritures.
+    pub fn modifier(&self, changer: impl FnOnce(&mut RuleSet) -> bool) -> Resultat<RuleSet> {
+        static VERROU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _garde = VERROU.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut regles = self.charger()?;
+        if changer(&mut regles) {
+            self.enregistrer(&regles)?;
+        }
+        Ok(regles)
+    }
+
     /// Efface le fichier du compte. Un fichier déjà absent n'est pas une erreur.
     ///
     /// Appelé quand un compte est retiré de l'application : ses règles ne
@@ -224,6 +242,40 @@ mod tests {
         let mut jeu = jeu_exemple();
         jeu.automations[0].expediteur = expediteur.into();
         jeu
+    }
+
+    #[test]
+    fn des_modifications_simultanees_ne_s_effacent_pas() {
+        // Deux bascules rapides partaient en parallèle, chacune sur sa propre
+        // lecture du fichier : la seconde écriture effaçait la première.
+        let dossier = TempDir::new().unwrap();
+        let racine = dossier.path().to_path_buf();
+
+        let fils: Vec<_> = (0..16)
+            .map(|i| {
+                let racine = racine.clone();
+                std::thread::spawn(move || {
+                    let mut regle = jeu(&format!("expediteur{i}@exemple.fr"))
+                        .automations
+                        .remove(0);
+                    regle.id = format!("r{i}");
+                    RulesStore::pour_compte(&racine, "moi@gmail.com")
+                        .modifier(|regles| {
+                            regles.ajouter(regle);
+                            true
+                        })
+                        .unwrap();
+                })
+            })
+            .collect();
+        for f in fils {
+            f.join().unwrap();
+        }
+
+        let regles = RulesStore::pour_compte(&racine, "moi@gmail.com")
+            .charger()
+            .unwrap();
+        assert_eq!(regles.automations.len(), 16);
     }
 
     #[test]

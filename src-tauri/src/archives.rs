@@ -75,6 +75,29 @@ pub fn enregistrer(racine: &Path, compte: &str, messages: &[MessageAffiche]) -> 
     ecrire_prive(&fichier, &texte).map_err(|e| AppError::io(fichier.display(), e))
 }
 
+/// Relit le registre, le change, et l'écrit, sans qu'une autre commande ne
+/// s'intercale.
+///
+/// Archiver plusieurs messages d'affilée lance autant de commandes en
+/// parallèle. Chacune relisait le registre puis écrivait le sien : celles qui
+/// s'étaient croisées s'effaçaient, et des messages bien archivés chez Gmail
+/// manquaient sur la table. Toute modification passe donc par ici.
+///
+/// Le verrou est commun à tous les comptes : les écritures sont rares et
+/// brèves, un verrou par compte n'achèterait rien.
+pub fn modifier(
+    racine: &Path,
+    compte: &str,
+    changer: impl FnOnce(Vec<MessageAffiche>) -> Vec<MessageAffiche>,
+) -> Resultat<Vec<MessageAffiche>> {
+    static VERROU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _garde = VERROU.lock().unwrap_or_else(|e| e.into_inner());
+
+    let registre = changer(charger(racine, compte));
+    enregistrer(racine, compte, &registre)?;
+    Ok(registre)
+}
+
 /// Inscrit un message, ou remplace celui qui portait déjà cet identifiant.
 ///
 /// Le plus récemment archivé passe en tête : c'est l'ordre dans lequel on
@@ -133,6 +156,32 @@ mod tests {
             compte: "moi@gmail.com".into(),
             libelles: Vec::new(),
         }
+    }
+
+    #[test]
+    fn des_archivages_simultanes_restent_tous_sur_la_table() {
+        // Archiver cinq publicités d'affilée lance cinq commandes en parallèle,
+        // qui relisaient toutes le même registre avant d'écrire chacune le
+        // sien : seule la dernière écriture survivait.
+        let d = tempfile::tempdir().unwrap();
+        let racine = d.path().to_path_buf();
+
+        let fils: Vec<_> = (0..16)
+            .map(|i| {
+                let racine = racine.clone();
+                std::thread::spawn(move || {
+                    modifier(&racine, "moi@gmail.com", |r| {
+                        poser(r, message(&format!("m{i}")))
+                    })
+                    .unwrap();
+                })
+            })
+            .collect();
+        for f in fils {
+            f.join().unwrap();
+        }
+
+        assert_eq!(charger(&racine, "moi@gmail.com").len(), 16);
     }
 
     #[test]

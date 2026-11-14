@@ -462,7 +462,9 @@ mod tests {
                 .await
         });
 
-        let mut navigateur = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let mut navigateur = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
         navigateur
             .write_all(b"GET /?code=4%2F0AX4&state=etat-attendu HTTP/1.1\r\n\r\n")
             .await
@@ -473,18 +475,28 @@ mod tests {
 
         // Rien n'a encore été écrit au navigateur : la lecture doit attendre.
         let mut tampon = [0u8; 1];
-        let lecture = tokio::time::timeout(Duration::from_millis(300), navigateur.read(&mut tampon)).await;
-        assert!(lecture.is_err(), "la page a été servie avant la confirmation");
+        let lecture =
+            tokio::time::timeout(Duration::from_millis(300), navigateur.read(&mut tampon)).await;
+        assert!(
+            lecture.is_err(),
+            "la page a été servie avant la confirmation"
+        );
 
         reponse
-            .echec("Connexion impossible", "Google ne reconnaît pas cette installation.")
+            .echec(
+                "Connexion impossible",
+                "Google ne reconnaît pas cette installation.",
+            )
             .await;
 
         let mut page = String::new();
         navigateur.read_to_string(&mut page).await.unwrap();
         assert!(page.starts_with("HTTP/1.1 200 OK"), "{page}");
         assert!(page.contains("Connexion impossible"), "{page}");
-        assert!(page.contains("ne reconnaît pas cette installation"), "{page}");
+        assert!(
+            page.contains("ne reconnaît pas cette installation"),
+            "{page}"
+        );
         assert!(!page.contains("Compte connecté"), "{page}");
     }
 

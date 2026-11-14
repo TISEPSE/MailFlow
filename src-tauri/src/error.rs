@@ -66,6 +66,17 @@ pub enum AppError {
     #[error("installation non reconnue par Google : {0}")]
     ConfigDistante(String),
 
+    /// Un geste refusé pour une raison que l'utilisateur peut corriger :
+    /// destinataire manquant, adresse mal tapée, pièces jointes trop lourdes.
+    ///
+    /// Le texte est écrit par nous, en français, pour l'écran : il traverse
+    /// l'IPC tel quel. Ces refus passaient par [`Self::Config`], dont le
+    /// message est fixe, et l'utilisateur lisait « La configuration de
+    /// MailFlow est invalide » pour une adresse à laquelle il manquait le
+    /// domaine. Ne jamais y mettre un détail venu d'ailleurs (réponse de
+    /// Google, chemin, erreur système) : il finirait affiché.
+    #[error("{0}")]
+    Refus(String),
     /// Le modèle de langage n'a pas produit de résumé exploitable : clé
     /// refusée, quota atteint, refus des filtres, ou réponse hors format.
     ///
@@ -131,6 +142,7 @@ impl AppError {
             Self::Reseau(_) => "ERREUR_RESEAU",
             Self::Config(_) => "CONFIG_INVALIDE",
             Self::ConfigDistante(_) => "INSTALLATION_INCONNUE",
+            Self::Refus(_) => "ACTION_REFUSEE",
             Self::Resume(_) => "RESUME_INDISPONIBLE",
             Self::CleLlm(_) => "CLE_LLM_REFUSEE",
             Self::QuotaLlm { .. } => "QUOTA_LLM",
@@ -174,6 +186,7 @@ impl AppError {
                 "{detail} Ce n'est pas lié à votre compte : les identifiants compilés \
                  dans cette version de MailFlow ne sont pas valides. Vos comptes restent reliés."
             ),
+            Self::Refus(texte) => texte.clone(),
             Self::Resume(_) => {
                 "Le résumé automatique n'a pas abouti. Le message reste lisible tel quel.".into()
             }
@@ -251,7 +264,10 @@ mod tests {
 
         assert_eq!(err.code(), "INSTALLATION_INCONNUE");
         let json = serde_json::to_string(&err).unwrap();
-        assert!(json.contains("ne reconnaît pas cette installation"), "{json}");
+        assert!(
+            json.contains("ne reconnaît pas cette installation"),
+            "{json}"
+        );
         assert!(json.contains("invalid_client"), "{json}");
     }
 

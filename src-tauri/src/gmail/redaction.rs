@@ -125,7 +125,21 @@ fn entete_sure(valeur: &str) -> bool {
 /// glisser une seconde adresse dans un champ qui n'en attend qu'une.
 pub fn adresse_utilisable(adresse: &str) -> bool {
     let a = adresse.trim();
-    !a.is_empty() && a.contains('@') && !a.contains(['<', '>', ',', ';']) && entete_sure(a)
+    // Une partie avant l'arobase, un domaine à point après : « toi@ » ou
+    // « toi@gmail » passaient, et Gmail les refusait ensuite d'un 400 que
+    // l'écran ne savait que traduire par « Gmail n'a pas pu traiter la
+    // demande ». Le contrôle reste grossier : il attrape la faute de frappe,
+    // il ne prétend pas valider la RFC 5322.
+    let Some((local, domaine)) = a.rsplit_once('@') else {
+        return false;
+    };
+    !local.is_empty()
+        && domaine.contains('.')
+        && !domaine.starts_with('.')
+        && !domaine.ends_with('.')
+        && !a.contains(char::is_whitespace)
+        && !a.contains(['<', '>', ',', ';'])
+        && entete_sure(a)
 }
 
 /// Encode un texte d'en-tête en RFC 2047 s'il en a besoin.
@@ -151,7 +165,7 @@ fn encoder_entete(valeur: &str) -> String {
 
 /// Assemble le message MIME complet.
 ///
-/// Rend une erreur de configuration — donc un message affichable — plutôt que
+/// Rend un [`AppError::Refus`] — donc un message affiché tel quel — plutôt que
 /// de nettoyer ce qui cloche : voir l'en-tête du module.
 pub fn composer(brouillon: &Brouillon) -> Resultat<String> {
     composer_avec(brouillon, true)
@@ -174,15 +188,13 @@ fn composer_avec(brouillon: &Brouillon, exige_destinataire: bool) -> Resultat<St
     let destinataires = adresses_valides(&brouillon.destinataires)?;
 
     if exige_destinataire && destinataires.is_empty() {
-        return Err(AppError::Config(
-            "Indiquez au moins un destinataire.".into(),
-        ));
+        return Err(AppError::Refus("Indiquez au moins un destinataire.".into()));
     }
 
     let copies = adresses_valides(&brouillon.copies)?;
 
     if !adresse_utilisable(&brouillon.de) {
-        return Err(AppError::Config(
+        return Err(AppError::Refus(
             "L'adresse du compte connecté n'est pas utilisable.".into(),
         ));
     }
@@ -190,7 +202,7 @@ fn composer_avec(brouillon: &Brouillon, exige_destinataire: bool) -> Resultat<St
     if !entete_sure(&brouillon.sujet) {
         // Le cas arrive pour de bon au transfert : l'objet reproduit est celui
         // de l'expéditeur d'origine.
-        return Err(AppError::Config(
+        return Err(AppError::Refus(
             "L'objet ne peut pas contenir de retour à la ligne.".into(),
         ));
     }
@@ -219,7 +231,7 @@ fn composer_avec(brouillon: &Brouillon, exige_destinataire: bool) -> Resultat<St
     if let Some(reference) = &brouillon.reponse_a {
         let chaine = reference.chaine();
         if !entete_sure(&chaine) {
-            return Err(AppError::Config(
+            return Err(AppError::Refus(
                 "Le message d'origine porte un identifiant inutilisable.".into(),
             ));
         }
@@ -237,7 +249,7 @@ fn composer_avec(brouillon: &Brouillon, exige_destinataire: bool) -> Resultat<St
 
     let poids: usize = brouillon.pieces.iter().map(|p| p.contenu.len()).sum();
     if poids > POIDS_MAX_PIECES {
-        return Err(AppError::Config(
+        return Err(AppError::Refus(
             "Les fichiers joints dépassent 25 Mo au total.".into(),
         ));
     }
@@ -320,7 +332,7 @@ fn frontiere() -> String {
 /// rangé.
 fn nom_de_piece(brut: &str) -> Resultat<String> {
     if !entete_sure(brut) {
-        return Err(AppError::Config(
+        return Err(AppError::Refus(
             "Le nom d'un fichier joint ne peut pas contenir de retour à la ligne.".into(),
         ));
     }
@@ -399,7 +411,7 @@ fn adresses_valides(brutes: &[String]) -> Resultat<Vec<String>> {
         }
 
         if !adresse_utilisable(adresse) {
-            return Err(AppError::Config(format!(
+            return Err(AppError::Refus(format!(
                 "« {adresse} » n'est pas une adresse valide."
             )));
         }
@@ -477,6 +489,43 @@ mod tests {
             pieces: vec![],
             reponse_a: None,
         }
+    }
+
+    /// Ce que l'écran affichera pour cette erreur, après passage par l'IPC.
+    fn affiche(err: AppError) -> String {
+        let json = serde_json::to_value(&err).unwrap();
+        json["message"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn les_refus_de_la_redaction_arrivent_a_l_ecran_tels_quels() {
+        // Ils devenaient tous « La configuration de MailFlow est invalide » :
+        // l'utilisateur qui avait mal tapé une adresse ne pouvait pas le
+        // deviner.
+        let mut sans_destinataire = brouillon();
+        sans_destinataire.destinataires.clear();
+        assert_eq!(
+            affiche(composer(&sans_destinataire).unwrap_err()),
+            "Indiquez au moins un destinataire."
+        );
+
+        let mut adresse_fausse = brouillon();
+        adresse_fausse.destinataires = vec!["toi@".into()];
+        assert_eq!(
+            affiche(composer(&adresse_fausse).unwrap_err()),
+            "« toi@ » n'est pas une adresse valide."
+        );
+
+        let mut trop_lourd = brouillon();
+        trop_lourd.pieces = vec![piece(
+            "gros.bin",
+            "application/octet-stream",
+            &vec![0; POIDS_MAX_PIECES + 1],
+        )];
+        assert_eq!(
+            affiche(composer(&trop_lourd).unwrap_err()),
+            "Les fichiers joints dépassent 25 Mo au total."
+        );
     }
 
     fn piece(nom: &str, type_mime: &str, contenu: &[u8]) -> PieceJointe {
@@ -602,7 +651,7 @@ mod tests {
             b"x",
         )];
 
-        assert_eq!(composer(&b).unwrap_err().code(), "CONFIG_INVALIDE");
+        assert_eq!(composer(&b).unwrap_err().code(), "ACTION_REFUSEE");
     }
 
     #[test]
@@ -650,7 +699,7 @@ mod tests {
             &vec![0u8; POIDS_MAX_PIECES + 1],
         )];
 
-        assert_eq!(composer(&b).unwrap_err().code(), "CONFIG_INVALIDE");
+        assert_eq!(composer(&b).unwrap_err().code(), "ACTION_REFUSEE");
     }
 
     #[test]
@@ -854,8 +903,14 @@ mod tests {
 
         let mime = composer(&b).unwrap();
 
-        assert!(mime.contains("In-Reply-To: <abc@mail.gmail.com>\r\n"), "{mime}");
-        assert!(mime.contains("References: <abc@mail.gmail.com>\r\n"), "{mime}");
+        assert!(
+            mime.contains("In-Reply-To: <abc@mail.gmail.com>\r\n"),
+            "{mime}"
+        );
+        assert!(
+            mime.contains("References: <abc@mail.gmail.com>\r\n"),
+            "{mime}"
+        );
     }
 
     #[test]
@@ -870,7 +925,10 @@ mod tests {
 
         let mime = composer(&b).unwrap();
 
-        assert!(mime.contains("References: <n1@mail> <n2@mail> <n3@mail>\r\n"), "{mime}");
+        assert!(
+            mime.contains("References: <n1@mail> <n2@mail> <n3@mail>\r\n"),
+            "{mime}"
+        );
         assert!(mime.contains("In-Reply-To: <n3@mail>\r\n"), "{mime}");
     }
 

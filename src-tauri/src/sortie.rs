@@ -161,8 +161,10 @@ pub fn ouvrir(url: &str) -> Resultat<()> {
 fn ouvrir_sur_la_plateforme(url: &str) -> Resultat<()> {
     // macOS et Windows n'ont pas d'enveloppe de ce genre : `open` et
     // `ShellExecute` reçoivent l'environnement normal de la session.
-    tauri_plugin_opener::open_url(url, None::<&str>)
-        .map_err(|e| AppError::Config(format!("navigateur injoignable : {e}")))
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| {
+        log::warn!("navigateur injoignable : {e}");
+        navigateur_injoignable()
+    })
 }
 
 /// Les deux manières d'ouvrir une adresse sous Linux, dans l'ordre où on les
@@ -231,10 +233,17 @@ fn ouvrir_sur_la_plateforme(url: &str) -> Resultat<()> {
         }
     }
 
-    Err(AppError::Config(format!(
+    log::warn!(
         "navigateur injoignable : {}",
         derniere.unwrap_or_else(|| "aucun lanceur disponible".into())
-    )))
+    );
+    Err(navigateur_injoignable())
+}
+
+/// Le détail (programme absent, erreur système) est au journal : à l'écran,
+/// il ne dirait rien de plus que cette phrase.
+fn navigateur_injoignable() -> AppError {
+    AppError::Refus("Aucun navigateur n'a pu s'ouvrir pour afficher ce lien.".into())
 }
 
 #[cfg(test)]

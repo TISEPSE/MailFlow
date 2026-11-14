@@ -891,7 +891,10 @@ mod tests {
         categories.insert("h1".to_string(), CategorieMessage::Humain);
         categories.insert("f1".to_string(), CategorieMessage::Formation);
 
-        let ids: Vec<String> = ["n1", "h1", "f1", "inconnu"].iter().map(|s| s.to_string()).collect();
+        let ids: Vec<String> = ["n1", "h1", "f1", "inconnu"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         assert_eq!(ids_resumables(&ids, &categories), vec!["n1".to_string()]);
     }

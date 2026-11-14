@@ -476,7 +476,7 @@ export default function App() {
    *  qui reviendrait à chaque relevé. Voir [`erreurDInstallation`]. */
   const [installationRefusee, setInstallationRefusee] = useState<string | null>(null)
 
-  const relever = useCallback(async () => {
+  const relever = useCallback(async (enFond = false) => {
     setEnRecherche(true)
     try {
       const messages = await boiteLister()
@@ -488,6 +488,10 @@ export default function App() {
     } catch (e) {
       const refus = erreurDInstallation(e)
       if (refus) setInstallationRefusee(refus)
+      // Le relevé périodique se tait : une coupure réseau ferait sinon surgir
+      // le même bandeau rouge toutes les cinq minutes. Le geste « Relever »
+      // et le chargement, eux, disent pourquoi ils échouent.
+      else if (enFond) console.warn('relevé de fond échoué', messageDErreur(e))
       else annoncer(messageDErreur(e), true)
       setPremierReleve(false)
       return null
@@ -1086,7 +1090,7 @@ export default function App() {
     const minuteur = window.setInterval(() => {
       void gmailSynchroniser()
         .catch(() => null)
-        .then(() => relever())
+        .then(() => relever(true))
     }, MINUTES[prefs.frequence] * 60_000)
 
     return () => window.clearInterval(minuteur)

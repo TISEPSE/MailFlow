@@ -607,7 +607,7 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
     pub async fn creer_libelle(&self, nom: &str) -> Resultat<crate::gmail::modele::LibelleGmail> {
         let nom = nom.trim();
         if nom.is_empty() {
-            return Err(AppError::Config("un libellé a besoin d'un nom".into()));
+            return Err(AppError::Refus("Un tas a besoin d'un nom.".into()));
         }
 
         let corps = serde_json::json!({
@@ -1195,14 +1195,21 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(c.corps_envoyes()[0].contains(r#""threadId":"t42""#), "{}", c.corps_envoyes()[0]);
+        assert!(
+            c.corps_envoyes()[0].contains(r#""threadId":"t42""#),
+            "{}",
+            c.corps_envoyes()[0]
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn un_message_neuf_ne_reclame_aucun_fil() {
         let c = client(vec![ok(r#"{"id":"m9"}"#)]);
 
-        c.client.envoyer_message(&mime_de_test(), None).await.unwrap();
+        c.client
+            .envoyer_message(&mime_de_test(), None)
+            .await
+            .unwrap();
 
         assert!(!c.corps_envoyes()[0].contains("threadId"));
     }
@@ -1254,7 +1261,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(c.urls()[0].ends_with("/users/me/drafts/r%2F42"), "url : {}", c.urls()[0]);
+        assert!(
+            c.urls()[0].ends_with("/users/me/drafts/r%2F42"),
+            "url : {}",
+            c.urls()[0]
+        );
     }
 
     #[tokio::test(start_paused = true)]

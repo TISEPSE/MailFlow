@@ -1357,7 +1357,11 @@ mod tests {
         assert!(!assainir(lien).contains("data:"), "{}", assainir(lien));
 
         let image = r#"<img src="data:image/png;base64,AAAA" alt="i">"#;
-        assert!(assainir(image).contains("data:image/png"), "{}", assainir(image));
+        assert!(
+            assainir(image).contains("data:image/png"),
+            "{}",
+            assainir(image)
+        );
     }
 
     #[test]
@@ -1366,7 +1370,10 @@ mod tests {
             r#"<form action="javascript:alert(1)"><input></form>"#,
             r#"<button formaction="javascript:alert(1)">x</button>"#,
         ] {
-            assert!(!assainir(sale).to_lowercase().contains("javascript:"), "{sale}");
+            assert!(
+                !assainir(sale).to_lowercase().contains("javascript:"),
+                "{sale}"
+            );
         }
     }
 

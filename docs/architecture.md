@@ -102,3 +102,25 @@ redemande à Gmail plutôt que de les servir amputés. Et une réponse de plus d
 mégaoctet part par l'endpoint de téléversement, qui n'accepte que du MIME brut,
 sans champ où glisser le `threadId` : elle se rattache alors par ses seuls
 en-têtes.
+
+## Les fichiers sur le disque
+
+Tout ce que MailFlow écrit lui-même (annuaire des comptes, registre des
+archives, disposition de la table, carnet, cache) passe par
+`cache::ecrire_prive` : un fichier voisin créé en `0600`, forcé sur le disque,
+puis renommé à la place de l'ancien. Écrire en place vidait le fichier avant de
+le remplir, et un arrêt entre les deux faisait disparaître la table des
+archives ou la liste des comptes.
+
+Les règles et le registre des archives se modifient par `RulesStore::modifier`
+et `archives::modifier`, sous verrou. Archiver plusieurs messages d'affilée
+lance des commandes en parallèle ; sans verrou, chacune relisait le fichier
+avant que la précédente l'ait écrit, et une partie des archives se perdait.
+
+## Les erreurs à l'écran
+
+`AppError` est réduit à `{ code, message }` avant l'IPC, et le message est en
+général une phrase fixe : un détail technique peut porter des fragments de
+requête. `AppError::Refus` est l'exception : son texte est écrit par nous pour
+l'écran (« Indiquez au moins un destinataire. ») et passe tel quel. N'y mettre
+jamais un détail venu de Google ou du système.

@@ -59,13 +59,28 @@ fn fichier_releve(racine: &Path, compte: &str) -> PathBuf {
 // `archives.json` laissé par une version antérieure dort dans ce dossier et
 // sera balayé au premier « Tout effacer ».
 
-/// Écrit un fichier lisible du seul propriétaire.
+/// Écrit un fichier lisible du seul propriétaire, d'un seul coup.
 ///
 /// Les droits sont posés à la création et non après coup : entre un fichier
 /// créé en `0644` et un `chmod` qui suit, il existe un instant où le contenu
 /// est lisible par tous.
+///
+/// Le contenu va d'abord dans un fichier voisin, forcé sur le disque, puis
+/// prend la place de l'ancien par un renommage. Écrire en place vidait le
+/// fichier avant de le remplir : un arrêt entre les deux laissait un JSON
+/// tronqué, relu comme vide, et la table des archives ou la liste des comptes
+/// disparaissait. Le renommage, lui, est atomique : on lit l'ancien contenu ou
+/// le nouveau, jamais un mélange.
 pub fn ecrire_prive(chemin: &Path, contenu: &str) -> std::io::Result<()> {
     use std::io::Write;
+
+    // Un nom propre à chaque écriture : deux enregistrements simultanés du
+    // même fichier ne doivent pas se partager le même temporaire.
+    static NUMERO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let numero = NUMERO.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut nom = chemin.file_name().unwrap_or_default().to_os_string();
+    nom.push(format!(".{}-{numero}.tmp", std::process::id()));
+    let temporaire = chemin.with_file_name(nom);
 
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -76,7 +91,18 @@ pub fn ecrire_prive(chemin: &Path, contenu: &str) -> std::io::Result<()> {
         options.mode(0o600);
     }
 
-    options.open(chemin)?.write_all(contenu.as_bytes())
+    let ecrit = (|| {
+        let mut fichier = options.open(&temporaire)?;
+        fichier.write_all(contenu.as_bytes())?;
+        fichier.sync_all()?;
+        drop(fichier);
+        std::fs::rename(&temporaire, chemin)
+    })();
+
+    if ecrit.is_err() {
+        let _ = std::fs::remove_file(&temporaire);
+    }
+    ecrit
 }
 
 /// Range le relevé d'un compte.
@@ -244,6 +270,38 @@ mod tests {
         let chemin = dossier_du_compte(d.path(), "moi@gmail.com").join("boite.json");
         let mode = std::fs::metadata(&chemin).unwrap().permissions().mode();
 
+        assert_eq!(mode & 0o077, 0, "mode {mode:o} : lisible par d'autres");
+    }
+
+    #[test]
+    fn une_reecriture_remplace_tout_et_ne_laisse_aucun_temporaire() {
+        let d = racine();
+        let chemin = d.path().join("table.json");
+
+        ecrire_prive(&chemin, "un contenu assez long pour déborder").unwrap();
+        ecrire_prive(&chemin, "court").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&chemin).unwrap(), "court");
+        let restants: Vec<_> = std::fs::read_dir(d.path()).unwrap().collect();
+        assert_eq!(restants.len(), 1, "un temporaire traîne : {restants:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn un_ancien_fichier_lisible_par_tous_redevient_prive_a_la_reecriture() {
+        // Écrire en place gardait les droits du fichier existant : un fichier
+        // laissé en 0644 par une version antérieure le restait pour toujours.
+        // Écrire à côté puis renommer en fait un fichier neuf, créé en 0600.
+        use std::os::unix::fs::PermissionsExt;
+
+        let d = racine();
+        let chemin = d.path().join("annuaire.json");
+        std::fs::write(&chemin, "ancien").unwrap();
+        std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        ecrire_prive(&chemin, "nouveau").unwrap();
+
+        let mode = std::fs::metadata(&chemin).unwrap().permissions().mode();
         assert_eq!(mode & 0o077, 0, "mode {mode:o} : lisible par d'autres");
     }
 

@@ -143,7 +143,7 @@ pub fn ecrire(dossier: &Path, annuaire: &Annuaire) -> Resultat<()> {
     let texte = serde_json::to_string_pretty(annuaire)
         .map_err(|e| AppError::Config(format!("annuaire non sérialisable : {e}")))?;
 
-    std::fs::write(chemin(dossier), texte)
+    crate::cache::ecrire_prive(&chemin(dossier), &texte)
         .map_err(|e| AppError::Config(format!("annuaire non enregistrable : {e}")))
 }
 
@@ -270,6 +270,22 @@ pub fn reprendre_une_reserve<S: SecretStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn l_annuaire_n_est_lisible_que_par_son_proprietaire() {
+        // Il porte les adresses de tous les comptes reliés.
+        use std::os::unix::fs::PermissionsExt;
+
+        let d = tempfile::tempdir().unwrap();
+        ecrire(d.path(), &annuaire_avec(&["a@x.fr"])).unwrap();
+
+        let mode = std::fs::metadata(chemin(d.path()))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0, "mode {mode:o} : lisible par d'autres");
+    }
 
     #[test]
     fn un_emplacement_actif_vide_reprend_un_compte_en_reserve() {
