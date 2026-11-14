@@ -6,7 +6,7 @@
  * expéditeur ne sert jamais à comparer une adresse — voir `normaliser_adresse`
  * côté Rust.
  */
-import type { CategorieMessage } from '../types/backend'
+import type { CategorieMessage, MessageAffiche } from '../types/backend'
 
 /** Palette des pastilles, assignée par position dans la liste. */
 const PALETTE: readonly (readonly [string, string])[] = [
@@ -24,7 +24,7 @@ export function palette(index: number): readonly [string, string] {
 }
 
 /** Ce qui porte une couleur dans la barre de navigation. */
-export type Teintable = CategorieMessage | 'regle' | 'archive'
+export type Teintable = CategorieMessage | 'regle' | 'archive' | 'envoye'
 
 /** Couleurs par catégorie : [texte, fond].
  *
@@ -43,6 +43,9 @@ export const TONS: Record<
   // Un brun de papier : la table des archives est du rangement, pas de
   // l'urgence, et sa couleur ne doit rien réclamer.
   archive: { clair: ['#7A5A33', '#F2E7D8'], sombre: ['#D3AB73', '#332A20'] },
+  // Un bleu-vert éteint : les messages envoyés sont une page qu'on relit, pas
+  // une pile qui attend. Rien n'y est à faire, donc rien n'y doit clignoter.
+  envoye: { clair: ['#2A6478', '#DCEDF3'], sombre: ['#73B6CC', '#1E2E35'] },
 }
 
 export function ton(quoi: Teintable, sombre: boolean): readonly [string, string] {
@@ -154,4 +157,62 @@ export function poids(octets: number): string {
   if (octets < 1024) return `${octets} o`
   if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`
   return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`
+}
+
+/**
+ * De quel côté du message on regarde.
+ *
+ * Les pages de courrier reçu montrent qui écrit ; la page des messages envoyés
+ * montre à qui l'on a écrit. Sans cette distinction, la page des envoyés
+ * affichait soixante fois son propre nom, et aucune ligne ne se distinguait
+ * d'une autre.
+ */
+export type Cote = 'expediteur' | 'destinataire'
+
+/** La personne qu'une ligne de liste nomme. */
+export interface Interlocuteur {
+  /** Nom affiché, ou l'adresse à défaut. Jamais vide. */
+  nom: string
+  /** Adresse normalisée, vide s'il n'y en a pas. */
+  adresse: string
+  /** Combien de personnes de plus figurent sur ce message. */
+  autres: number
+}
+
+/**
+ * Qui nommer pour ce message, vu du côté demandé.
+ *
+ * Les autres destinataires sont comptés et non nommés : une ligne de liste n'a
+ * pas la place de six adresses, et la première suffit à reconnaître le message.
+ */
+export function interlocuteur(m: MessageAffiche, cote: Cote): Interlocuteur {
+  if (cote === 'expediteur') {
+    return { nom: m.nom || m.adresse, adresse: m.adresse, autres: 0 }
+  }
+
+  const premier = m.destinataires[0]
+  const autres = Math.max(0, m.destinataires.length - 1) + m.copies.length
+
+  // Gmail rend de tels messages : une lettre envoyée en copie cachée seule n'a
+  // pas d'en-tête « To ». Une ligne vide se lirait comme un défaut d'affichage.
+  if (!premier) return { nom: 'Destinataire inconnu', adresse: '', autres }
+
+  return { nom: premier.nom || premier.adresse, adresse: premier.adresse, autres }
+}
+
+
+/**
+ * Hauteur au-delà de laquelle le cadre du message cesse de grandir.
+ *
+ * Le cadre prend la hauteur de son contenu pour que la page défile d'un bloc.
+ * Un corps hostile peut, par CSS seule, créer un élément de plusieurs millions
+ * de pixels : le cadre grandissait d'autant et la page devenait impossible à
+ * parcourir. Au-delà de ce plafond, c'est le cadre qui défile.
+ */
+export const HAUTEUR_CADRE_MAX = 50_000
+
+/** La hauteur à donner au cadre, ou `null` si la mesure ne vaut rien. */
+export function hauteurDuCadre(mesure: number): number | null {
+  if (!Number.isFinite(mesure) || mesure <= 0) return null
+  return Math.min(mesure, HAUTEUR_CADRE_MAX)
 }

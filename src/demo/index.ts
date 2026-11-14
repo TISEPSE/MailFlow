@@ -22,6 +22,7 @@ import type {
 import type { ResumesConnus } from '../lib/tauri'
 import {
   ARCHIVES,
+  ENVOYES,
   BOITE,
   COMPTE,
   COMPTES,
@@ -99,6 +100,16 @@ function repondre(cmd: string, args: Record<string, unknown>): unknown {
     case 'archives_lister':
     case 'archives_synchroniser':
       return ARCHIVES
+    case 'envoyes_lister':
+      return ENVOYES
+
+    // Le brouillon : la démo rend un identifiant stable et ne garde rien. De
+    // quoi éprouver le chemin complet de la fenêtre de rédaction — minuterie,
+    // sous-titre, confirmation de sortie — sans boîte mail.
+    case 'brouillon_enregistrer':
+      return 'r_demo_1'
+    case 'brouillon_supprimer':
+      return null
     case 'libelles_lister':
       return libelles
     case 'libelle_creer': {
@@ -151,7 +162,6 @@ function repondre(cmd: string, args: Record<string, unknown>): unknown {
     case 'message_corbeille':
     case 'message_marquer_lu':
     case 'message_envoyer':
-    case 'repondre_au_message':
     case 'libelle_poser':
     case 'libelle_retirer':
     case 'tas_defaire':

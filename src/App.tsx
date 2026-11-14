@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import {
   Bouton,
+  Confirmation,
   Icone,
   Progression,
   Toasts,
@@ -16,18 +17,25 @@ import { Newsletters } from './vues/Newsletters'
 import type { EtatSynthese } from './vues/Newsletters'
 import { Redaction } from './composants/Redaction'
 import {
+  brouillonDeReponse,
   brouillonDeTransfert,
   brouillonVierge,
   type Brouillon,
 } from './lib/redaction'
 import { type Connaissance } from './lib/contacts'
 import { Archives } from './vues/Archives'
+import { Envoyes } from './vues/Envoyes'
 import { Bienvenue } from './vues/Bienvenue'
 import { initiales, ton, type Teintable } from './lib/presentation'
 import { creerCache, oublier, ranger, type CacheCorps } from './lib/corps'
 import { archivesDuCompte } from './lib/table'
-import { useFenetreEtroite, useLogos, usePreferences, useToasts } from './lib/crochets'
-import { autresQueMoi } from './lib/reponse'
+import {
+  EVENEMENT_ECRIRE,
+  useFenetreEtroite,
+  useLogos,
+  usePreferences,
+  useToasts,
+} from './lib/crochets'
 import { grouperNewsletters, phraseDuRapport } from './lib/newsletters'
 import type { GroupeNewsletters } from './lib/newsletters'
 import {
@@ -47,6 +55,7 @@ import {
   compteBasculer,
   compteOublier,
   compteProfil,
+  erreurDInstallation,
   corpsPrecharger,
   resumesConnus,
   resumesProduire,
@@ -69,6 +78,7 @@ import {
   messageDErreur,
   archivesLister,
   archivesSynchroniser,
+  envoyesLister,
   archiveRetirer,
   libelleCreer,
   libellePoser,
@@ -80,7 +90,6 @@ import {
   tableauLire,
   messageMarquerLu,
   messageRanger,
-  repondreAuMessage,
   messageCorbeille,
   regleAjouter,
   regleModifier,
@@ -103,7 +112,7 @@ import type {
   Tableau,
 } from './types/backend'
 
-type Vue = CategorieMessage | 'regles' | 'archives' | 'parametres'
+type Vue = CategorieMessage | 'regles' | 'archives' | 'envoyes' | 'parametres'
 
 /** Les identifiants des newsletters d'un relevé, dans l'ordre. */
 function idsNewsletters(messages: MessageAffiche[]): string[] {
@@ -126,6 +135,7 @@ const TOUS_LES_COMPTES = '\u0000tous'
 function teinteDeLaVue(v: Vue): Teintable {
   if (v === 'regles') return 'regle'
   if (v === 'archives') return 'archive'
+  if (v === 'envoyes') return 'envoye'
   if (v === 'parametres') return 'humain'
   return v
 }
@@ -137,6 +147,7 @@ const NAV: { vue: Vue; libelle: string; glyphe: NomIcone }[] = [
   { vue: 'formation', libelle: 'Rappels de formations', glyphe: 'school' },
   { vue: 'regles', libelle: 'Règles automatiques', glyphe: 'bolt' },
   { vue: 'archives', libelle: 'Archives', glyphe: 'archive' },
+  { vue: 'envoyes', libelle: 'Messages envoyés', glyphe: 'send' },
 ]
 
 
@@ -205,6 +216,17 @@ export default function App() {
    *  démarrage pour une page qu'on n'ouvrira peut-être pas serait de l'attente
    *  offerte à personne. */
   const [archives, setArchives] = useState<MessageAffiche[]>([])
+
+  /** Le courrier envoyé, et s'il est en cours de relevé.
+   *
+   *  Rien n'est gardé sur le disque, à la différence de la boîte et de la
+   *  table : la page se consulte de temps à autre, et un cache de plus aurait
+   *  été un endroit de plus où du courrier privé dort. Le relevé part donc à
+   *  la première ouverture de la page, et pas au démarrage — sans quoi chaque
+   *  lancement paierait un relevé que personne n'a demandé. */
+  const [envoyes, setEnvoyes] = useState<MessageAffiche[]>([])
+  const [envoyesReleves, setEnvoyesReleves] = useState(false)
+  const [envoyesEnCours, setEnvoyesEnCours] = useState(false)
   const [tableau, setTableau] = useState<Tableau>({ tas: {}, messages: {} })
 
   /** Corps déjà chargés, gardés le temps de la session.
@@ -298,6 +320,29 @@ export default function App() {
    * auraient permis d'ouvrir les deux à la fois, ce qui n'a aucun sens.
    */
   const [redaction, setRedaction] = useState<Brouillon | null>(null)
+
+  /** Ferme la fenêtre de rédaction.
+   *
+   *  Stable, et ce n'est pas une optimisation. Écrit en clair dans le JSX
+   *  (`onFermer={() => setRedaction(null)}`), ce rappel était recréé à chaque
+   *  rendu de l'application — donc à chaque relevé périodique, à chaque
+   *  notification, à chaque pas de la barre d'avancement. `Modale` en dépendait
+   *  pour son effet de focus, qui se rejouait d'autant et ramenait le curseur
+   *  sur le premier champ : on écrivait une phrase dans le corps du message, et
+   *  la fin partait dans « Destinataires ». */
+  const fermerLaRedaction = useCallback(() => setRedaction(null), [])
+
+  // Un lien `mailto:` cliqué dans un message demande la rédaction d'ici : voir
+  // [`demanderLaRedaction`]. Une fenêtre déjà ouverte n'est pas écrasée — elle
+  // porte peut-être une lettre en cours.
+  useEffect(() => {
+    const ouvrir = (e: Event) => {
+      const brouillon = (e as CustomEvent<Brouillon>).detail
+      setRedaction((ouverte) => ouverte ?? brouillon)
+    }
+    window.addEventListener(EVENEMENT_ECRIRE, ouvrir)
+    return () => window.removeEventListener(EVENEMENT_ECRIRE, ouvrir)
+  }, [])
 
   /**
    * Le carnet d'adresses Google, pour les propositions de la fenêtre de
@@ -427,16 +472,23 @@ export default function App() {
     boiteRef.current = boite
   }, [boite])
 
+  /** Google refuse cette installation : un écran le dit, au lieu d'un bandeau
+   *  qui reviendrait à chaque relevé. Voir [`erreurDInstallation`]. */
+  const [installationRefusee, setInstallationRefusee] = useState<string | null>(null)
+
   const relever = useCallback(async () => {
     setEnRecherche(true)
     try {
       const messages = await boiteLister()
       setBoite(messages)
       setPremierReleve(false)
+      setInstallationRefusee(null)
       chercherLesLogos(messages)
       return messages
     } catch (e) {
-      annoncer(messageDErreur(e), true)
+      const refus = erreurDInstallation(e)
+      if (refus) setInstallationRefusee(refus)
+      else annoncer(messageDErreur(e), true)
       setPremierReleve(false)
       return null
     } finally {
@@ -473,6 +525,19 @@ export default function App() {
       setArchives(await archivesSynchroniser())
     } catch (e) {
       console.warn('classement Gmail non relu', messageDErreur(e))
+    }
+  }, [annoncer])
+
+  /** Relève le courrier envoyé du compte actif. */
+  const chargerLesEnvoyes = useCallback(async () => {
+    setEnvoyesEnCours(true)
+    try {
+      setEnvoyes(await envoyesLister())
+      setEnvoyesReleves(true)
+    } catch (e) {
+      annoncer(messageDErreur(e), true)
+    } finally {
+      setEnvoyesEnCours(false)
     }
   }, [annoncer])
 
@@ -1054,6 +1119,35 @@ export default function App() {
     [corpsConnus],
   )
 
+  /**
+   * Ouvre la fenêtre de rédaction sur une réponse à ce message.
+   *
+   * Jumelle de [`transferer`], et pour la même raison : le corps est pris dans
+   * le cache quand il y est, demandé sinon. Ouvrir sur l'extrait de deux lignes
+   * de Gmail citerait un message tronqué à son propre auteur.
+   *
+   * Répondre passait jusqu'ici par un `mailto:`, donc par le client de courrier
+   * du système — Gmail dans un navigateur, le plus souvent. MailFlow sait
+   * envoyer depuis qu'il a cette fenêtre : sortir de l'application pour écrire
+   * une réponse n'avait plus de raison d'être, et faisait perdre le fil.
+   */
+  const repondre = useCallback(
+    async (message: MessageAffiche, tous = false) => {
+      const moi = profil?.adresse ?? null
+
+      const connu = corpsConnus.get(message.id)
+      if (connu) {
+        setRedaction(brouillonDeReponse(message, connu, moi, tous))
+        return
+      }
+
+      const charge = await messageCorps(message.id).catch(() => null)
+      if (charge) setCorpsConnus((connus) => ranger(connus, message.id, charge))
+      setRedaction(brouillonDeReponse(message, charge, moi, tous))
+    },
+    [corpsConnus, profil?.adresse],
+  )
+
   /** Toute action qui touche au backend passe par ici : un seul endroit gère
    *  l'état « occupé », les erreurs et le rafraîchissement qui suit. */
   async function agir(
@@ -1165,7 +1259,16 @@ export default function App() {
       { rechargerTout: true },
     )
 
-  const deconnecter = () =>
+  /** La déconnexion attend une confirmation.
+   *
+   *  Elle révoque le jeton chez Google : y revenir demande de refaire tout le
+   *  parcours d'autorisation. Un clic de travers dans le menu du compte ne
+   *  doit pas coûter ça — et c'est aussi le geste qu'on fait par réflexe
+   *  devant une panne de connexion, qu'il aggrave au lieu de la réparer. */
+  const [deconnexionDemandee, setDeconnexionDemandee] = useState(false)
+  const deconnecter = () => setDeconnexionDemandee(true)
+
+  const deconnecterVraiment = () =>
     agir(
       async () => {
         await googleDeconnecter()
@@ -1282,10 +1385,29 @@ export default function App() {
         return 0
       case 'archives':
         return archivesVisibles.length
+      case 'envoyes':
+        return envoyes.length
       default:
         return parCategorie[v].length
     }
   }
+
+  // La page des envoyés se relève à sa première ouverture, et pas au démarrage :
+  // chaque lancement paierait sinon un relevé que personne n'a demandé. Une
+  // seule fois ensuite — le bouton « Relever » de la page vide sert à y revenir.
+  useEffect(() => {
+    if (vue !== 'envoyes' || envoyesReleves || envoyesEnCours) return
+    if (!interrogeable(etat)) return
+    void chargerLesEnvoyes()
+  }, [vue, envoyesReleves, envoyesEnCours, etat, chargerLesEnvoyes])
+
+  // Changer de compte vide la page : le courrier envoyé d'une boîte n'est pas
+  // celui d'une autre, et le garder à l'écran attribuerait au nouveau compte
+  // les lettres du précédent.
+  useEffect(() => {
+    setEnvoyes([])
+    setEnvoyesReleves(false)
+  }, [compteRegarde])
 
   /** Vrai tant qu'un relevé tourne : chaque entrée de la barre montre alors un
    *  anneau à la place de son décompte. */
@@ -1665,14 +1787,28 @@ export default function App() {
         {/* La fenêtre de rédaction vit à la racine et non dans une vue : elle
             s'ouvre depuis la barre latérale comme depuis un message, et deux
             montages auraient donné deux fenêtres à tenir d'accord. */}
+        {deconnexionDemandee && (
+          <Confirmation
+            titre={`Déconnecter ${profil?.adresse ?? 'ce compte'} ?`}
+            sous="MailFlow perdra l'accès à cette boîte. Pour la retrouver, il faudra refaire l'autorisation dans Google. Vos règles et archives restent sur ce poste."
+            libelle="Se déconnecter"
+            icone="logout"
+            onAnnuler={() => setDeconnexionDemandee(false)}
+            onConfirmer={() => {
+              setDeconnexionDemandee(false)
+              void deconnecterVraiment()
+            }}
+          />
+        )}
+
         {redaction && (
           <Redaction
             depart={redaction}
             de={profil?.adresse ?? null}
             carnet={carnetDAdresses}
             logos={logos}
-            onFermer={() => setRedaction(null)}
-            onEnvoye={(m) => annoncer(m)}
+            onFermer={fermerLaRedaction}
+            onEnvoye={annoncer}
           />
         )}
 
@@ -1745,6 +1881,12 @@ export default function App() {
                 })
               }
             />
+          ) : installationRefusee ? (
+            <InstallationRefusee
+              message={installationRefusee}
+              enCours={enRecherche}
+              onReessayer={() => void relever()}
+            />
           ) : !etat.compteConnecte ? (
             <PasConnecte etat={etat} enCours={enCours} onConnecter={() => setVue('parametres')} />
           ) : vue === 'regles' ? (
@@ -1778,6 +1920,19 @@ export default function App() {
                   return `Règle modifiée pour ${r.nom_affichage || r.expediteur}.`
                 })
               }
+            />
+          ) : vue === 'envoyes' ? (
+            <Envoyes
+              envoyes={envoyes}
+              logos={logos}
+              corpsConnus={corpsConnus}
+              onCorpsCharge={(id, corps) =>
+                setCorpsConnus((connus) => ranger(connus, id, corps))
+              }
+              onTransferer={(m) => void transferer(m)}
+              onRelever={() => void chargerLesEnvoyes()}
+              onCopier={(adresse) => annoncer(`${adresse} copiée.`)}
+              chargement={envoyesEnCours}
             />
           ) : vue === 'archives' ? (
             <Archives
@@ -1922,17 +2077,7 @@ export default function App() {
               }
               libelles={vue === 'humain' ? libelles : undefined}
               onRepondre={
-                vue === 'humain'
-                  ? (m, tous) =>
-                      void agir(async () => {
-                        await repondreAuMessage(
-                          m.adresse,
-                          m.sujet,
-                          tous ? autresQueMoi(m, profil?.adresse) : [],
-                        )
-                        return null
-                      })
-                  : undefined
+                vue === 'humain' ? (m, tous) => void repondre(m, tous) : undefined
               }
               onTransferer={(m) => void transferer(m)}
               onCreerLibelle={
@@ -2270,6 +2415,47 @@ const VIDES: Record<
     detail:
       "Rien, dans un message, ne distingue un rappel de cours d'une autre notification : c'est à vous de désigner les expéditeurs à ranger ici. Leurs messages resteront intacts dans Gmail.",
   },
+}
+
+/**
+ * L'écran d'une installation que Google ne reconnaît pas.
+ *
+ * Il dit trois choses, dans l'ordre où l'utilisateur en a besoin : ce qui se
+ * passe, que ses comptes n'y sont pour rien, et ce qu'il ne doit pas faire. La
+ * troisième n'est pas de trop : se déconnecter révoque des jetons valides chez
+ * Google, et c'est ce réflexe qui avait transformé une erreur de compilation en
+ * trois comptes à réautoriser.
+ */
+function InstallationRefusee({
+  message,
+  enCours,
+  onReessayer,
+}: {
+  message: string
+  enCours: boolean
+  onReessayer: () => void
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
+      <Icone nom="error" taille="3.25rem" style={{ color: '#C5221F', opacity: 0.8 }} />
+      <div className="text-[1.1875rem] font-semibold tracking-tight">
+        Google ne reconnaît pas cette version de MailFlow
+      </div>
+      <p className="max-w-md text-[0.9062rem] leading-relaxed" style={{ color: 'var(--sub)' }}>
+        {message}
+      </p>
+      <p className="max-w-md text-[0.8438rem] leading-relaxed" style={{ color: 'var(--sub)' }}>
+        <strong>Ne vous déconnectez pas</strong> : cela n'arrangerait rien et vous
+        obligerait à réautoriser chaque compte. Installez une version à jour de
+        MailFlow, puis réessayez.
+      </p>
+      <div className="pt-2">
+        <Bouton variante="principal" icone="refresh" onClick={onReessayer} disabled={enCours}>
+          Réessayer
+        </Bouton>
+      </div>
+    </div>
+  )
 }
 
 function PasConnecte({

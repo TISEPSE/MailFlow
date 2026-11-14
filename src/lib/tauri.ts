@@ -6,6 +6,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
+import type { ReferenceReponse } from './redaction'
 import type {
   Apercu,
   ErreurBackend,
@@ -48,6 +49,20 @@ export function messageDErreur(e: unknown): string {
   if (estErreurBackend(e)) return e.message
   console.error('erreur inattendue du backend', e)
   return "Une erreur inattendue s'est produite."
+}
+
+/**
+ * Le message d'une installation que Google refuse, ou `null` pour toute autre
+ * erreur.
+ *
+ * Seul cas qui mérite un écran entier plutôt qu'une notification : rien ne
+ * marchera tant qu'une autre version n'est pas installée, et le relevé
+ * périodique ferait sinon revenir le même bandeau rouge toutes les cinq
+ * minutes. C'est aussi le cas où l'utilisateur a le plus besoin d'entendre que
+ * ses comptes n'y sont pour rien — il s'était déconnecté pour « réparer ».
+ */
+export function erreurDInstallation(e: unknown): string | null {
+  return estErreurBackend(e) && e.code === 'INSTALLATION_INCONNUE' ? e.message : null
 }
 
 /** État de santé du backend, appelé au démarrage. */
@@ -317,15 +332,6 @@ export function messageRanger(id: string, libelle?: string): Promise<void> {
  * MailFlow n'a pas le droit d'envoyer du courrier en votre nom : la portee
  * `gmail.send` est ecartee depuis le debut.
  */
-export function repondreAuMessage(
-  destinataire: string,
-  sujet: string,
-  /** Renseignee par « Repondre a tous » ; vide par « Repondre ». */
-  copies: string[] = [],
-): Promise<void> {
-  return invoke<void>('repondre_au_message', { destinataire, sujet, copies })
-}
-
 /** Avancement du prechargement, tel que l'evenement le porte. */
 export interface Avancement {
   faits: number
@@ -413,8 +419,55 @@ export function messageEnvoyer(
   sujet: string,
   corps: string,
   pieces: PieceAEnvoyer[] = [],
+  brouillon: string | null = null,
+  reponse: ReferenceReponse | null = null,
 ): Promise<void> {
-  return invoke<void>('message_envoyer', { destinataires, copies, sujet, corps, pieces })
+  return invoke<void>('message_envoyer', {
+    message: { destinataires, copies, sujet, corps, pieces, reponse },
+    brouillon,
+  })
+}
+
+/**
+ * Dépose chez Gmail le message en cours d'écriture, et rend son identifiant.
+ *
+ * `id` absent crée le brouillon, `id` présent le remplace. Rendre
+ * l'identifiant n'est pas un détail : sans lui, l'enregistrement suivant en
+ * créerait un deuxième, et écrire une lettre en sèmerait une trentaine chez
+ * Gmail.
+ *
+ * Le destinataire n'est pas exigé — un brouillon est ce qu'on écrit avant de
+ * savoir à qui.
+ */
+export function brouillonEnregistrer(
+  destinataires: string[],
+  copies: string[],
+  sujet: string,
+  corps: string,
+  pieces: PieceAEnvoyer[] = [],
+  id: string | null = null,
+  reponse: ReferenceReponse | null = null,
+): Promise<string> {
+  return invoke<string>('brouillon_enregistrer', {
+    message: { destinataires, copies, sujet, corps, pieces, reponse },
+    id,
+  })
+}
+
+/** Retire un brouillon de chez Gmail. */
+export function brouillonSupprimer(id: string): Promise<void> {
+  return invoke<void>('brouillon_supprimer', { id })
+}
+
+/**
+ * Relève le courrier que le compte actif a envoyé.
+ *
+ * Rien n'est gardé sur le disque, à la différence de la boîte de réception :
+ * la page se consulte de temps à autre, et un cache de plus aurait été un
+ * endroit de plus où du courrier privé dort.
+ */
+export function envoyesLister(): Promise<MessageAffiche[]> {
+  return invoke<MessageAffiche[]>('envoyes_lister', {})
 }
 
 /**

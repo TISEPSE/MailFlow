@@ -379,3 +379,17 @@ mod tests {
         assert_eq!(r.labels, ["UNREAD", "CATEGORY_PROMOTIONS", "INBOX"]);
     }
 }
+
+/// Ce que Gmail rend après l'enregistrement d'un brouillon.
+///
+/// Seul l'identifiant intéresse MailFlow : c'est lui qui permet de remplacer le
+/// brouillon au prochain enregistrement plutôt que d'en créer un deuxième.
+///
+/// `Option`, parce qu'une réponse sans identifiant est possible et doit être
+/// traitée comme une panne plutôt que comme un identifiant vide — voir
+/// `ClientGmail::enregistrer_brouillon`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReponseBrouillon {
+    pub id: Option<String>,
+}

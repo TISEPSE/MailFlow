@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import { BOITE, GLYPHES, GLYPHES_PLEINS, type NomIcone } from './glyphes'
+import { echapFerme, type CibleDeFrappe } from '../lib/clavier'
 
 /**
  * Icône, dessinée en SVG.
@@ -447,20 +448,35 @@ export function Modale({
 
   useEffect(() => {
     const auClavier = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onFermer()
+      // Une frappe venue d'une zone de texte longue ne ferme rien : sur macOS,
+      // Échap appartient à la correction automatique et au sélecteur de
+      // caractères, et la fenêtre de rédaction se refermait sur ce qu'on
+      // venait d'écrire. Voir [`echapFerme`].
+      if (e.key === 'Escape' && echapFerme(e.target as CibleDeFrappe | null)) {
+        onFermer()
+      }
     }
     document.addEventListener('keydown', auClavier)
+    return () => document.removeEventListener('keydown', auClavier)
+  }, [onFermer])
 
-    // Le focus entre dans la fenêtre : sans cela, la tabulation continuerait de
-    // parcourir la page qui est derrière, invisible et inatteignable.
+  // Le focus entre dans la fenêtre, **une seule fois**, au montage : sans cela
+  // la tabulation continuerait de parcourir la page qui est derrière,
+  // invisible et inatteignable.
+  //
+  // Et surtout : cet effet ne dépend de rien. Mêlé au précédent, il dépendait
+  // de `onFermer`, que les appelants écrivent en clair dans leur JSX
+  // (`onFermer={() => setRedaction(null)}`) — donc recréé à chaque rendu du
+  // parent. Chaque relevé périodique, chaque notification, chaque pas de la
+  // barre d'avancement rejouait l'effet et ramenait le curseur sur le premier
+  // champ. On écrivait une phrase dans le corps du message, et la fin partait
+  // dans « Destinataires ».
+  useEffect(() => {
     const rendre = document.activeElement as HTMLElement | null
     cadre.current?.querySelector<HTMLElement>('input, button')?.focus()
 
-    return () => {
-      document.removeEventListener('keydown', auClavier)
-      rendre?.focus()
-    }
-  }, [onFermer])
+    return () => rendre?.focus()
+  }, [])
 
   const fenetre = (
     <div

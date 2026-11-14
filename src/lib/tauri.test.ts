@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { estErreurBackend, messageDErreur } from './tauri'
+import { erreurDInstallation, estErreurBackend, messageDErreur } from './tauri'
 
 describe('estErreurBackend', () => {
   it('reconnaît la forme sérialisée par le backend', () => {
@@ -37,5 +37,21 @@ describe('messageDErreur', () => {
 
     expect(message).not.toContain('secret-abc123')
     console_error.mockRestore()
+  })
+})
+
+describe('erreurDInstallation', () => {
+  it('reconnaît une installation que Google refuse, et rend son message', () => {
+    const e = { code: 'INSTALLATION_INCONNUE', message: 'Google ne reconnaît pas cette installation.' }
+
+    expect(erreurDInstallation(e)).toBe('Google ne reconnaît pas cette installation.')
+  })
+
+  it('laisse passer les autres erreurs, qui restent des notifications', () => {
+    // Une coupure réseau est passagère : un écran entier pour elle serait
+    // disproportionné. Seule l'installation refusée bloque tout durablement.
+    expect(erreurDInstallation({ code: 'ERREUR_RESEAU', message: 'x' })).toBeNull()
+    expect(erreurDInstallation(new Error('x'))).toBeNull()
+    expect(erreurDInstallation(null)).toBeNull()
   })
 })

@@ -407,10 +407,13 @@ async fn drainer_la_file(app: &AppHandle) {
             return;
         };
 
+        // Revérification côté Rust : seules les newsletters partent. Voir
+        // [`ids_resumables`].
+        let ids = ids_resumables(&groupe.ids, &categories_en_cache(app));
+
         // Les corps déjà préchargés, dans l'ordre reçu — du plus récent au plus
         // ancien. Un numéro sans corps est sauté sans faire échouer les autres.
-        let numeros: Vec<String> = groupe
-            .ids
+        let numeros: Vec<String> = ids
             .iter()
             .filter_map(|id| corps::lire(&dossier, id))
             .map(|c| corps::texte_lisible(&c))
@@ -805,9 +808,103 @@ fn groupe_sans_texte(dossier: &std::path::Path, groupe: &GroupeAResumer) -> bool
         .is_some_and(|recent| corps::est_sans_texte(dossier, recent))
 }
 
+/// Ne garde, parmi des identifiants venus du webview, que ceux dont la boîte en
+/// cache dit qu'ils sont des newsletters.
+///
+/// # Pourquoi Rust revérifie
+///
+/// Le frontend filtre déjà sur la catégorie. Mais le webview est la surface
+/// non fiable de l'application — c'est la raison d'être de la séparation avec
+/// Rust — et la promesse « les mails de vos proches ne quittent jamais votre
+/// machine » ne peut pas reposer sur lui seul. Un identifiant absent de la boîte
+/// est traité comme inconnu : dans le doute, rien ne part.
+fn ids_resumables(
+    ids: &[String],
+    categories: &HashMap<String, crate::gmail::classement::CategorieMessage>,
+) -> Vec<String> {
+    use crate::gmail::classement::CategorieMessage;
+
+    let (gardes, ecartes): (Vec<_>, Vec<_>) = ids
+        .iter()
+        .partition(|id| categories.get(*id) == Some(&CategorieMessage::Newsletter));
+
+    if !ecartes.is_empty() {
+        // Le nombre seulement : un identifiant n'est pas un secret, mais le
+        // journal n'a pas besoin d'en tenir la liste.
+        log::warn!(
+            "{} identifiant(s) écarté(s) du résumé : pas des newsletters selon la boîte",
+            ecartes.len()
+        );
+    }
+
+    gardes.into_iter().cloned().collect()
+}
+
+/// Les catégories de tous les messages en cache, tous comptes confondus.
+///
+/// Tous les comptes et non le seul actif : sous « Tous les comptes », une
+/// publication peut rassembler des numéros reçus par deux boîtes.
+fn categories_en_cache(
+    app: &AppHandle,
+) -> HashMap<String, crate::gmail::classement::CategorieMessage> {
+    let mut table = HashMap::new();
+
+    let Ok(racine) = super::dossier_cache(app) else {
+        return table;
+    };
+
+    let mut comptes: Vec<String> = super::dossier_config(app)
+        .map(|config| {
+            crate::comptes::charger(&config)
+                .connus
+                .into_iter()
+                .map(|c| c.adresse)
+                .collect()
+        })
+        .unwrap_or_default();
+    if comptes.is_empty() {
+        comptes.push(super::compte_actif(app));
+    }
+
+    for compte in comptes {
+        for m in crate::cache::lire_boite(&racine, &compte).unwrap_or_default() {
+            table.insert(m.id, m.categorie);
+        }
+    }
+
+    table
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seules_les_newsletters_partent_vers_le_modele() {
+        // La doc promettait une seconde vérification côté Rust ; elle n'existait
+        // pas. Le webview est la surface non fiable de l'application : s'il
+        // envoie l'identifiant d'un mail humain, Rust doit l'écarter, pas le
+        // transmettre à Gemini.
+        use crate::gmail::classement::CategorieMessage;
+        let mut categories = HashMap::new();
+        categories.insert("n1".to_string(), CategorieMessage::Newsletter);
+        categories.insert("h1".to_string(), CategorieMessage::Humain);
+        categories.insert("f1".to_string(), CategorieMessage::Formation);
+
+        let ids: Vec<String> = ["n1", "h1", "f1", "inconnu"].iter().map(|s| s.to_string()).collect();
+
+        assert_eq!(ids_resumables(&ids, &categories), vec!["n1".to_string()]);
+    }
+
+    #[test]
+    fn un_identifiant_inconnu_de_la_boite_n_est_pas_resume() {
+        // Pas dans la boîte en cache = on ne sait pas ce que c'est. Dans le
+        // doute, rien ne part.
+        let categories = HashMap::new();
+        let ids = vec!["x".to_string()];
+
+        assert!(ids_resumables(&ids, &categories).is_empty());
+    }
 
     fn groupe(cle: &str) -> GroupeAResumer {
         GroupeAResumer {

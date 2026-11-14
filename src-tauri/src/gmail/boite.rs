@@ -220,6 +220,56 @@ const BOITE_DE_RECEPTION: &str = "in:inbox";
 /// Ils ne décident simplement plus de ce qui a le droit d'être sur la table.
 pub const ARCHIVES: &str = "-in:inbox -in:sent -in:chats -in:trash -in:spam -in:draft";
 
+/// Requête Gmail de la page des messages envoyés.
+///
+/// # La définition retenue
+///
+/// Est envoyé ce qui **est parti** : sorti de chez soi, pas en cours d'écriture,
+/// et pas jeté depuis.
+///
+/// - `in:sent` : le libellé que Gmail pose sur ce qu'on envoie ;
+/// - `-in:draft` : Gmail range le brouillon d'une réponse sous `SENT` le temps
+///   qu'il existe. Sans cette clause, la page montrerait la lettre qu'on est en
+///   train d'écrire à côté de celles qui sont parties — et depuis que MailFlow
+///   enregistre ses brouillons chez Gmail, le compteur de la barre latérale se
+///   mettrait à bouger pendant la frappe ;
+/// - `-in:trash` : un message envoyé puis jeté n'est plus là ;
+/// - `-in:chats` : les discussions ne sont pas du courrier.
+///
+/// C'est le complément exact de la clause `-in:sent` des [`ARCHIVES`] : ce que
+/// la table refuse parce qu'on l'a écrit soi-même se lit ici.
+pub const ENVOYES: &str = "in:sent -in:draft -in:trash -in:chats";
+
+/// Combien de messages envoyés on rapporte.
+///
+/// Plus large que la boîte de réception, pour la raison qui vaut déjà pour les
+/// archives : une boîte de réception qu'on tient à jour reste courte, alors que
+/// le courrier envoyé ne fait que s'accumuler et ne se range jamais. Moins large
+/// que la table des archives, parce qu'ici on relit la dernière lettre écrite —
+/// on ne fouille pas deux cents tuiles à la recherche d'un classement.
+pub const PLAFOND_ENVOYES: usize = 100;
+
+/// Une boîte de réception tenue à jour reste courte ; le courrier envoyé, lui,
+/// ne fait que s'accumuler et ne se range jamais. La relation est garantie à la
+/// compilation : deux constantes n'ont pas à attendre qu'on lance la suite de
+/// tests pour se contredire.
+const _: () = assert!(PLAFOND_ENVOYES > PLAFOND_BOITE);
+
+/// Relève les messages envoyés, les plus récents d'abord.
+///
+/// Les règles sont passées pour que la pastille porte la même couleur
+/// qu'ailleurs, mais la catégorie devinée ne sert à rien sur cette page : on
+/// n'applique pas un classement d'arrivée à son propre courrier. La page est une
+/// liste à plat, par date.
+pub async fn charger_envoyes<T: Transport, J: SourceJeton>(
+    client: &ClientGmail<T, J>,
+    regles: &RuleSet,
+    compte: &str,
+    avance: impl FnMut(usize, usize),
+) -> Resultat<Vec<MessageAffiche>> {
+    relever(client, regles, compte, ENVOYES, PLAFOND_ENVOYES, avance).await
+}
+
 /// Relève la boîte de réception et classe ce qu'elle contient.
 pub async fn charger_boite<T: Transport, J: SourceJeton>(
     client: &ClientGmail<T, J>,
@@ -418,6 +468,30 @@ mod tests_archives {
         ] {
             assert!(ARCHIVES.contains(exclusion), "il manque « {exclusion} »");
         }
+    }
+
+    #[test]
+    fn la_page_des_envoyes_ne_releve_que_le_courrier_envoye() {
+        assert!(ENVOYES.contains("in:sent"));
+    }
+
+    #[test]
+    fn un_brouillon_n_est_pas_un_message_envoye() {
+        // Gmail range le brouillon d'une réponse sous `SENT` le temps qu'il
+        // existe. Sans cette clause, la page des envoyés montrerait la lettre
+        // qu'on est en train d'écrire à côté de celles qui sont parties, et le
+        // compteur de la barre latérale se mettrait à bouger pendant la frappe.
+        assert!(ENVOYES.contains("-in:draft"));
+    }
+
+    #[test]
+    fn un_message_envoye_puis_jete_ne_reste_pas_dans_les_envoyes() {
+        assert!(ENVOYES.contains("-in:trash"));
+    }
+
+    #[test]
+    fn une_discussion_n_est_pas_du_courrier_envoye() {
+        assert!(ENVOYES.contains("-in:chats"));
     }
 
     #[test]

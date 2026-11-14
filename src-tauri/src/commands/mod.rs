@@ -690,7 +690,7 @@ pub fn dossier_cache(app: &AppHandle) -> Resultat<PathBuf> {
 /// Prise dans l'annuaire et non demandée à Gmail : c'est une lecture de
 /// fichier, là où l'autre coûte un appel réseau, et le cache s'interroge à
 /// chaque ouverture.
-fn compte_actif(app: &AppHandle) -> String {
+pub(crate) fn compte_actif(app: &AppHandle) -> String {
     comptes::charger(&dossier_config(app).unwrap_or_default())
         .actif
         .unwrap_or_default()
@@ -1174,9 +1174,17 @@ pub async fn message_corps(
     // Déjà rangé : ni appel Gmail, ni images à retélécharger. Le dossier
     // survit au redémarrage de la machine — voir `crate::cache`.
     let dossier = corps::dossier_cache_dans(&app);
-    if let Some(connu) = corps::lire(&dossier, &id) {
+    if let Some(connu) = corps::lire(&dossier, &id)
+        && !connu.sans_reference()
+    {
         return Ok(connu);
     }
+
+    // Un corps rangé avant l'arrivée du rattachement au fil n'a ni `Message-Id`
+    // ni `threadId`. Le servir tel quel ferait ouvrir une conversation neuve à
+    // chaque réponse, sans que rien ne le signale : on le redemande, et
+    // l'entrée est réécrite complète. Une requête de plus, une seule fois par
+    // ancien message.
 
     // Sous « Tous les comptes », ce message peut appartenir à une autre boîte
     // que celle qui est active. Le demander avec le jeton de l'actif ferait
@@ -1212,6 +1220,12 @@ where
         .as_ref()
         .map(corps::extraire)
         .unwrap_or_default();
+
+    // De quoi répondre dans le fil. `format=full` rend tous les en-têtes, donc
+    // ils sont déjà là : rien de plus n'est demandé à Gmail pour les obtenir.
+    trouve.message_id = message.entete("Message-Id").map(str::to_string);
+    trouve.references = message.entete("References").map(str::to_string);
+    trouve.thread_id = Some(message.thread_id.clone());
 
     // Gmail sert parfois la lettre par référence plutôt qu'en ligne : la partie
     // porte un identifiant au lieu de son contenu. Elle n'est pas une pièce
@@ -1845,86 +1859,105 @@ where
     Ok(Some(cible.creer_libelle(&nom).await?.id))
 }
 
-/// Ouvre un brouillon de réponse dans le client de courrier du système.
+/// Transforme ce que l'interface envoie en un message MIME prêt à partir.
 ///
-/// La réponse s'écrit donc là où l'utilisateur écrit déjà son courrier, avec
-/// ses signatures et son historique.
-///
-/// Ce n'était autrefois pas un choix : MailFlow ne savait pas envoyer. Il le
-/// sait maintenant — voir [`message_envoyer`] — et ce chemin-là reste
-/// néanmoins, parce que répondre dans le fil d'une conversation demande
-/// `In-Reply-To` et `References`, que la fenêtre de rédaction ne pose pas
-/// encore. Une réponse envoyée sans eux ouvrirait un fil de plus au lieu de
-/// continuer celui qu'on a sous les yeux.
-#[tauri::command]
-pub async fn repondre_au_message(
-    destinataire: String,
-    sujet: String,
-    // Renseignée par « Répondre à tous », vide par « Répondre ». Le frontend a
-    // seul de quoi la calculer : il sait quelle adresse est celle du compte, et
-    // ne doit pas se répondre à lui-même.
-    copies: Option<Vec<String>>,
-) -> Resultat<()> {
-    let url = url_mailto(&destinataire, &sujet, &copies.unwrap_or_default())?;
-
-    // Même chemin que les liens : depuis une AppImage, le client de courrier
-    // hériterait des bibliothèques embarquées et ne démarrerait pas.
-    crate::sortie::ouvrir(&url)?;
-
-    log::info!("brouillon de réponse ouvert dans le client du système");
-    Ok(())
+/// Partagée entre [`message_envoyer`] et [`brouillon_enregistrer`], et c'est
+/// tout l'intérêt : ce que l'utilisateur relit dans ses brouillons doit être ce
+/// qui partira. Deux chemins de composition auraient fini par en donner deux
+/// versions, et la divergence ne se serait vue que chez le destinataire.
+fn composer_le_message(de: String, message: MessageAEcrire) -> Resultat<String> {
+    crate::gmail::redaction::composer(&assembler(de, message)?)
 }
 
-/// Vrai quand la chaîne peut servir d'adresse dans un `mailto:`.
+/// Même composition, sans exiger de destinataire.
 ///
-/// Les chevrons sont refusés parce qu'ils marquent la frontière entre nom
-/// affiché et adresse : les laisser passer permettrait de glisser une seconde
-/// adresse dans un champ qui n'en attend qu'une.
-fn adresse_utilisable(adresse: &str) -> bool {
-    !adresse.is_empty() && adresse.contains('@') && !adresse.contains(['<', '>'])
+/// Un brouillon est ce qu'on écrit avant de savoir à qui : exiger l'adresse ici
+/// rendrait la sauvegarde muette pendant toute la rédaction, donc précisément
+/// quand elle sert.
+fn composer_le_brouillon(de: String, message: MessageAEcrire) -> Resultat<String> {
+    crate::gmail::redaction::composer_brouillon(&assembler(de, message)?)
 }
 
-/// Construit un `mailto:` à partir d'une adresse, d'un sujet et des copies.
+/// Décode les fichiers joints et rassemble le brouillon côté Rust.
 ///
-/// Le sujet vient d'un tiers : il passe par l'encodage de requête, sans quoi un
-/// `&` ou un saut de ligne y ajouterait des champs — `bcc`, `body` — que
-/// l'utilisateur n'a pas voulus. Les adresses en copie viennent du même endroit
-/// et subissent le même traitement.
-fn url_mailto(destinataire: &str, sujet: &str, copies: &[String]) -> Resultat<String> {
-    let destinataire = destinataire.trim();
-    if !adresse_utilisable(destinataire) {
-        return Err(AppError::Config("adresse de réponse inutilisable".into()));
+/// Le compte est vérifié ici, et c'est le seul contrôle que ces commandes font
+/// elles-mêmes : tout le reste — adresses, objet, fins de ligne dans les
+/// en-têtes — appartient à [`crate::gmail::redaction`], qui rend une erreur
+/// affichable. Un second contrôle les ferait diverger le jour où l'un des deux
+/// changerait.
+fn assembler(
+    de: String,
+    message: MessageAEcrire,
+) -> Resultat<crate::gmail::redaction::Brouillon> {
+    use base64::Engine;
+
+    if de.trim().is_empty() {
+        return Err(AppError::NonAuthentifie);
     }
 
-    let encoder = |v: &str| url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>();
-    let sujet = sujet.trim();
-    let prefixe = if sujet.to_lowercase().starts_with("re:") || sujet.is_empty() {
-        String::new()
-    } else {
-        "Re: ".to_string()
-    };
+    let pieces = message
+        .pieces
+        .unwrap_or_default()
+        .into_iter()
+        .map(|piece| {
+            let contenu = base64::engine::general_purpose::STANDARD
+                .decode(piece.contenu.as_bytes())
+                .map_err(|_| AppError::Config("fichier joint illisible".into()))?;
+            Ok(crate::gmail::redaction::PieceJointe {
+                nom: piece.nom,
+                type_mime: piece.type_mime,
+                contenu,
+            })
+        })
+        .collect::<Resultat<Vec<_>>>()?;
 
-    let mut url = format!(
-        "mailto:{}?subject={}",
-        encoder(destinataire),
-        encoder(&format!("{prefixe}{sujet}"))
-    );
+    Ok(crate::gmail::redaction::Brouillon {
+        de,
+        destinataires: message.destinataires,
+        copies: message.copies,
+        sujet: message.sujet,
+        corps: message.corps,
+        pieces,
+        reponse_a: message
+            .reponse
+            .map(|r| crate::gmail::redaction::Reference {
+                message_id: r.message_id,
+                references: r.references,
+            }),
+    })
+}
 
-    // Une adresse illisible est écartée plutôt que de faire échouer la réponse
-    // entière : mieux vaut un destinataire en copie de moins qu'un bouton qui
-    // ne fait rien.
-    let copies: Vec<&str> = copies
-        .iter()
-        .map(|c| c.trim())
-        .filter(|c| adresse_utilisable(c) && !c.eq_ignore_ascii_case(destinataire))
-        .collect();
+/// Ce que l'interface confie à l'envoi comme à l'enregistrement d'un brouillon.
+///
+/// Les six champs voyagent ensemble parce qu'ils vont ensemble : les deux
+/// commandes composent le même message, et les séparer en autant de paramètres
+/// laissait la porte ouverte à ce que l'une en oublie un que l'autre envoie.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageAEcrire {
+    pub destinataires: Vec<String>,
+    pub copies: Vec<String>,
+    pub sujet: String,
+    pub corps: String,
+    pub pieces: Option<Vec<PieceAEnvoyer>>,
+    /// Le message auquel celui-ci répond, s'il y en a un.
+    pub reponse: Option<ReponseA>,
+}
 
-    if !copies.is_empty() {
-        url.push_str("&cc=");
-        url.push_str(&encoder(&copies.join(",")));
-    }
-
-    Ok(url)
+/// Ce qu'il faut savoir du message d'origine pour rattacher une réponse.
+///
+/// Les trois valeurs viennent de la lecture du message : les deux premières
+/// font les en-têtes `In-Reply-To` et `References`, la troisième dit à Gmail
+/// sous quelle conversation ranger. Google exige leur cohérence, elles
+/// voyagent donc ensemble plutôt qu'en champs séparés qu'un appelant pourrait
+/// dissocier.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReponseA {
+    pub message_id: String,
+    #[serde(default)]
+    pub references: String,
+    pub thread_id: String,
 }
 
 /// Envoie un message composé dans MailFlow.
@@ -1951,51 +1984,117 @@ fn url_mailto(destinataire: &str, sujet: &str, copies: &[String]) -> Resultat<St
 pub async fn message_envoyer(
     app: AppHandle,
     etat: State<'_, EtatAuth>,
-    destinataires: Vec<String>,
-    copies: Vec<String>,
-    sujet: String,
-    corps: String,
-    pieces: Option<Vec<PieceAEnvoyer>>,
+    message: MessageAEcrire,
+    // `brouillon` : celui que ce message achevait, s'il y en avait un. Il est
+    // retiré de chez Gmail une fois la lettre partie.
+    brouillon: Option<String>,
 ) -> Resultat<()> {
-    use base64::Engine;
+    let nombre_de_pieces = message.pieces.as_ref().map_or(0, |p| p.len());
 
-    let de = compte_actif(&app);
-    if de.trim().is_empty() {
-        return Err(AppError::NonAuthentifie);
-    }
+    // Lu avant la composition, qui consomme la charge. Le fil et les en-têtes
+    // qui le désignent partent ensemble : Google refuse l'un sans l'autre.
+    let fil = message.reponse.as_ref().map(|r| r.thread_id.clone());
 
-    let pieces = pieces
-        .unwrap_or_default()
-        .into_iter()
-        .map(|piece| {
-            let contenu = base64::engine::general_purpose::STANDARD
-                .decode(piece.contenu.as_bytes())
-                .map_err(|_| AppError::Config("fichier joint illisible".into()))?;
-            Ok(crate::gmail::redaction::PieceJointe {
-                nom: piece.nom,
-                type_mime: piece.type_mime,
-                contenu,
-            })
-        })
-        .collect::<Resultat<Vec<_>>>()?;
-    let nombre_de_pieces = pieces.len();
-
-    let mime = crate::gmail::redaction::composer(&crate::gmail::redaction::Brouillon {
-        de,
-        destinataires,
-        copies,
-        sujet,
-        corps,
-        pieces,
-    })?;
+    let mime = composer_le_message(compte_actif(&app), message)?;
 
     let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
-    client.envoyer_message(&mime).await?;
+    client.envoyer_message(&mime, fil.as_deref()).await?;
+
+    // Le brouillon est retiré après coup, et son échec n'est pas celui de
+    // l'envoi : le message est parti, le dire raté serait un mensonge qui
+    // pousserait à l'envoyer deux fois. Au pire, un brouillon traîne dans
+    // Gmail — visible, et effaçable d'un geste.
+    if let Some(id) = brouillon {
+        let _ = client
+            .supprimer_brouillon(&id)
+            .await
+            .inspect_err(|e| log::warn!("message envoyé, brouillon non retiré : {e}"));
+    }
 
     // Le journal ne porte ni destinataire ni objet : ce sont les deux choses
     // qu'un fichier de log ne doit pas conserver d'un courrier privé.
     log::info!("message envoyé depuis MailFlow, {nombre_de_pieces} fichier(s) joint(s)");
     Ok(())
+}
+
+/// Dépose chez Gmail le message en cours d'écriture, et rend son identifiant.
+///
+/// # La panne que cette commande corrige
+///
+/// La fenêtre de rédaction n'avait aucune mémoire. Tout ce qui y était écrit
+/// vivait dans l'état du composant React et disparaissait avec lui : un Échap
+/// de trop, un clic hors de la fenêtre, et la lettre était perdue sans trace.
+/// Signalé sur macOS, où Cocoa attribue Échap à la correction automatique dans
+/// une zone de texte — la frappe arrivait donc en écrivant.
+///
+/// # Chez Gmail, et non sur le disque
+///
+/// C'est là qu'on cherchera le brouillon : il apparaît dans Gmail sur le web et
+/// sur le téléphone, il survit à la réinstallation de MailFlow, et il n'invente
+/// pas un deuxième endroit où les messages inachevés s'accumuleraient.
+///
+/// Aucune nouvelle autorisation : `users.drafts` relève de `gmail.modify`, déjà
+/// accordé. Voir [`crate::auth`].
+///
+/// `id` absent crée le brouillon, `id` présent le remplace — sans quoi chaque
+/// enregistrement en laisserait un de plus chez Gmail.
+#[tauri::command]
+pub async fn brouillon_enregistrer(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    message: MessageAEcrire,
+    id: Option<String>,
+) -> Resultat<String> {
+    let mime = composer_le_brouillon(compte_actif(&app), message)?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    let id = client.enregistrer_brouillon(&mime, id.as_deref()).await?;
+
+    // Ni destinataire ni objet dans le journal, comme pour l'envoi.
+    log::info!("brouillon enregistré chez Gmail");
+    Ok(id)
+}
+
+/// Retire un brouillon de chez Gmail.
+///
+/// Appelé quand l'utilisateur choisit de ne pas garder ce qu'il a écrit. Le
+/// retrait qui suit un envoi, lui, est fait par [`message_envoyer`] : il fait
+/// partie de l'envoi et ne doit pas pouvoir être oublié par l'interface.
+#[tauri::command]
+pub async fn brouillon_supprimer(etat: State<'_, EtatAuth>, id: String) -> Resultat<()> {
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+    client.supprimer_brouillon(&id).await?;
+
+    log::info!("brouillon retiré de chez Gmail");
+    Ok(())
+}
+
+/// Relève le courrier que ce compte a envoyé.
+///
+/// Rien n'est gardé sur le disque, à la différence de la boîte de réception et
+/// de la table des archives : la page est consultée de temps à autre, et un
+/// cache de plus aurait été un endroit de plus où du courrier privé dort.
+///
+/// Les règles sont passées pour que la pastille porte la même couleur
+/// qu'ailleurs — un même message ne doit pas changer d'apparence selon la page.
+/// La catégorie devinée, elle, ne sert à rien ici : on n'applique pas un
+/// classement d'arrivée à son propre courrier.
+#[tauri::command]
+pub async fn envoyes_lister(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+) -> Resultat<Vec<MessageAffiche>> {
+    let compte = compte_actif(&app);
+    let config = dossier_config(&app)?;
+    let regles = RulesStore::pour_compte(&config, &compte).charger()?;
+
+    let client = ClientGmail::nouveau(TransportHttp::nouveau()?, JetonsDeSession { etat: &etat });
+
+    let envoyes =
+        crate::gmail::boite::charger_envoyes(&client, &regles, &compte, |_, _| {}).await?;
+
+    log::info!("{} message(s) envoyé(s) relevé(s)", envoyes.len());
+    Ok(envoyes)
 }
 
 /// Un fichier joint, tel que l'interface le confie à `message_envoyer`.
@@ -2496,82 +2595,6 @@ pub async fn contacts_synchroniser(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::url_mailto;
-
-    /// Réponse simple : sans personne en copie.
-    fn mailto(destinataire: &str, sujet: &str) -> crate::error::Resultat<String> {
-        url_mailto(destinataire, sujet, &[])
-    }
-
-    fn copies(liste: &[&str]) -> Vec<String> {
-        liste.iter().map(|c| c.to_string()).collect()
-    }
-
-    #[test]
-    fn le_sujet_est_prefixe_une_seule_fois() {
-        let url = mailto("a@b.fr", "Disponibilités").unwrap();
-
-        assert!(url.contains("subject=Re%3A+Disponibilit"), "{url}");
-        assert!(
-            !mailto("a@b.fr", "Re: déjà")
-                .unwrap()
-                .contains("Re%3A+Re%3A")
-        );
-    }
-
-    #[test]
-    fn un_sujet_hostile_n_ajoute_pas_de_champs() {
-        // Sans encodage, ce sujet glisserait une copie cachée dans le brouillon
-        // que l'utilisateur s'apprête à envoyer.
-        let url = mailto("a@b.fr", "Bonjour&bcc=espion@ailleurs.fr").unwrap();
-
-        assert!(!url.contains("&bcc="), "{url}");
-    }
-
-    #[test]
-    fn une_adresse_inutilisable_est_refusee() {
-        // Mieux vaut le dire que d'ouvrir un client de courrier sur un vide.
-        assert!(mailto("", "x").is_err());
-        assert!(mailto("sans-arobase", "x").is_err());
-        assert!(mailto("Nom <a@b.fr>", "x").is_err());
-    }
-
-    #[test]
-    fn repondre_a_tous_place_les_autres_en_copie() {
-        let url = url_mailto("a@b.fr", "Réunion", &copies(&["c@d.fr", "e@f.fr"])).unwrap();
-
-        assert!(url.starts_with("mailto:a%40b.fr?"), "{url}");
-        assert!(url.contains("&cc=c%40d.fr%2Ce%40f.fr"), "{url}");
-    }
-
-    #[test]
-    fn le_destinataire_principal_ne_se_retrouve_pas_aussi_en_copie() {
-        // Il est souvent dans le `To` d'origine : l'y laisser lui enverrait deux
-        // fois la même réponse.
-        let url = url_mailto("a@b.fr", "x", &copies(&["A@B.fr", "c@d.fr"])).unwrap();
-
-        assert_eq!(url.matches("a%40b.fr").count(), 1, "{url}");
-        assert!(url.contains("&cc=c%40d.fr"), "{url}");
-    }
-
-    #[test]
-    fn une_copie_illisible_est_ecartee_sans_faire_echouer_la_reponse() {
-        let url = url_mailto("a@b.fr", "x", &copies(&["Nom <c@d.fr>", "e@f.fr"])).unwrap();
-
-        assert!(url.contains("&cc=e%40f.fr"), "{url}");
-        assert!(!url.contains("Nom"), "{url}");
-    }
-
-    #[test]
-    fn sans_copie_valable_aucun_champ_cc_n_est_ajoute() {
-        let url = url_mailto("a@b.fr", "x", &copies(&["a@b.fr"])).unwrap();
-
-        assert!(!url.contains("&cc="), "{url}");
-    }
-}
-
-#[cfg(test)]
 mod tests_pieces_jointes {
     use super::{chemin_libre, nom_de_fichier_sur};
 
@@ -2624,6 +2647,132 @@ mod tests_pieces_jointes {
         let second = chemin_libre(dossier.path(), "facture.pdf");
         assert_ne!(premier, second);
         assert_eq!(second.file_name().unwrap(), "facture (2).pdf");
+    }
+}
+
+#[cfg(test)]
+mod tests_brouillons {
+    use super::*;
+
+    fn piece(nom: &str, contenu_base64: &str) -> PieceAEnvoyer {
+        PieceAEnvoyer {
+            nom: nom.into(),
+            type_mime: "text/plain".into(),
+            contenu: contenu_base64.into(),
+        }
+    }
+
+    fn ecrire(
+        destinataires: &[&str],
+        copies: &[&str],
+        sujet: &str,
+        corps: &str,
+        pieces: Option<Vec<PieceAEnvoyer>>,
+    ) -> MessageAEcrire {
+        MessageAEcrire {
+            destinataires: destinataires.iter().map(|a| (*a).to_string()).collect(),
+            copies: copies.iter().map(|a| (*a).to_string()).collect(),
+            sujet: sujet.into(),
+            corps: corps.into(),
+            pieces,
+            reponse: None,
+        }
+    }
+
+    #[test]
+    fn un_brouillon_et_son_envoi_composent_le_meme_message() {
+        // C'est la promesse de la fenêtre de rédaction : ce qu'on relit dans
+        // ses brouillons est ce qui partira. Deux chemins de composition
+        // auraient fini par en donner deux versions.
+        //
+        // Sans pièce jointe : la frontière d'un `multipart` est horodatée à la
+        // nanoseconde, donc deux compositions du même message ne donnent jamais
+        // deux fois la même chaîne. C'est voulu, et c'est pourquoi la pièce
+        // jointe est éprouvée par le test suivant plutôt qu'ici.
+        let envoi = composer_le_message(
+            "moi@exemple.fr".into(),
+            ecrire(&["toi@exemple.fr"], &["elle@exemple.fr"], "Bonjour", "Un mot.", None),
+        )
+        .unwrap();
+
+        let brouillon = composer_le_brouillon(
+            "moi@exemple.fr".into(),
+            ecrire(&["toi@exemple.fr"], &["elle@exemple.fr"], "Bonjour", "Un mot.", None),
+        )
+        .unwrap();
+
+        assert_eq!(envoi, brouillon);
+    }
+
+    #[test]
+    fn un_fichier_joint_part_avec_le_brouillon() {
+        // Le fichier a demandé d'être choisi, lu et téléversé : un brouillon
+        // qui l'oublierait ferait perdre plus que du texte.
+        let mime = composer_le_brouillon(
+            "moi@exemple.fr".into(),
+            ecrire(&[], &[], "", "Un mot.", Some(vec![piece("note.txt", "dW4gbW90")])),
+        )
+        .unwrap();
+
+        assert!(mime.contains("note.txt"));
+        assert!(mime.contains("multipart/mixed"));
+    }
+
+    #[test]
+    fn un_fichier_joint_illisible_est_refuse_avant_tout_appel() {
+        let erreur = composer_le_message(
+            "moi@exemple.fr".into(),
+            ecrire(
+                &["toi@exemple.fr"],
+                &[],
+                "Bonjour",
+                "Un mot.",
+                Some(vec![piece("note.txt", "pas du base64 !!")]),
+            ),
+        );
+
+        assert!(erreur.is_err());
+    }
+
+    #[test]
+    fn un_brouillon_sans_destinataire_se_compose_quand_meme() {
+        // Un envoi exige un destinataire ; un brouillon est précisément ce
+        // qu'on écrit avant de savoir à qui. Le refuser rendrait la sauvegarde
+        // muette pendant toute la rédaction, c'est-à-dire exactement quand elle
+        // sert.
+        let mime = composer_le_brouillon(
+            "moi@exemple.fr".into(),
+            ecrire(&[], &[], "", "Une idée en cours.", None),
+        )
+        .unwrap();
+
+        assert!(mime.contains("From: moi@exemple.fr"));
+        // L'en-tête est omis plutôt que laissé vide : « To: » suivi de rien se
+        // lit plus mal, dans Gmail comme ailleurs, qu'un en-tête absent.
+        assert!(!mime.contains("To:"), "mime : {mime}");
+        // Le corps part en base64 — c'est pourquoi on ne le cherche pas en
+        // clair ici.
+        assert!(mime.contains("Content-Transfer-Encoding: base64"));
+    }
+
+    #[test]
+    fn un_envoi_sans_destinataire_reste_refuse() {
+        // La tolérance du brouillon ne doit pas s'étendre à l'envoi : un
+        // message sans destinataire ne part nulle part.
+        assert!(
+            composer_le_message(
+                "moi@exemple.fr".into(),
+                ecrire(&[], &[], "Bonjour", "Un mot.", None),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn un_brouillon_sans_compte_connecte_est_refuse() {
+        assert!(
+            composer_le_brouillon("   ".into(), ecrire(&[], &[], "", "Un mot.", None)).is_err()
+        );
     }
 }
 

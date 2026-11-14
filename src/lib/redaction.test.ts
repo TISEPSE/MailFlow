@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  brouillonDepuisMailto,
+  brouillonDeReponse,
   brouillonDeTransfert,
+  brouillonModifie,
+  brouillonVierge,
   decouperAdresses,
+  delaiDEnregistrement,
   joindre,
   POIDS_MAX_PIECES,
+  prefixerReponse,
   prefixerTransfert,
   texteCitable,
 } from './redaction'
@@ -174,5 +180,215 @@ describe('fichiers joints', () => {
     // Le fichier trop lourd n'empêche pas le suivant de passer.
     expect(pieces.map((p) => p.nom)).toEqual(['a.pdf', 'petit.txt'])
     expect(refusees).toEqual(['trop.mp4'])
+  })
+})
+
+describe('brouillonModifie', () => {
+  const vierge = brouillonVierge()
+  const rien = { pieces: 0, cci: '' }
+
+  it('ne voit rien à perdre dans un message neuf qu’on n’a pas touché', () => {
+    expect(brouillonModifie(vierge, vierge, rien)).toBe(false)
+  })
+
+  it('compte chacun des quatre champs', () => {
+    const champs = ['destinataires', 'copies', 'sujet', 'corps'] as const
+
+    for (const champ of champs) {
+      expect(brouillonModifie(vierge, { ...vierge, [champ]: 'x' }, rien)).toBe(true)
+    }
+  })
+
+  it('ne compte pas une frappe qui n’a laissé que des espaces', () => {
+    expect(brouillonModifie(vierge, { ...vierge, corps: '   \n ' }, rien)).toBe(false)
+  })
+
+  it('compte une pièce jointe, même sans un mot écrit', () => {
+    // Le fichier a demandé d'être choisi, lu et téléversé : le perdre d'un
+    // Échap coûte plus cher qu'une ligne de texte.
+    expect(brouillonModifie(vierge, vierge, { pieces: 1, cci: '' })).toBe(true)
+  })
+
+  it('compte une copie cachée, qui ne vit pas dans le brouillon', () => {
+    expect(brouillonModifie(vierge, vierge, { pieces: 0, cci: 'elle@exemple.fr' })).toBe(true)
+  })
+
+  it('ne réclame rien pour un transfert qu’on vient d’ouvrir', () => {
+    // Le transfert arrive pré-rempli. Demander « garder le brouillon ? » à
+    // quelqu'un qui n'a pas encore écrit un mot ferait du garde-fou une
+    // formalité qu'on apprend à cliquer sans lire.
+    const depart = brouillonDeTransfert(MESSAGE, null)
+
+    expect(brouillonModifie(depart, depart, rien)).toBe(false)
+  })
+
+  it('réclame dès qu’un destinataire est ajouté à un transfert', () => {
+    const depart = brouillonDeTransfert(MESSAGE, null)
+
+    expect(
+      brouillonModifie(depart, { ...depart, destinataires: 'alice@exemple.fr' }, rien),
+    ).toBe(true)
+  })
+
+  it('réclame quand le corps cité d’un transfert a été effacé', () => {
+    const depart = brouillonDeTransfert(MESSAGE, null)
+
+    expect(brouillonModifie(depart, { ...depart, corps: '' }, rien)).toBe(true)
+  })
+})
+
+describe('delaiDEnregistrement', () => {
+  it('enregistre vite une lettre sans fichier', () => {
+    expect(delaiDEnregistrement(0)).toBe(3000)
+  })
+
+  it('espace les enregistrements dès qu’un fichier est joint', () => {
+    // L'API des brouillons de Gmail n'a pas de mise à jour partielle : chaque
+    // enregistrement renvoie le message entier, pièces jointes comprises.
+    // Toutes les trois secondes, une pièce de vingt mégaoctets saturerait le
+    // débit montant pendant toute la rédaction.
+    expect(delaiDEnregistrement(5 * 1024 * 1024)).toBeGreaterThan(delaiDEnregistrement(0))
+  })
+
+  it('reste court pour une pièce légère', () => {
+    // Une signature en image ou un petit PDF ne coûtent rien à renvoyer : ils
+    // ne doivent pas faire perdre la sauvegarde rapprochée.
+    expect(delaiDEnregistrement(50 * 1024)).toBe(3000)
+  })
+
+  it('ne dépasse jamais une minute, même pour le maximum admis', () => {
+    // Au-delà, l'attente cesse d'être une sauvegarde automatique.
+    expect(delaiDEnregistrement(POIDS_MAX_PIECES)).toBeLessThanOrEqual(60_000)
+  })
+})
+
+describe('prefixerReponse', () => {
+  it('pose « Re : » une seule fois', () => {
+    expect(prefixerReponse('La facture')).toBe('Re : La facture')
+    expect(prefixerReponse('Re : La facture')).toBe('Re : La facture')
+    expect(prefixerReponse('Re: La facture')).toBe('Re: La facture')
+    expect(prefixerReponse('RE: La facture')).toBe('RE: La facture')
+  })
+
+  it('nomme un objet vide', () => {
+    expect(prefixerReponse('  ')).toBe('Re : (sans objet)')
+  })
+
+  it('répond à un transfert sans empiler deux « Re : »', () => {
+    const une = prefixerReponse('Tr : La facture')
+    expect(une).toBe('Re : Tr : La facture')
+    expect(prefixerReponse(une)).toBe(une)
+  })
+})
+
+describe('brouillonDeReponse', () => {
+  const corpsLu = { html: null, texte: 'Bonjour Léa,\n\nMerci.', pieces: [] }
+
+  it('adresse la réponse à l’expéditeur, et à lui seul', () => {
+    const b = brouillonDeReponse(MESSAGE, null, 'moi@exemple.fr', false)
+
+    expect(b.destinataires).toBe('jules@exemple.fr')
+    expect(b.copies).toBe('')
+  })
+
+  it('met les autres en copie quand on répond à tous', () => {
+    // Et jamais soi-même : se répondre en copie est le travers classique de ce
+    // bouton.
+    const m = {
+      ...MESSAGE,
+      destinataires: [
+        { nom: 'Moi', adresse: 'moi@exemple.fr' },
+        { nom: 'Alice', adresse: 'alice@exemple.fr' },
+      ],
+      copies: [{ nom: 'Bob', adresse: 'bob@exemple.fr' }],
+    }
+
+    const b = brouillonDeReponse(m, null, 'moi@exemple.fr', true)
+
+    expect(b.destinataires).toBe('jules@exemple.fr')
+    expect(b.copies).toBe('alice@exemple.fr, bob@exemple.fr')
+  })
+
+  it('préfixe l’objet', () => {
+    expect(brouillonDeReponse(MESSAGE, null, null, false).sujet).toBe(
+      'Re : La facture de juillet',
+    )
+  })
+
+  it('cite le message sous une ligne d’attribution', () => {
+    const b = brouillonDeReponse(MESSAGE, corpsLu, null, false)
+
+    expect(b.corps).toContain('JULES')
+    expect(b.corps).toContain('a écrit :')
+    expect(b.corps).toContain('> Bonjour Léa,')
+    expect(b.corps).toContain('> Merci.')
+  })
+
+  it('laisse le curseur sur une ligne vide, avant la citation', () => {
+    // On écrit au-dessus de ce qu'on cite. Un brouillon qui s'ouvre au milieu
+    // du message d'origine oblige à remonter avant d'écrire un mot.
+    const b = brouillonDeReponse(MESSAGE, corpsLu, null, false)
+
+    expect(b.corps.startsWith('\n\n')).toBe(true)
+  })
+
+  it('porte de quoi rattacher la réponse au fil', () => {
+    const avecFil = { ...corpsLu, messageId: '<abc@mail>', references: '<n1@mail>', threadId: 't1' }
+
+    const b = brouillonDeReponse(MESSAGE, avecFil, null, false)
+
+    expect(b.reponse).toEqual({
+      messageId: '<abc@mail>',
+      references: '<n1@mail>',
+      threadId: 't1',
+    })
+  })
+
+  it('n’invente pas de fil quand le message d’origine n’en donne pas', () => {
+    // Un corps rangé par une version antérieure n'a pas ces champs. Mieux vaut
+    // une réponse hors fil qu'un threadId inventé, que Google refuserait.
+    expect(brouillonDeReponse(MESSAGE, corpsLu, null, false).reponse).toBeUndefined()
+  })
+})
+
+describe('brouillonDepuisMailto', () => {
+  it('ouvre un brouillon adressé au destinataire du lien', () => {
+    // Un lien `mailto:` dans un message ouvrait le client du système, donc
+    // Gmail dans un navigateur. MailFlow sait écrire : c'est sa fenêtre qui
+    // doit s'ouvrir.
+    const b = brouillonDepuisMailto('mailto:alice@exemple.fr')
+
+    expect(b?.destinataires).toBe('alice@exemple.fr')
+    expect(b?.sujet).toBe('')
+    expect(b?.corps).toBe('')
+  })
+
+  it('reprend objet, corps et copies, décodés', () => {
+    const b = brouillonDepuisMailto(
+      'mailto:alice@exemple.fr?subject=Bonjour%20Alice&body=Un%20mot.&cc=bob@exemple.fr',
+    )
+
+    expect(b?.sujet).toBe('Bonjour Alice')
+    expect(b?.corps).toBe('Un mot.')
+    expect(b?.copies).toBe('bob@exemple.fr')
+  })
+
+  it('accepte plusieurs destinataires', () => {
+    const b = brouillonDepuisMailto('mailto:a@exemple.fr,b@exemple.fr')
+
+    expect(b?.destinataires).toBe('a@exemple.fr, b@exemple.fr')
+  })
+
+  it('ramène un objet sur une ligne', () => {
+    // Rust refuse un retour à la ligne dans l'objet : un lien forgé ne doit
+    // pas bloquer l'envoi, ni glisser un en-tête.
+    const b = brouillonDepuisMailto('mailto:a@exemple.fr?subject=Un%0D%0ABcc:%20x@y.fr')
+
+    expect(b?.sujet).not.toMatch(/[\r\n]/)
+  })
+
+  it('rend null pour ce qui n’est pas un mailto', () => {
+    expect(brouillonDepuisMailto('https://exemple.fr')).toBeNull()
+    expect(brouillonDepuisMailto('mailto:')).toBeNull()
   })
 })

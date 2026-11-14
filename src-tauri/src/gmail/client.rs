@@ -36,8 +36,16 @@ pub enum Methode {
     /// Sert au seul envoi d'un message avec pièces jointes : l'endpoint de
     /// téléversement de Gmail attend le message tel quel, en `message/rfc822`.
     PostMessage,
+    /// `PUT` au corps JSON. Sert au remplacement d'un brouillon déjà posé chez
+    /// Gmail : l'API des brouillons n'a pas d'autre verbe pour cela, et un
+    /// second `POST` en sèmerait un de plus à chaque enregistrement.
+    Put,
+    /// `PUT` dont le corps est un message MIME brut, pour le remplacement d'un
+    /// brouillon qui porte des fichiers.
+    PutMessage,
     /// Le seul verbe destructeur, et le seul appel de tout MailFlow qui
-    /// détruise quelque chose chez Google : la suppression d'un libellé.
+    /// détruise quelque chose chez Google : la suppression d'un libellé, et le
+    /// retrait d'un brouillon qu'on vient d'envoyer.
     Delete,
 }
 
@@ -184,6 +192,35 @@ fn url_envoi() -> String {
 fn url_envoi_televerse() -> String {
     let base = BASE_API.replacen("/gmail/v1", "/upload/gmail/v1", 1);
     format!("{base}/users/me/messages/send?uploadType=media")
+}
+
+/// Brouillons du compte : création par `POST`, liste par `GET`.
+fn url_brouillons() -> String {
+    format!("{BASE_API}/users/me/drafts")
+}
+
+/// Un brouillon précis : remplacement par `PUT`, retrait par `DELETE`.
+///
+/// L'identifiant est encodé pour la même raison que dans [`url_modify`] : il
+/// vient de Gmail, mais il traverse l'IPC avant de revenir ici.
+fn url_brouillon(id: &str) -> String {
+    let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
+    format!("{BASE_API}/users/me/drafts/{id}")
+}
+
+/// Enregistrement d'un brouillon par téléversement, pour les pièces jointes.
+///
+/// Même raison que pour l'envoi : l'endpoint ordinaire reçoit le message dans
+/// un champ JSON et refuse ce qui dépasse quelques mégaoctets.
+fn url_brouillon_televerse(id: Option<&str>) -> String {
+    let base = BASE_API.replacen("/gmail/v1", "/upload/gmail/v1", 1);
+    match id {
+        Some(id) => {
+            let id = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
+            format!("{base}/users/me/drafts/{id}?uploadType=media")
+        }
+        None => format!("{base}/users/me/drafts?uploadType=media"),
+    }
 }
 
 fn url_trash(id: &str) -> String {
@@ -379,7 +416,30 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
     /// Le MIME est supposé déjà composé et déjà contrôlé par
     /// [`crate::gmail::redaction::composer`] : c'est là que se refusent les
     /// fins de ligne dans les en-têtes, et nulle part ailleurs.
-    pub async fn envoyer_message(&self, mime: &str) -> Resultat<()> {
+    /// Envoie un message, éventuellement dans un fil existant.
+    ///
+    /// # Le `threadId`, et pourquoi il ne suffit pas seul
+    ///
+    /// Les en-têtes `In-Reply-To` et `References` suffisent à la plupart des
+    /// clients pour reconstituer une conversation. Gmail, dans sa propre
+    /// interface, range selon le `threadId` : sans lui, une réponse apparaît en
+    /// conversation séparée alors même que le destinataire, lui, la verra
+    /// correctement rattachée.
+    ///
+    /// Google exige d'ailleurs la cohérence entre les deux : un `threadId` dont
+    /// les en-têtes ne désignent pas le fil est refusé. Les deux sont donc
+    /// posés ensemble, par [`crate::gmail::redaction::composer`] pour les
+    /// en-têtes et ici pour le fil.
+    ///
+    /// # La réserve du téléversement
+    ///
+    /// Au-delà du seuil, le message part par l'endpoint de téléversement, qui
+    /// n'accepte que du MIME brut : il n'y a pas de champ où glisser le
+    /// `threadId`. Une réponse lourde se rattache alors par ses seuls en-têtes,
+    /// ce que Gmail honore dans la quasi-totalité des cas. Lever la réserve
+    /// demanderait de passer ces envois en `uploadType=multipart`, ce qui est un
+    /// chantier à part.
+    pub async fn envoyer_message(&self, mime: &str, fil: Option<&str>) -> Resultat<()> {
         // Au-delà, le message porte des fichiers : il part tel quel par
         // l'endpoint de téléversement. Une lettre seule garde le chemin
         // ordinaire, qui n'a jamais posé de difficulté.
@@ -396,12 +456,98 @@ impl<T: Transport, J: SourceJeton> ClientGmail<T, J> {
                 .map(|_| ());
         }
 
-        let corps = serde_json::json!({
+        let mut corps = serde_json::json!({
             "raw": crate::gmail::redaction::encoder_pour_gmail(mime),
-        })
-        .to_string();
+        });
 
-        self.appeler(Methode::Post, &url_envoi(), Some(corps))
+        if let Some(fil) = fil {
+            corps["threadId"] = serde_json::Value::String(fil.to_string());
+        }
+
+        self.appeler(Methode::Post, &url_envoi(), Some(corps.to_string()))
+            .await
+            .map(|_| ())
+    }
+
+    /// Dépose le message en cours d'écriture chez Gmail, et rend l'identifiant
+    /// du brouillon.
+    ///
+    /// # Pourquoi un brouillon chez Gmail plutôt que sur le disque
+    ///
+    /// La fenêtre de rédaction n'avait aucune mémoire : tout ce qui y était
+    /// écrit vivait dans l'état du composant, et disparaissait avec lui. Un
+    /// Échap de trop, un clic hors de la fenêtre, et la lettre était perdue
+    /// sans trace. C'est la panne qui a motivé ce code.
+    ///
+    /// Le brouillon part chez Gmail et non dans un fichier local parce que
+    /// c'est là qu'on le cherchera : il apparaît dans Gmail sur le web et sur
+    /// le téléphone, il survit à la réinstallation de MailFlow, et il n'invente
+    /// pas un deuxième endroit où les messages inachevés s'accumuleraient.
+    ///
+    /// `gmail.modify` suffit — `users.drafts` en relève, et aucun nouveau
+    /// consentement n'est demandé à l'utilisateur. Voir [`crate::auth`].
+    ///
+    /// # Création ou remplacement
+    ///
+    /// Sans `id`, le brouillon est créé. Avec, il est remplacé. La distinction
+    /// n'est pas cosmétique : un second `POST` laisserait un brouillon de plus
+    /// chez Gmail à chaque enregistrement, et écrire une lettre en sèmerait une
+    /// trentaine.
+    pub async fn enregistrer_brouillon(&self, mime: &str, id: Option<&str>) -> Resultat<String> {
+        // Même seuil que l'envoi, pour la même raison : au-delà, le message
+        // porte des fichiers et l'endpoint JSON le refuserait.
+        const SEUIL_TELEVERSEMENT: usize = 1024 * 1024;
+
+        let reponse = if mime.len() > SEUIL_TELEVERSEMENT {
+            let methode = if id.is_some() {
+                Methode::PutMessage
+            } else {
+                Methode::PostMessage
+            };
+
+            self.appeler(
+                methode,
+                &url_brouillon_televerse(id),
+                Some(mime.to_string()),
+            )
+            .await?
+        } else {
+            let corps = serde_json::json!({
+                "message": { "raw": crate::gmail::redaction::encoder_pour_gmail(mime) },
+            })
+            .to_string();
+
+            match id {
+                Some(id) => {
+                    self.appeler(Methode::Put, &url_brouillon(id), Some(corps))
+                        .await?
+                }
+                None => {
+                    self.appeler(Methode::Post, &url_brouillons(), Some(corps))
+                        .await?
+                }
+            }
+        };
+
+        // L'identifiant est lu dans la réponse et non repris de la demande :
+        // sans lui, l'enregistrement suivant recréerait un brouillon au lieu de
+        // remplacer celui-là, et l'utilisateur en retrouverait une pile.
+        let brouillon: crate::gmail::modele::ReponseBrouillon = serde_json::from_str(&reponse)
+            .map_err(|e| AppError::Reseau(format!("brouillon enregistré mais illisible : {e}")))?;
+
+        brouillon
+            .id
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| AppError::Reseau("brouillon enregistré sans identifiant".into()))
+    }
+
+    /// Retire un brouillon de chez Gmail.
+    ///
+    /// Appelé après un envoi réussi : le message est parti, le brouillon qui le
+    /// préparait n'a plus de raison d'encombrer la boîte. Appelé aussi quand
+    /// l'utilisateur choisit de ne pas garder ce qu'il a écrit.
+    pub async fn supprimer_brouillon(&self, id: &str) -> Resultat<()> {
+        self.appeler(Methode::Delete, &url_brouillon(id), None)
             .await
             .map(|_| ())
     }
@@ -1026,14 +1172,169 @@ mod tests {
             sujet: "Bonjour".into(),
             corps: "Un mot.".into(),
             pieces: vec![],
+            reponse_a: None,
         })
         .unwrap();
 
-        c.client.envoyer_message(&mime).await.unwrap();
+        c.client.envoyer_message(&mime, None).await.unwrap();
 
         assert_eq!(c.appels(), 1);
         assert_eq!(c.methodes()[0], Methode::Post);
         assert!(c.urls()[0].ends_with("/users/me/messages/send"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn une_reponse_part_avec_le_fil_auquel_elle_appartient() {
+        // Les en-têtes `In-Reply-To` et `References` suffisent à la plupart des
+        // clients ; Gmail, lui, range selon le `threadId`. Sans lui, la réponse
+        // s'affiche en conversation séparée dans sa propre interface.
+        let c = client(vec![ok(r#"{"id":"m9"}"#)]);
+
+        c.client
+            .envoyer_message(&mime_de_test(), Some("t42"))
+            .await
+            .unwrap();
+
+        assert!(c.corps_envoyes()[0].contains(r#""threadId":"t42""#), "{}", c.corps_envoyes()[0]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_message_neuf_ne_reclame_aucun_fil() {
+        let c = client(vec![ok(r#"{"id":"m9"}"#)]);
+
+        c.client.envoyer_message(&mime_de_test(), None).await.unwrap();
+
+        assert!(!c.corps_envoyes()[0].contains("threadId"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_brouillon_neuf_part_en_post_et_rend_son_identifiant() {
+        let c = client(vec![ok(r#"{"id":"r42","message":{"id":"m9"}}"#)]);
+
+        let id = c
+            .client
+            .enregistrer_brouillon(&mime_de_test(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(id, "r42");
+        assert_eq!(c.methodes()[0], Methode::Post);
+        assert!(c.urls()[0].ends_with("/users/me/drafts"));
+        // Le MIME voyage dans `message.raw`, et non à la racine comme pour un
+        // envoi : l'API des brouillons enveloppe le message.
+        assert!(c.corps_envoyes()[0].contains(r#""message""#));
+        assert!(c.corps_envoyes()[0].contains(r#""raw""#));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_brouillon_deja_connu_est_remplace_et_non_redouble() {
+        // Sans le `PUT`, chaque enregistrement laissait un brouillon de plus
+        // chez Gmail : écrire une lettre en aurait semé une trentaine.
+        let c = client(vec![ok(r#"{"id":"r42"}"#)]);
+
+        let id = c
+            .client
+            .enregistrer_brouillon(&mime_de_test(), Some("r42"))
+            .await
+            .unwrap();
+
+        assert_eq!(id, "r42");
+        assert_eq!(c.methodes()[0], Methode::Put);
+        assert!(c.urls()[0].ends_with("/users/me/drafts/r42"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn l_identifiant_d_un_brouillon_est_encode_dans_l_url() {
+        // L'identifiant vient de Gmail, mais il traverse l'IPC : une barre
+        // oblique y désignerait une autre ressource de l'API.
+        let c = client(vec![ok(r#"{"id":"r/42"}"#)]);
+
+        c.client
+            .enregistrer_brouillon(&mime_de_test(), Some("r/42"))
+            .await
+            .unwrap();
+
+        assert!(c.urls()[0].ends_with("/users/me/drafts/r%2F42"), "url : {}", c.urls()[0]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_brouillon_lourd_part_brut_par_l_endpoint_de_televersement() {
+        let mut b = brouillon_de_test();
+        b.pieces = vec![crate::gmail::redaction::PieceJointe {
+            nom: "gros.bin".into(),
+            type_mime: "application/octet-stream".into(),
+            contenu: vec![b'A'; 2 * 1024 * 1024],
+        }];
+        let mime = crate::gmail::redaction::composer(&b).unwrap();
+
+        let c = client(vec![ok(r#"{"id":"r7"}"#)]);
+
+        c.client.enregistrer_brouillon(&mime, None).await.unwrap();
+
+        assert_eq!(c.methodes()[0], Methode::PostMessage);
+        assert!(c.urls()[0].contains("/upload/gmail/v1/users/me/drafts"));
+        assert!(c.urls()[0].contains("uploadType=media"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_brouillon_lourd_deja_connu_se_remplace_par_televersement() {
+        let mut b = brouillon_de_test();
+        b.pieces = vec![crate::gmail::redaction::PieceJointe {
+            nom: "gros.bin".into(),
+            type_mime: "application/octet-stream".into(),
+            contenu: vec![b'A'; 2 * 1024 * 1024],
+        }];
+        let mime = crate::gmail::redaction::composer(&b).unwrap();
+
+        let c = client(vec![ok(r#"{"id":"r7"}"#)]);
+
+        c.client
+            .enregistrer_brouillon(&mime, Some("r7"))
+            .await
+            .unwrap();
+
+        assert_eq!(c.methodes()[0], Methode::PutMessage);
+        assert!(c.urls()[0].contains("/upload/gmail/v1/users/me/drafts/r7"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_brouillon_envoye_est_retire_de_chez_gmail() {
+        let c = client(vec![ok("{}")]);
+
+        c.client.supprimer_brouillon("r42").await.unwrap();
+
+        assert_eq!(c.methodes(), vec![Methode::Delete]);
+        assert!(c.urls()[0].ends_with("/users/me/drafts/r42"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn un_brouillon_cree_mais_sans_identifiant_est_une_erreur() {
+        // Sans identifiant rendu, l'enregistrement suivant recréerait un
+        // brouillon au lieu de remplacer celui-là.
+        let c = client(vec![ok(r#"{"message":{"id":"m9"}}"#)]);
+
+        assert!(
+            c.client
+                .enregistrer_brouillon(&mime_de_test(), None)
+                .await
+                .is_err()
+        );
+    }
+
+    fn brouillon_de_test() -> crate::gmail::redaction::Brouillon {
+        crate::gmail::redaction::Brouillon {
+            de: "moi@exemple.fr".into(),
+            destinataires: vec!["toi@exemple.fr".into()],
+            copies: vec![],
+            sujet: "Bonjour".into(),
+            corps: "Un mot.".into(),
+            pieces: vec![],
+            reponse_a: None,
+        }
+    }
+
+    fn mime_de_test() -> String {
+        crate::gmail::redaction::composer(&brouillon_de_test()).unwrap()
     }
 
     #[tokio::test(start_paused = true)]
@@ -1052,10 +1353,11 @@ mod tests {
                 type_mime: "image/jpeg".into(),
                 contenu: vec![7u8; 2 * 1024 * 1024],
             }],
+            reponse_a: None,
         })
         .unwrap();
 
-        c.client.envoyer_message(&mime).await.unwrap();
+        c.client.envoyer_message(&mime, None).await.unwrap();
 
         assert_eq!(c.methodes()[0], Methode::PostMessage);
         assert!(c.urls()[0].contains("/upload/gmail/v1/users/me/messages/send"));
@@ -1077,10 +1379,11 @@ mod tests {
             sujet: "Bonjour".into(),
             corps: "Un mot.".into(),
             pieces: vec![],
+            reponse_a: None,
         })
         .unwrap();
 
-        c.client.envoyer_message(&mime).await.unwrap();
+        c.client.envoyer_message(&mime, None).await.unwrap();
 
         let envoye: serde_json::Value = serde_json::from_str(&c.corps_envoyes()[0]).unwrap();
         let brut = envoye["raw"].as_str().expect("la clé raw porte le message");

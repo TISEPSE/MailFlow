@@ -140,10 +140,28 @@ pub async fn connecter<S: SecretStore>(
 
     ouvrir_navigateur(demande.url())?;
 
-    let code = serveur.attendre_le_code(demande.state(), delai).await?;
-    let reponse = client.echanger_le_code(&demande, &code).await?;
+    let (code, navigateur) = serveur.attendre_le_code(demande.state(), delai).await?;
 
-    session.ouvrir(reponse, Utc::now())
+    // Le navigateur attend. Il ne reçoit sa page qu'une fois l'échange fait et
+    // la session ouverte : c'est ce qui lui évite d'annoncer un succès que
+    // l'application dément. En cas d'échec, il reçoit le même message que
+    // l'interface, mot pour mot.
+    let resultat = async {
+        let reponse = client.echanger_le_code(&demande, &code).await?;
+        session.ouvrir(reponse, Utc::now())
+    }
+    .await;
+
+    match &resultat {
+        Ok(()) => navigateur.succes().await,
+        Err(e) => {
+            navigateur
+                .echec("Connexion impossible", &e.message_utilisateur())
+                .await
+        }
+    }
+
+    resultat
 }
 
 #[cfg(test)]

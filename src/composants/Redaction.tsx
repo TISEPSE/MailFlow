@@ -10,9 +10,11 @@
  *   reste TOUJOURS visible et indépendante du défilement.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Icone, Modale } from './base'
+import { Bouton, Icone, Modale } from './base'
 import {
+  brouillonModifie,
   decouperAdresses,
+  delaiDEnregistrement,
   joindre,
   type Brouillon,
   type PieceChoisie,
@@ -21,7 +23,15 @@ import { ChampDestinataires } from './ChampDestinataires'
 import { ApercuPieceLocale } from './ApercuPieceJointe'
 import { poids } from '../lib/presentation'
 import type { Connaissance } from '../lib/contacts'
-import { messageDErreur, messageEnvoyer } from '../lib/tauri'
+import {
+  brouillonEnregistrer,
+  brouillonSupprimer,
+  messageDErreur,
+  messageEnvoyer,
+} from '../lib/tauri'
+
+/** Où en est le brouillon chez Gmail, tel que le pied de la fenêtre le dit. */
+type EtatDuBrouillon = 'repos' | 'enregistrement' | 'garde' | 'echec'
 
 const POLICES = [
   'Sans Serif',
@@ -266,14 +276,6 @@ export function Redaction({
   const [pieceOuverte, setPieceOuverte] = useState<PieceAffichee | null>(null)
   const fermerLApercu = useCallback(() => setPieceOuverte(null), [])
 
-  // Échap ferme la fenêtre du dessus, pas les deux : sans ce garde-fou, quitter
-  // l'aperçu d'un fichier refermait aussi le message en cours d'écriture, et
-  // avec lui tout ce qu'on venait de taper.
-  const apercuOuvert = useRef(false)
-  apercuOuvert.current = pieceOuverte !== null
-  const fermerLaRedaction = useCallback(() => {
-    if (!apercuOuvert.current) onFermer()
-  }, [onFermer])
 
   const retirerLaPiece = (piece: PieceAffichee) => {
     libererLApercu(piece)
@@ -327,6 +329,159 @@ export function Redaction({
   const [cciVisibles, setCciVisibles] = useState(false)
   const [cci, setCci] = useState('')
 
+  // --- Le brouillon chez Gmail -------------------------------------------
+  //
+  // La fenêtre n'avait aucune mémoire : tout ce qui s'y écrivait vivait dans
+  // l'état de ce composant et disparaissait avec lui. Un Échap de trop, un clic
+  // hors de la fenêtre, et la lettre était perdue sans trace.
+  //
+  // Le brouillon part donc chez Gmail. C'est là qu'on le cherchera : il
+  // apparaît dans Gmail sur le web et sur le téléphone, et il survit à la
+  // réinstallation de MailFlow.
+
+  /** Identifiant rendu par Gmail, pour remplacer le brouillon et non l'empiler. */
+  const idBrouillon = useRef<string | null>(null)
+  const [etatBrouillon, setEtatBrouillon] = useState<EtatDuBrouillon>('repos')
+
+  /** Enregistrement en vol, s'il y en a un. Attendu avant d'envoyer. */
+  const enregistrementEnVol = useRef<Promise<void> | null>(null)
+
+  /** Ce qui a déjà été déposé chez Gmail, pour ne pas le redéposer à l'identique. */
+  const dejaEnregistre = useRef<string | null>(null)
+
+  const piecesPourGmail = useCallback(
+    () => pieces.map(({ nom, typeMime, contenu }) => ({ nom, typeMime, contenu })),
+    [pieces],
+  )
+
+  const copiesCompletes = useCallback(
+    () => [...decouperAdresses(brouillon.copies), ...decouperAdresses(cci)],
+    [brouillon.copies, cci],
+  )
+
+  /**
+   * Dépose l'état courant chez Gmail.
+   *
+   * Rend la promesse plutôt que rien : l'envoi l'attend, sinon un
+   * enregistrement parti juste avant créerait un brouillon que l'envoi ne
+   * saurait pas retirer, et la lettre resterait en double.
+   */
+  const enregistrer = useCallback((): Promise<void> => {
+    const empreinte = JSON.stringify([brouillon, cci, pieces.map((p) => p.nom)])
+    if (empreinte === dejaEnregistre.current) return Promise.resolve()
+
+    setEtatBrouillon('enregistrement')
+
+    const promesse = brouillonEnregistrer(
+      decouperAdresses(brouillon.destinataires),
+      copiesCompletes(),
+      brouillon.sujet,
+      brouillon.corps,
+      piecesPourGmail(),
+      idBrouillon.current,
+      depart.reponse ?? null,
+    )
+      .then((id) => {
+        idBrouillon.current = id
+        dejaEnregistre.current = empreinte
+        setEtatBrouillon('garde')
+      })
+      .catch((e: unknown) => {
+        // Un enregistrement raté ne s'affiche pas comme une erreur d'envoi : il
+        // n'empêche rien, et une bannière rouge à chaque coupure de réseau
+        // ferait fuir de la fenêtre ce qu'on y écrit.
+        console.warn('brouillon non enregistré', e)
+        setEtatBrouillon('echec')
+      })
+      .finally(() => {
+        enregistrementEnVol.current = null
+      })
+
+    enregistrementEnVol.current = promesse
+    return promesse
+  }, [brouillon, cci, pieces, copiesCompletes, piecesPourGmail, depart.reponse])
+
+  /** Y a-t-il quelque chose qu'une fermeture ferait perdre ? */
+  const aQuelqueChoseAPerdre = brouillonModifie(depart, brouillon, {
+    pieces: pieces.length,
+    cci,
+  })
+
+  // Enregistrement après trois secondes sans frappe. La minuterie repart à
+  // chaque changement, donc une frappe continue ne provoque pas un appel par
+  // mot.
+  //
+  // Rien n'est enregistré tant que l'utilisateur n'a rien écrit : un brouillon
+  // vide apparaîtrait dans Gmail pour un simple clic sur « Écrire ».
+  useEffect(() => {
+    if (!aQuelqueChoseAPerdre || enCours || lectureEnCours) return
+
+    // Le délai suit le poids des pièces jointes : Gmail n'a pas de mise à jour
+    // partielle d'un brouillon, donc chaque enregistrement renvoie le message
+    // entier. Voir [`delaiDEnregistrement`].
+    const poids = pieces.reduce((somme, p) => somme + p.taille, 0)
+
+    const minuteur = window.setTimeout(
+      () => void enregistrer(),
+      delaiDEnregistrement(poids),
+    )
+    return () => window.clearTimeout(minuteur)
+  }, [aQuelqueChoseAPerdre, enCours, lectureEnCours, enregistrer, pieces])
+
+  /** La fermeture attend une réponse : garder le brouillon, ou le jeter. */
+  const [sortieADecider, setSortieADecider] = useState(false)
+
+  // Échap ferme la fenêtre du dessus, pas les deux : sans ce garde-fou, quitter
+  // l'aperçu d'un fichier refermait aussi le message en cours d'écriture, et
+  // avec lui tout ce qu'on venait de taper.
+  const apercuOuvert = useRef(false)
+  apercuOuvert.current = pieceOuverte !== null
+
+  // Ce que la fenêtre perdrait, lu au moment du geste et non à la création du
+  // rappel : `fermerLaRedaction` est passé à `Modale`, qui le garde dans un
+  // écouteur, et une valeur figée là daterait du premier rendu.
+  const perdrait = useRef(false)
+  perdrait.current = aQuelqueChoseAPerdre
+
+  /**
+   * Échap, la croix et le clic sur le fond passent par ici.
+   *
+   * Rien n'est jamais fermé d'autorité quand il y a quelque chose à perdre : la
+   * question est posée, et c'est l'utilisateur qui tranche. C'est le garde-fou
+   * qui manquait — la fenêtre partait sur un geste involontaire, sans un mot.
+   */
+  const fermerLaRedaction = useCallback(() => {
+    if (apercuOuvert.current) return
+    if (perdrait.current) {
+      setSortieADecider(true)
+      return
+    }
+    onFermer()
+  }, [onFermer])
+
+  /** Garder ce qui est écrit : on le dépose chez Gmail avant de fermer. */
+  const garderEtFermer = async () => {
+    setSortieADecider(false)
+    await enregistrer()
+    onFermer()
+  }
+
+  /** Jeter ce qui est écrit, et le brouillon déjà déposé avec. */
+  const jeterEtFermer = async () => {
+    setSortieADecider(false)
+
+    const id = idBrouillon.current
+    if (id) {
+      // Un retrait raté ne retient pas la fenêtre : le brouillon reste visible
+      // dans Gmail, où il s'efface d'un geste.
+      await brouillonSupprimer(id).catch((e: unknown) =>
+        console.warn('brouillon non retiré', e),
+      )
+    }
+
+    onFermer()
+  }
+
   // Barre d'outils de formatage (bouton Aa)
   const [formatageActif, setFormatageActif] = useState(true)
   const [police, setPolice] = useState('Sans Serif')
@@ -356,16 +511,19 @@ export function Redaction({
     setErreur(null)
 
     try {
-      const toutesCopies = [
-        ...decouperAdresses(brouillon.copies),
-        ...decouperAdresses(cci),
-      ]
+      // Un enregistrement parti juste avant doit avoir rendu son identifiant :
+      // sans cette attente, l'envoi ne saurait pas quel brouillon retirer et la
+      // lettre resterait en double chez Gmail.
+      await enregistrementEnVol.current
+
       await messageEnvoyer(
         destinataires,
-        toutesCopies,
+        copiesCompletes(),
         brouillon.sujet,
         brouillon.corps,
-        pieces.map(({ nom, typeMime, contenu }) => ({ nom, typeMime, contenu })),
+        piecesPourGmail(),
+        idBrouillon.current,
+        depart.reponse ?? null,
       )
       onEnvoye('Message envoyé.')
       onFermer()
@@ -374,6 +532,41 @@ export function Redaction({
     } finally {
       setEnCours(false)
     }
+  }
+
+  /**
+   * Ce que la fenêtre annonce faire.
+   *
+   * Une réponse se reconnaît à sa référence de fil, un transfert à son objet
+   * déjà rempli sur une fenêtre qu'on n'a pas encore touchée.
+   */
+  const titreDeLaFenetre = (): string => {
+    if (depart.reponse) {
+      return depart.copies ? 'Répondre à tous' : 'Répondre'
+    }
+    return depart.sujet ? 'Transférer le message' : 'Nouveau message'
+  }
+
+  /**
+   * Le sous-titre de la fenêtre : d'où part le message, et où en est le
+   * brouillon.
+   *
+   * L'état du brouillon se lit ici et non dans une bannière : c'est une
+   * information de fond, qu'on veut pouvoir vérifier d'un coup d'œil sans
+   * qu'elle réclame l'attention à chaque frappe. Et il faut qu'elle soit
+   * visible quelque part — un enregistrement qu'on ne voit pas ne rassure
+   * personne, et c'est la confiance dans la fenêtre qui était en jeu.
+   */
+  const sousTitre = (): string | undefined => {
+    const compte = de ? `Envoyé depuis ${de}` : ''
+    const etat = {
+      repos: '',
+      enregistrement: 'Enregistrement…',
+      garde: 'Brouillon gardé dans Gmail',
+      echec: 'Brouillon non enregistré — vérifiez la connexion',
+    }[etatBrouillon]
+
+    return [compte, etat].filter(Boolean).join(' · ') || undefined
   }
 
   const afficherInfoBulle = (texte: string) => {
@@ -401,8 +594,8 @@ export function Redaction({
     <>
     <Modale
       taille="moyenne"
-      titre={depart.sujet ? 'Transférer le message' : 'Nouveau message'}
-      sous={de ? `Envoyé depuis ${de}` : undefined}
+      titre={titreDeLaFenetre()}
+      sous={sousTitre()}
       onFermer={fermerLaRedaction}
       sansRembourrage
     >
@@ -1093,7 +1286,7 @@ export function Redaction({
           {/* Côté droit : Supprimer le brouillon / Annuler */}
           <button
             type="button"
-            onClick={onFermer}
+            onClick={() => void jeterEtFermer()}
             className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--sub)] transition-colors hover:bg-[var(--sunk)] hover:text-red-500"
             title="Supprimer le brouillon"
             aria-label="Supprimer le brouillon"
@@ -1103,6 +1296,27 @@ export function Redaction({
         </div>
       </form>
     </Modale>
+
+    {/* La sortie se négocie : la fenêtre ne part plus d'autorité sur un Échap
+        ou un clic de travers. Trois issues, et « Continuer d'écrire » est celle
+        qui ne coûte rien — elle est donc à gauche, sans accent. */}
+    {sortieADecider && (
+      <Modale
+        titre="Garder ce message ?"
+        sous="Il sera déposé dans vos brouillons Gmail, et vous le retrouverez ici comme sur votre téléphone."
+        onFermer={() => setSortieADecider(false)}
+      >
+        <div className="flex items-center justify-end gap-2">
+          <Bouton onClick={() => setSortieADecider(false)}>Continuer d'écrire</Bouton>
+          <Bouton variante="danger" icone="delete" onClick={() => void jeterEtFermer()}>
+            Supprimer
+          </Bouton>
+          <Bouton variante="principal" icone="description" onClick={() => void garderEtFermer()}>
+            Garder le brouillon
+          </Bouton>
+        </div>
+      </Modale>
+    )}
 
     {/* Hors de la fenêtre de rédaction, et après elle : c'est ce qui la place
         au-dessus, et ce qui évite qu'un bouton de l'aperçu ne soumette le

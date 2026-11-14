@@ -18,13 +18,18 @@ import {
   domaineDe,
   heureCourte,
   initiales,
+  hauteurDuCadre,
+  HAUTEUR_CADRE_MAX,
+  interlocuteur,
   palette,
   poids,
+  type Cote,
 } from '../lib/presentation'
 import { ApercuPieceJointe } from './ApercuPieceJointe'
 import { lienOuvrir, messageDErreur, pieceJointeVignette } from '../lib/tauri'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { signalerUneErreur } from '../lib/crochets'
+import { demanderLaRedaction, signalerUneErreur } from '../lib/crochets'
+import { brouillonDepuisMailto } from '../lib/redaction'
 import { decouperLesLiens } from '../lib/liens'
 import { lirePreferences } from '../lib/preferences'
 import type {
@@ -42,11 +47,17 @@ export function ListeMessages({
   comptes,
   coches,
   onBasculer,
+  cote = 'expediteur',
 }: {
   messages: MessageAffiche[]
   selection: string | null
   onSelect: (id: string) => void
   logos: Record<string, string>
+  /** Qui la ligne nomme : celui qui écrit, ou celui à qui l'on a écrit.
+   *
+   *  La page des messages envoyés est la seule à demander l'autre côté — et
+   *  sans lui, elle affichait soixante fois son propre nom. */
+  cote?: Cote
   /** Renseignés dans la vue mélangée seulement : chaque tuile porte alors la
    *  photo du compte qui a reçu le message. */
   comptes?: readonly CompteConnu[]
@@ -58,6 +69,7 @@ export function ListeMessages({
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
       {messages.map((m, i) => {
+        const qui = interlocuteur(m, cote)
         const [fond, encre] = palette(i)
         const choisi = m.id === selection
         const neuf = m.nonLu
@@ -113,17 +125,17 @@ export function ListeMessages({
               onClick={() => onBasculer?.(m.id)}
               disabled={!onBasculer}
               aria-pressed={coche}
-              aria-label={`Sélectionner le message de ${m.nom}`}
+              aria-label={`Sélectionner le message de ${qui.nom}`}
               title={coche ? 'Retirer de la sélection' : 'Sélectionner ce message'}
               className="zone-de-coche flex-none rounded-full"
             >
               <span className="pastille-pivot">
                 <span className="pastille-face">
                   <Pastille
-                    texte={initiales(m.nom)}
+                    texte={initiales(qui.nom)}
                     fond={fond}
                     couleur={encre}
-                    logo={logos[domaineDe(m.adresse)]}
+                    logo={logos[domaineDe(qui.adresse)]}
                   />
                 </span>
                 <span className="pastille-face pastille-dos">
@@ -149,7 +161,15 @@ export function ListeMessages({
                   className="min-w-0 flex-1 truncate text-[0.8438rem]"
                   style={{ fontWeight: neuf ? 600 : 400 }}
                 >
-                  {m.nom}
+                  {qui.nom}
+                  {/* Les autres destinataires sont comptés, pas nommés : une
+                      ligne n'a pas la place de six adresses, et la première
+                      suffit à reconnaître le message. */}
+                  {qui.autres > 0 && (
+                    <span className="font-normal" style={{ color: 'var(--sub)' }}>
+                      {` +${qui.autres}`}
+                    </span>
+                  )}
                 </span>
                 {teinteDuCompte && (
                   // La photo du compte plutôt que son adresse en toutes
@@ -308,6 +328,7 @@ export function Lecture({
   actions,
   logos,
   onCopier,
+  cote = 'expediteur',
 }: {
   message: MessageAffiche | null
   corps: CorpsMessage | null
@@ -319,6 +340,9 @@ export function Lecture({
   logos: Record<string, string>
   /** Appelé après avoir copié une adresse, pour l'annoncer. */
   onCopier?: (adresse: string) => void
+  /** Qui l'en-tête nomme. Le panneau des adresses, lui, montre toujours les
+   *  deux côtés : c'est là qu'on vérifie à qui une lettre est partie. */
+  cote?: Cote
 }) {
   if (!message) {
     return (
@@ -332,6 +356,7 @@ export function Lecture({
   }
 
   const [fond, encre] = palette(0)
+  const qui = interlocuteur(message, cote)
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -345,11 +370,11 @@ export function Lecture({
             hauteur est une ligne de message affichée en plus. */}
         <div className="flex items-center gap-2.5">
           <Pastille
-            texte={initiales(message.nom)}
+            texte={initiales(qui.nom)}
             taille="1.875rem"
             fond={fond}
             couleur={encre}
-            logo={logos[domaineDe(message.adresse)]}
+            logo={logos[domaineDe(qui.adresse)]}
           />
           <h2 className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold tracking-tight">
             {message.sujet || '(sans objet)'}
@@ -362,7 +387,7 @@ export function Lecture({
         {/* Le nom seul sur cette ligne : elle a une hauteur fixe, et une
             adresse entière n'y tiendrait pas sans être coupée. Les adresses
             sont plus bas, où elles ont la place de passer à la ligne. */}
-        <LigneDesGestes nom={message.nom} actions={actions} />
+        <LigneDesGestes nom={qui.nom} actions={actions} />
       </div>
 
       {/* `key` sur l'identifiant du message : chaque message rouvre le panneau
@@ -984,20 +1009,33 @@ function CadreIsole({ html }: { html: string }) {
           )
           break
 
-        case 'mailflow:hauteur':
-          if (typeof message.hauteur === 'number' && message.hauteur > 0) {
-            setHauteur(message.hauteur)
-          }
+        case 'mailflow:hauteur': {
+          // Plafonnée : un corps peut, par CSS seule, réclamer des millions de
+          // pixels. Voir [`hauteurDuCadre`].
+          const h = typeof message.hauteur === 'number' ? hauteurDuCadre(message.hauteur) : null
+          if (h !== null) setHauteur(h)
           break
+        }
 
-        case 'mailflow:lien':
+        case 'mailflow:lien': {
           if (typeof message.adresse !== 'string') break
+
+          // Un `mailto:` ouvre la fenêtre de rédaction de MailFlow, et non le
+          // client du système — Gmail dans un navigateur, le plus souvent.
+          // MailFlow sait écrire : en sortir pour ça n'a plus de sens.
+          const brouillon = brouillonDepuisMailto(message.adresse)
+          if (brouillon) {
+            demanderLaRedaction(brouillon)
+            break
+          }
+
           // L'échec se dit à l'écran. Il ne se disait qu'à la console, et un
           // lien qui n'ouvrait rien restait indistinguable d'un lien mort.
           void lienOuvrir(message.adresse).catch((e) =>
             signalerUneErreur(messageDErreur(e)),
           )
           break
+        }
       }
     }
 
@@ -1055,7 +1093,9 @@ function CadreIsole({ html }: { html: string }) {
       // ce qui n'est justement plus le cas.
       sandbox="allow-scripts allow-same-origin"
       src={adresseDuCadre()}
-      scrolling={hauteur === null ? 'auto' : 'no'}
+      // Au plafond, le cadre reprend son propre défilement : le contenu
+      // dépasse ce qu'on accepte de lui donner en hauteur.
+      scrolling={hauteur === null || hauteur >= HAUTEUR_CADRE_MAX ? 'auto' : 'no'}
       className="w-full"
       style={{
         border: 0,

@@ -43,6 +43,46 @@ pub struct Brouillon {
     pub corps: String,
     /// Fichiers joints, dans l'ordre où l'utilisateur les a ajoutés.
     pub pieces: Vec<PieceJointe>,
+
+    /// Le message auquel celui-ci répond, s'il y en a un.
+    ///
+    /// `None` pour un message neuf comme pour un transfert : un transfert
+    /// n'appartient pas au fil d'origine, il en ouvre un autre vers quelqu'un
+    /// qui n'y était pas.
+    pub reponse_a: Option<Reference>,
+}
+
+/// De quoi rattacher une réponse à la conversation d'où elle vient.
+///
+/// Les deux en-têtes vont ensemble et ne font pas la même chose. `In-Reply-To`
+/// désigne le message auquel on répond ; `References` porte tout l'historique
+/// du fil, et c'est lui que les clients lisent pour reconstituer l'arborescence
+/// quand ils ne connaissent pas le `threadId` de Gmail.
+///
+/// Les deux valeurs viennent d'en-têtes écrits par un tiers : elles passent par
+/// le même contrôle que l'objet, et une fin de ligne y est refusée plutôt que
+/// rafistolée. Voir [`entete_sure`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reference {
+    /// `Message-Id` du message auquel on répond, chevrons compris.
+    pub message_id: String,
+    /// `References` de ce message, vide s'il ouvrait le fil.
+    pub references: String,
+}
+
+impl Reference {
+    /// La chaîne `References` de la réponse : l'historique, puis soi.
+    ///
+    /// On allonge au lieu d'écraser : `References` est l'historique du fil, et
+    /// le remplacer par le seul message précédent casse le rattachement chez
+    /// les clients qui s'y fient.
+    fn chaine(&self) -> String {
+        let amont = self.references.trim();
+        if amont.is_empty() {
+            return self.message_id.trim().to_string();
+        }
+        format!("{amont} {}", self.message_id.trim())
+    }
 }
 
 /// Un fichier joint au message.
@@ -114,9 +154,26 @@ fn encoder_entete(valeur: &str) -> String {
 /// Rend une erreur de configuration — donc un message affichable — plutôt que
 /// de nettoyer ce qui cloche : voir l'en-tête du module.
 pub fn composer(brouillon: &Brouillon) -> Resultat<String> {
+    composer_avec(brouillon, true)
+}
+
+/// Compose le même message, mais sans exiger de destinataire.
+///
+/// Un envoi en exige un ; un brouillon est précisément ce qu'on écrit avant de
+/// savoir à qui. Refuser ici rendrait l'enregistrement muet pendant toute la
+/// rédaction, c'est-à-dire exactement quand il sert.
+///
+/// Tout le reste est identique — mêmes en-têtes, même encodage, mêmes pièces
+/// jointes — et c'est le point : ce que l'utilisateur relit dans ses brouillons
+/// est ce qui partira.
+pub fn composer_brouillon(brouillon: &Brouillon) -> Resultat<String> {
+    composer_avec(brouillon, false)
+}
+
+fn composer_avec(brouillon: &Brouillon, exige_destinataire: bool) -> Resultat<String> {
     let destinataires = adresses_valides(&brouillon.destinataires)?;
 
-    if destinataires.is_empty() {
+    if exige_destinataire && destinataires.is_empty() {
         return Err(AppError::Config(
             "Indiquez au moins un destinataire.".into(),
         ));
@@ -140,7 +197,12 @@ pub fn composer(brouillon: &Brouillon) -> Resultat<String> {
 
     let mut message = String::new();
     message.push_str(&format!("From: {}\r\n", brouillon.de.trim()));
-    message.push_str(&format!("To: {}\r\n", destinataires.join(", ")));
+    // L'en-tête est omis plutôt que laissé vide quand le brouillon n'a pas
+    // encore de destinataire : « To: » suivi de rien se lit plus mal, dans
+    // Gmail comme dans un client tiers, qu'un en-tête absent.
+    if !destinataires.is_empty() {
+        message.push_str(&format!("To: {}\r\n", destinataires.join(", ")));
+    }
 
     if !copies.is_empty() {
         message.push_str(&format!("Cc: {}\r\n", copies.join(", ")));
@@ -150,6 +212,22 @@ pub fn composer(brouillon: &Brouillon) -> Resultat<String> {
         "Subject: {}\r\n",
         encoder_entete(&brouillon.sujet)
     ));
+
+    // Ce qui rattache la réponse à sa conversation. Gmail exige d'ailleurs la
+    // cohérence entre ces en-têtes et le `threadId` passé à l'envoi : un
+    // `threadId` seul est refusé.
+    if let Some(reference) = &brouillon.reponse_a {
+        let chaine = reference.chaine();
+        if !entete_sure(&chaine) {
+            return Err(AppError::Config(
+                "Le message d'origine porte un identifiant inutilisable.".into(),
+            ));
+        }
+
+        message.push_str(&format!("In-Reply-To: {}\r\n", reference.message_id.trim()));
+        message.push_str(&format!("References: {chaine}\r\n"));
+    }
+
     message.push_str("MIME-Version: 1.0\r\n");
 
     if brouillon.pieces.is_empty() {
@@ -343,6 +421,33 @@ pub fn encoder_pour_gmail(mime: &str) -> String {
 /// Transférer trois fois le même message empilait auparavant les préfixes chez
 /// les clients qui les ajoutent sans regarder. Le contrôle est insensible à la
 /// casse et accepte la forme anglaise, qu'on reçoit tout autant.
+/// `Re : ` devant l'objet, une seule fois.
+///
+/// Jumelle de [`objet_de_transfert`], et pour la même raison : l'objet s'écrit
+/// des deux côtés, parce que l'un compose le message et l'autre le montre avant
+/// l'envoi. Ce que l'utilisateur relit doit être ce qui partira.
+///
+/// Les trois formes rencontrées sont reconnues : la nôtre, l'anglo-saxonne, et
+/// celle des clients qui n'espacent pas les deux-points. Un « Re : » par-dessus
+/// un « Re: » venu d'ailleurs ferait grossir l'objet à chaque aller-retour.
+///
+/// `Tr : ` n'est pas un préfixe de réponse : répondre à un transfert donne bien
+/// « Re : Tr : ... », et c'est juste.
+pub fn objet_de_reponse(objet: &str) -> String {
+    let propre = objet.trim();
+    let bas = propre.to_lowercase();
+
+    if bas.starts_with("re :") || bas.starts_with("re:") {
+        return propre.to_string();
+    }
+
+    if propre.is_empty() {
+        return "Re : (sans objet)".to_string();
+    }
+
+    format!("Re : {propre}")
+}
+
 pub fn objet_de_transfert(objet: &str) -> String {
     let propre = objet.trim();
     let bas = propre.to_lowercase();
@@ -370,6 +475,7 @@ mod tests {
             sujet: "Bonjour".into(),
             corps: "Un mot.".into(),
             pieces: vec![],
+            reponse_a: None,
         }
     }
 
@@ -734,6 +840,96 @@ mod tests {
         assert!(!encode.contains('+'));
         assert!(!encode.contains('/'));
         assert!(!encode.contains('='));
+    }
+
+    #[test]
+    fn une_reponse_porte_les_entetes_qui_la_rattachent_au_fil() {
+        // Sans eux, répondre ouvre une conversation neuve dans Gmail : on perd
+        // le fil chez soi comme chez le destinataire.
+        let mut b = brouillon();
+        b.reponse_a = Some(Reference {
+            message_id: "<abc@mail.gmail.com>".into(),
+            references: String::new(),
+        });
+
+        let mime = composer(&b).unwrap();
+
+        assert!(mime.contains("In-Reply-To: <abc@mail.gmail.com>\r\n"), "{mime}");
+        assert!(mime.contains("References: <abc@mail.gmail.com>\r\n"), "{mime}");
+    }
+
+    #[test]
+    fn la_chaine_des_references_s_allonge_au_lieu_de_s_ecraser() {
+        // `References` est l'historique du fil. L'écraser casse le
+        // rattachement pour les clients qui s'y fient plutôt qu'au threadId.
+        let mut b = brouillon();
+        b.reponse_a = Some(Reference {
+            message_id: "<n3@mail>".into(),
+            references: "<n1@mail> <n2@mail>".into(),
+        });
+
+        let mime = composer(&b).unwrap();
+
+        assert!(mime.contains("References: <n1@mail> <n2@mail> <n3@mail>\r\n"), "{mime}");
+        assert!(mime.contains("In-Reply-To: <n3@mail>\r\n"), "{mime}");
+    }
+
+    #[test]
+    fn un_message_neuf_ne_porte_aucun_entete_de_fil() {
+        let mime = composer(&brouillon()).unwrap();
+
+        assert!(!mime.contains("In-Reply-To"));
+        assert!(!mime.contains("References"));
+    }
+
+    #[test]
+    fn un_identifiant_de_message_hostile_est_refuse() {
+        // Il vient d'un en-tête écrit par un tiers. Une fin de ligne y
+        // ajouterait les en-têtes de son choix, Bcc compris.
+        let mut b = brouillon();
+        b.reponse_a = Some(Reference {
+            message_id: "<ok@mail>\r\nBcc: ailleurs@exemple.fr".into(),
+            references: String::new(),
+        });
+
+        assert!(composer(&b).is_err());
+    }
+
+    #[test]
+    fn des_references_hostiles_sont_refusees() {
+        let mut b = brouillon();
+        b.reponse_a = Some(Reference {
+            message_id: "<ok@mail>".into(),
+            references: "<a@mail>\nBcc: ailleurs@exemple.fr".into(),
+        });
+
+        assert!(composer(&b).is_err());
+    }
+
+    #[test]
+    fn un_objet_de_reponse_est_prefixe_une_seule_fois() {
+        assert_eq!(objet_de_reponse("La facture"), "Re : La facture");
+        // Les trois formes qu'on rencontre : la nôtre, l'anglo-saxonne, et
+        // celle des clients qui n'espacent pas les deux-points.
+        assert_eq!(objet_de_reponse("Re : La facture"), "Re : La facture");
+        assert_eq!(objet_de_reponse("Re: La facture"), "Re: La facture");
+        assert_eq!(objet_de_reponse("RE: La facture"), "RE: La facture");
+    }
+
+    #[test]
+    fn un_objet_de_reponse_vide_reste_nommable() {
+        // « Re : » tout seul dans une boîte de réception ne dit rien de ce à
+        // quoi l'on répond.
+        assert_eq!(objet_de_reponse("   "), "Re : (sans objet)");
+    }
+
+    #[test]
+    fn un_transfert_repondu_ne_cumule_pas_les_prefixes_a_l_envers() {
+        // « Re : Tr : ... » est juste : on répond à un transfert. Ce qu'il ne
+        // faut pas, c'est un second « Re : » par-dessus.
+        let une_fois = objet_de_reponse("Tr : La facture");
+        assert_eq!(une_fois, "Re : Tr : La facture");
+        assert_eq!(objet_de_reponse(&une_fois), une_fois);
     }
 
     #[test]

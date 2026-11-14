@@ -121,11 +121,33 @@ fn url_autorisation(
 /// Le corps d'erreur de Google contient un `error_description` en anglais, souvent
 /// bavard. On n'en retient que le code court : le reste ne sert ni à l'utilisateur,
 /// ni au diagnostic.
+/// Codes OAuth qui accusent l'application, et non le jeton de l'utilisateur.
+///
+/// # Ce que cette distinction a coûté
+///
+/// Tout refus de Google devenait un [`AppError::Auth`], et [`Session`] lit cela
+/// comme « le jeton durable est mort » : elle l'efface du trousseau, ce qui est
+/// la bonne réponse à une révocation d'accès. Une version compilée avec un
+/// identifiant client amputé d'un caractère a donc suffi à déconnecter trois
+/// comptes et à les faire réautoriser à la main. Google disait pourtant
+/// exactement ce qu'il fallait entendre : `invalid_client`, c'est-à-dire « je ne
+/// connais pas cette application », et non « ce jeton ne vaut plus rien ».
+///
+/// Ces deux codes-là ne disent donc rien de l'utilisateur. Son jeton est gardé.
+const REFUS_DE_CONFIGURATION: [&str; 2] = ["invalid_client", "unauthorized_client"];
+
 fn interpreter_reponse(statut: u16, corps: &str) -> Resultat<ReponseJeton> {
     if !(200..300).contains(&statut) {
         let motif = serde_json::from_str::<ErreurOAuth>(corps)
             .map(|e| e.error)
             .unwrap_or_else(|_| "réponse sans code d'erreur".into());
+
+        if REFUS_DE_CONFIGURATION.contains(&motif.as_str()) {
+            return Err(AppError::ConfigDistante(format!(
+                "Google ne reconnaît pas cette installation de MailFlow : {motif} (HTTP {statut})."
+            )));
+        }
+
         return Err(AppError::Auth(format!(
             "Google a refusé la demande : {motif} (HTTP {statut})"
         )));
@@ -411,6 +433,42 @@ mod tests {
         // Mais ni l'identifiant du compte, ni la prose de Google.
         assert!(!e.to_string().contains("1029384756"));
         assert!(!serde_json::to_string(&e).unwrap().contains("invalid_grant"));
+    }
+
+    #[test]
+    fn un_client_inconnu_est_une_erreur_de_configuration_et_non_d_autorisation() {
+        // `invalid_client` ne dit rien du jeton de l'utilisateur : il dit que
+        // **l'application** présente un identifiant que Google ne connaît pas.
+        //
+        // La distinction n'est pas théorique. Une version compilée avec un
+        // identifiant client erroné a fait répondre 401 à Google ; la session a
+        // lu « refus d'autorisation », en a conclu que le jeton durable était
+        // mort, et l'a effacé du trousseau. Trois comptes ont dû être
+        // réautorisés à la main, pour une faute de frappe dans un fichier de
+        // configuration.
+        let e = interpreter_reponse(401, r#"{"error":"invalid_client"}"#).unwrap_err();
+
+        assert!(
+            matches!(e, AppError::ConfigDistante(_)),
+            "attendu une installation inconnue, obtenu {e:?}"
+        );
+        assert!(e.to_string().contains("invalid_client"));
+    }
+
+    #[test]
+    fn un_client_non_autorise_est_lui_aussi_une_erreur_de_configuration() {
+        let e = interpreter_reponse(400, r#"{"error":"unauthorized_client"}"#).unwrap_err();
+
+        assert!(matches!(e, AppError::ConfigDistante(_)), "obtenu {e:?}");
+    }
+
+    #[test]
+    fn un_jeton_revoque_reste_une_erreur_d_autorisation() {
+        // Le pendant du test précédent : `invalid_grant` dit bien que le jeton
+        // de l'utilisateur est mort, et là l'effacement est la bonne réponse.
+        let e = interpreter_reponse(400, r#"{"error":"invalid_grant"}"#).unwrap_err();
+
+        assert!(matches!(e, AppError::Auth(_)), "obtenu {e:?}");
     }
 
     #[test]

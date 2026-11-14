@@ -50,6 +50,17 @@ export interface CorpsMessage {
   /** Les fichiers joints, sans leur contenu. Les images déjà intégrées au
    *  document n'y figurent pas : elles sont sous les yeux du lecteur. */
   pieces: PieceJointe[]
+
+  /** `Message-Id` du message, pour qu'une réponse s'y rattache.
+   *
+   *  Facultatif : les corps rangés avant l'arrivée du rattachement au fil ne
+   *  le portent pas. La commande de lecture les redemande alors à Gmail, donc
+   *  le cas ne dure que le temps d'une ouverture. */
+  messageId?: string | null
+  /** Chaîne `References` du message, vide s'il ouvrait le fil. */
+  references?: string | null
+  /** Conversation Gmail à laquelle il appartient. */
+  threadId?: string | null
 }
 
 
@@ -332,6 +343,7 @@ export type CodeErreur =
   | 'ERREUR_GMAIL'
   | 'ERREUR_RESEAU'
   | 'CONFIG_INVALIDE'
+  | 'INSTALLATION_INCONNUE'
   | 'RESUME_INDISPONIBLE'
   | 'PORTEE_MANQUANTE'
 

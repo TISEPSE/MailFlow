@@ -69,6 +69,11 @@ dans [`docs/publier-une-version.md`](docs/publier-une-version.md#le-cas-de-macos
   programmer (tous les vendredis à 18 h, par exemple)
 - **Table des archives** : les messages se rangent en tas, et chaque tas devient
   un libellé Gmail
+- **Messages envoyés** : relire ce qui est parti, et le faire suivre
+- **Répondre, répondre à tous et transférer** sans quitter l'application, dans le
+  fil de la conversation d'origine
+- **Écriture sans perte** : le message en cours s'enregistre dans vos brouillons
+  Gmail, et la fenêtre ne se ferme jamais sans demander
 - Plusieurs comptes Gmail, et une vue qui les réunit
 - Recherche au clavier avec `Ctrl+K`
 - Thème clair ou sombre, couleur d'accentuation au choix

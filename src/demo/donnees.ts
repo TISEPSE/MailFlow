@@ -41,6 +41,9 @@ interface Esquisse {
   age: number
   nonLu?: boolean
   libelles?: string[]
+  /** Autres destinataires, pour que « Répondre à tous » ait un sens. */
+  aussi?: { nom: string; adresse: string }[]
+  enCopie?: { nom: string; adresse: string }[]
 }
 
 function message(e: Esquisse): MessageAffiche {
@@ -48,8 +51,8 @@ function message(e: Esquisse): MessageAffiche {
     id: e.id,
     nom: e.nom,
     adresse: e.adresse,
-    destinataires: [MOI],
-    copies: [],
+    destinataires: e.aussi ? [MOI, ...e.aussi] : [MOI],
+    copies: e.enCopie ?? [],
     sujet: e.sujet,
     extrait: e.extrait,
     date: ilYA(e.age),
@@ -66,6 +69,8 @@ const ESQUISSES_BOITE: Esquisse[] = [
     id: 'h1',
     nom: 'Camille Laurent',
     adresse: 'camille.laurent@atelier-lumen.fr',
+    aussi: [{ nom: 'Noé Berger', adresse: 'noe.berger@exemple.fr' }],
+    enCopie: [{ nom: 'Inès Marchal', adresse: 'ines.marchal@exemple.fr' }],
     sujet: 'Nouvelles maquettes du site',
     extrait:
       "Salut Léa, je t'envoie les trois pistes pour la page d'accueil. La deuxième me plaît beaucoup, dis-moi ce que tu en penses.",
@@ -356,6 +361,79 @@ function jourDIlYA(jours: number): string {
   return ilYA(jours * JOUR).slice(0, 10)
 }
 
+/**
+ * Le courrier envoyé, en mode démo.
+ *
+ * L'expéditeur est toujours Léa : c'est tout l'intérêt de la page, et la raison
+ * pour laquelle la liste nomme le destinataire. Un jeu où tous les messages
+ * iraient à la même personne ne montrerait pas cela.
+ */
+export const ENVOYES: MessageAffiche[] = [
+  {
+    id: 'e1',
+    nom: 'Léa Fontaine',
+    adresse: COMPTE,
+    destinataires: [{ nom: 'Camille Laurent', adresse: 'camille.laurent@atelier-lumen.fr' }],
+    copies: [],
+    sujet: 'Re : Nouvelles maquettes du site',
+    extrait:
+      "Merci Camille, la deuxième me convient aussi. Je te renvoie deux remarques sur l'en-tête avant qu'on la fige.",
+    date: ilYA(45),
+    nonLu: false,
+    categorie: 'humain',
+    compte: COMPTE,
+    libelles: [],
+  },
+  {
+    id: 'e2',
+    nom: 'Léa Fontaine',
+    adresse: COMPTE,
+    destinataires: [{ nom: 'Service clients', adresse: 'contact@energieclaire.fr' }],
+    copies: [{ nom: 'Comptabilité', adresse: 'compta@atelier-lumen.fr' }],
+    sujet: 'Demande de duplicata de facture',
+    extrait:
+      'Bonjour, je ne retrouve pas la facture du mois de juin. Pourriez-vous me la renvoyer ? Merci par avance.',
+    date: ilYA(6 * 60),
+    nonLu: false,
+    categorie: 'humain',
+    compte: COMPTE,
+    libelles: [],
+  },
+  {
+    id: 'e3',
+    nom: 'Léa Fontaine',
+    adresse: COMPTE,
+    destinataires: [
+      { nom: 'Noé Berger', adresse: 'noe.berger@exemple.fr' },
+      { nom: 'Inès Marchal', adresse: 'ines.marchal@exemple.fr' },
+      { nom: 'Tom Vasseur', adresse: 'tom.vasseur@exemple.fr' },
+    ],
+    copies: [],
+    sujet: 'Compte rendu de la réunion de lundi',
+    extrait:
+      'Vous trouverez ci-dessous les décisions prises et qui fait quoi. Dites-moi si j’ai oublié un point.',
+    date: ilYA(2 * JOUR),
+    nonLu: false,
+    categorie: 'humain',
+    compte: COMPTE,
+    libelles: [],
+  },
+  {
+    id: 'e4',
+    nom: 'Léa Fontaine',
+    adresse: COMPTE,
+    destinataires: [{ nom: 'Atelier Lumen', adresse: 'bonjour@atelier-lumen.fr' }],
+    copies: [],
+    sujet: 'Devis signé — projet Annecy',
+    extrait: 'Ci-joint le devis signé. On peut lancer la phase de maquettage dès la semaine prochaine.',
+    date: ilYA(5 * JOUR),
+    nonLu: false,
+    categorie: 'humain',
+    compte: COMPTE,
+    libelles: [],
+  },
+]
+
 export const REGLES: JeuDeRegles = {
   version: '1.0',
   last_updated: ilYA(2 * JOUR),
@@ -513,7 +591,10 @@ const CORPS_ECRITS: Record<string, string> = {
 
 /** Corps d'un message : écrit à la main pour quelques-uns, composé pour les autres. */
 export function corpsDe(id: string): CorpsMessage {
-  const m = BOITE.find((x) => x.id === id) ?? ARCHIVES.find((x) => x.id === id)
+  const m =
+    BOITE.find((x) => x.id === id) ??
+    ARCHIVES.find((x) => x.id === id) ??
+    ENVOYES.find((x) => x.id === id)
   const prenom = m?.nom.split(' ')[0] ?? ''
   const html =
     CORPS_ECRITS[id] ??
@@ -522,5 +603,10 @@ export function corpsDe(id: string): CorpsMessage {
     html,
     texte: null,
     pieces: PIECES[id] ?? [],
+    // De quoi éprouver le rattachement au fil sans boîte mail : la réponse
+    // composée en mode démo porte les mêmes en-têtes qu'une vraie.
+    messageId: `<${id}@mail.exemple.fr>`,
+    references: null,
+    threadId: `fil-${id}`,
   }
 }

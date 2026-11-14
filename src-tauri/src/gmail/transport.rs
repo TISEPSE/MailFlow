@@ -57,13 +57,15 @@ impl Transport for TransportHttp {
             Methode::Get => self.http.get(url),
             Methode::Post => self.http.post(url),
             Methode::PostMessage => self.http.post(url).timeout(DELAI_TELEVERSEMENT),
+            Methode::Put => self.http.put(url),
+            Methode::PutMessage => self.http.put(url).timeout(DELAI_TELEVERSEMENT),
             Methode::Delete => self.http.delete(url),
         }
         .bearer_auth(jeton);
 
         if let Some(corps) = corps {
             let type_contenu = match methode {
-                Methode::PostMessage => "message/rfc822",
+                Methode::PostMessage | Methode::PutMessage => "message/rfc822",
                 _ => "application/json",
             };
             requete = requete

@@ -347,6 +347,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn une_application_mal_configuree_ne_detruit_pas_le_jeton_de_l_utilisateur() {
+        // Le jeton n'y est pour rien : c'est l'application qui présente un
+        // identifiant client que Google ne reconnaît pas. L'effacer obligerait
+        // l'utilisateur à réautoriser tous ses comptes pour une erreur de
+        // compilation, et c'est exactement ce qui est arrivé.
+        let mut s = session_ouverte();
+        let faux = FauxRenouvelleur::qui_echoue(|| {
+            Err(AppError::ConfigDistante("Google ne reconnaît pas cette installation : invalid_client".into()))
+        });
+
+        let _ = s
+            .access_token(&faux, t0() + chrono::Duration::hours(2))
+            .await
+            .unwrap_err();
+
+        assert!(
+            s.est_connecte().unwrap(),
+            "le refresh_token doit survivre à une erreur de configuration",
+        );
+    }
+
+    #[tokio::test]
     async fn une_panne_reseau_ne_deconnecte_pas_l_utilisateur() {
         // Distinction essentielle : un train sans réseau ne doit pas obliger à
         // refaire tout le parcours Google au retour.

@@ -15,6 +15,7 @@ import type { Toast } from '../composants/base'
 import { logosExpediteurs } from './tauri'
 import { DEFAUTS, ecrirePreferences, lirePreferences } from './preferences'
 import type { MessageAffiche } from '../types/backend'
+import type { Brouillon } from './redaction'
 
 /** Combien de temps un message passager reste à l'écran. */
 const DUREE_TOAST = 3400
@@ -41,6 +42,20 @@ const EVENEMENT_ANNONCE = 'mailflow:annonce'
  */
 export function signalerUneErreur(texte: string) {
   window.dispatchEvent(new CustomEvent(EVENEMENT_ANNONCE, { detail: texte }))
+}
+
+/**
+ * Nom de l'événement qui demande l'ouverture de la fenêtre de rédaction.
+ *
+ * Même raison qu'[`EVENEMENT_ANNONCE`] : un lien `mailto:` est cliqué dans le
+ * cadre du message, à cinq niveaux de la racine, et c'est la racine qui tient
+ * la fenêtre de rédaction.
+ */
+export const EVENEMENT_ECRIRE = 'mailflow:ecrire'
+
+/** Demande à la racine d'ouvrir la fenêtre de rédaction sur ce brouillon. */
+export function demanderLaRedaction(brouillon: Brouillon) {
+  window.dispatchEvent(new CustomEvent(EVENEMENT_ECRIRE, { detail: brouillon }))
 }
 
 /**

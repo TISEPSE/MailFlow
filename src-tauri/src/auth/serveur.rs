@@ -239,22 +239,42 @@ impl ServeurRedirection {
         format!("http://{}:{}", super::HOTE_REDIRECTION, self.port)
     }
 
-    /// Attend la redirection et rend le code d'autorisation.
-    pub async fn attendre_le_code(self, state_attendu: &str, delai: Duration) -> Resultat<String> {
+    /// Attend la redirection et rend le code d'autorisation, **avec** de quoi
+    /// répondre au navigateur une fois le verdict connu.
+    ///
+    /// # Pourquoi la page n'est plus servie ici
+    ///
+    /// Elle l'était : dès que la redirection portait un code, le navigateur
+    /// recevait « Compte connecté ! ». Or le code n'est que la moitié du
+    /// chemin — il reste à l'échanger contre des jetons, et c'est là que Google
+    /// a refusé une version compilée avec un mauvais identifiant client. Le
+    /// navigateur affirmait un succès que l'application démentait aussitôt, et
+    /// l'utilisateur a cherché la panne du mauvais côté.
+    ///
+    /// La page attend donc : l'appelant finit l'échange, puis appelle
+    /// [`Reponse::succes`] ou [`Reponse::echec`]. Le navigateur dit alors la
+    /// même chose que l'application.
+    pub async fn attendre_le_code(
+        self,
+        state_attendu: &str,
+        delai: Duration,
+    ) -> Resultat<(String, Reponse)> {
         tokio::time::timeout(delai, self.boucle(state_attendu))
             .await
             .map_err(|_| AppError::Auth("aucune redirection reçue avant le délai".into()))?
     }
 
-    async fn boucle(&self, state_attendu: &str) -> Resultat<String> {
+    async fn boucle(&self, state_attendu: &str) -> Resultat<(String, Reponse)> {
         loop {
-            let (mut flux, _) = self
+            let (flux, _) = self
                 .ecouteur
                 .accept()
                 .await
                 .map_err(|e| AppError::io(self.uri_redirection(), e))?;
 
-            let (lecture, mut ecriture) = flux.split();
+            // Moitiés possédées, et non empruntées : celle d'écriture quitte
+            // cette boucle avec le code, pour répondre plus tard.
+            let (lecture, mut ecriture) = flux.into_split();
             let mut ligne = String::new();
 
             // Deux garde-fous sur ce que peut faire un client inconnu : un plafond
@@ -285,17 +305,8 @@ impl ServeurRedirection {
                         return Err(AppError::Auth("state de la redirection incorrect".into()));
                     }
 
-                    repondre(
-                        &mut ecriture,
-                        "200 OK",
-                        &page(
-                            GenrePage::Succes,
-                            "Compte connecté !",
-                            "Vous pouvez fermer cet onglet.",
-                        ),
-                    )
-                    .await;
-                    return Ok(code);
+                    // Pas de page ici : le verdict n'est pas encore connu.
+                    return Ok((code, Reponse { ecriture }));
                 }
 
                 Ok(RetourAutorisation::Refus { motif }) => {
@@ -333,6 +344,44 @@ impl ServeurRedirection {
 /// Les erreurs d'écriture sont ignorées à dessein : le navigateur peut avoir
 /// refermé l'onglet. Ce qui compte est le résultat rendu à l'appelant, pas la
 /// page de courtoisie.
+/// La connexion du navigateur, gardée ouverte jusqu'au verdict.
+///
+/// Le navigateur attend une réponse HTTP : il affiche un onglet qui charge, ce
+/// qui est exactement l'état des choses pendant l'échange du code. Si
+/// l'appelant ne répond jamais — un plantage entre les deux — le navigateur
+/// finira par abandonner de lui-même ; l'échange a de toute façon son propre
+/// délai (voir `flux`).
+pub struct Reponse {
+    ecriture: tokio::net::tcp::OwnedWriteHalf,
+}
+
+impl Reponse {
+    /// La session est ouverte : le navigateur peut le dire.
+    pub async fn succes(mut self) {
+        repondre(
+            &mut self.ecriture,
+            "200 OK",
+            &page(
+                GenrePage::Succes,
+                "Compte connecté !",
+                "Vous pouvez fermer cet onglet et revenir dans MailFlow.",
+            ),
+        )
+        .await;
+    }
+
+    /// L'échange a échoué : le navigateur dit pourquoi, avec les mots de
+    /// l'application, pour que les deux racontent la même histoire.
+    pub async fn echec(mut self, titre: &str, message: &str) {
+        repondre(
+            &mut self.ecriture,
+            "200 OK",
+            &page(GenrePage::Erreur, titre, message),
+        )
+        .await;
+    }
+}
+
 async fn repondre<E: AsyncWriteExt + Unpin>(ecriture: &mut E, statut: &str, corps: &str) {
     let _ = ecriture
         .write_all(reponse_http(statut, corps).as_bytes())
@@ -384,15 +433,59 @@ mod tests {
         let port = serveur.port();
 
         let attente = tokio::spawn(async move {
-            serveur
+            let (code, reponse) = serveur
                 .attendre_le_code("etat-attendu", Duration::from_secs(5))
-                .await
+                .await?;
+            reponse.succes().await;
+            Ok::<_, AppError>(code)
         });
 
         let reponse = envoyer(port, "GET /?code=4%2F0AX4&state=etat-attendu HTTP/1.1").await;
 
         assert_eq!(attente.await.unwrap().unwrap(), "4/0AX4");
         assert!(reponse.starts_with("HTTP/1.1 200 OK"));
+        assert!(reponse.contains("Compte connecté"));
+    }
+
+    #[tokio::test]
+    async fn la_page_de_succes_n_est_ecrite_qu_une_fois_la_session_ouverte() {
+        // Hier, le navigateur affichait « Compte connecté ! » pendant que
+        // l'application échouait à échanger le code : Google avait bien
+        // redirigé, mais l'échange derrière était refusé. La page doit attendre
+        // le verdict, et dire l'échec quand il y en a un.
+        let serveur = ServeurRedirection::ouvrir().await.unwrap();
+        let port = serveur.port();
+
+        let attente = tokio::spawn(async move {
+            serveur
+                .attendre_le_code("etat-attendu", Duration::from_secs(5))
+                .await
+        });
+
+        let mut navigateur = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        navigateur
+            .write_all(b"GET /?code=4%2F0AX4&state=etat-attendu HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+
+        let (code, reponse) = attente.await.unwrap().unwrap();
+        assert_eq!(code, "4/0AX4");
+
+        // Rien n'a encore été écrit au navigateur : la lecture doit attendre.
+        let mut tampon = [0u8; 1];
+        let lecture = tokio::time::timeout(Duration::from_millis(300), navigateur.read(&mut tampon)).await;
+        assert!(lecture.is_err(), "la page a été servie avant la confirmation");
+
+        reponse
+            .echec("Connexion impossible", "Google ne reconnaît pas cette installation.")
+            .await;
+
+        let mut page = String::new();
+        navigateur.read_to_string(&mut page).await.unwrap();
+        assert!(page.starts_with("HTTP/1.1 200 OK"), "{page}");
+        assert!(page.contains("Connexion impossible"), "{page}");
+        assert!(page.contains("ne reconnaît pas cette installation"), "{page}");
+        assert!(!page.contains("Compte connecté"), "{page}");
     }
 
     #[tokio::test]
@@ -401,9 +494,11 @@ mod tests {
         let port = serveur.port();
 
         let attente = tokio::spawn(async move {
-            serveur
+            let (code, reponse) = serveur
                 .attendre_le_code("etat-attendu", Duration::from_secs(5))
-                .await
+                .await?;
+            reponse.succes().await;
+            Ok::<_, AppError>(code)
         });
 
         let reponse = envoyer(port, "GET /?code=4a5b6c&state=etat-forge HTTP/1.1").await;
@@ -418,9 +513,11 @@ mod tests {
         let port = serveur.port();
 
         let attente = tokio::spawn(async move {
-            serveur
+            let (code, reponse) = serveur
                 .attendre_le_code("etat-attendu", Duration::from_secs(5))
-                .await
+                .await?;
+            reponse.succes().await;
+            Ok::<_, AppError>(code)
         });
 
         envoyer(
@@ -439,9 +536,11 @@ mod tests {
         let port = serveur.port();
 
         let attente = tokio::spawn(async move {
-            serveur
+            let (code, reponse) = serveur
                 .attendre_le_code("etat-attendu", Duration::from_secs(5))
-                .await
+                .await?;
+            reponse.succes().await;
+            Ok::<_, AppError>(code)
         });
 
         let parasite = envoyer(port, "GET /favicon.ico HTTP/1.1").await;
@@ -459,7 +558,8 @@ mod tests {
         let erreur = serveur
             .attendre_le_code("etat-attendu", Duration::from_millis(150))
             .await
-            .unwrap_err();
+            .err()
+            .expect("le délai aurait dû expirer");
 
         assert_eq!(erreur.code(), "ECHEC_CONNEXION");
     }
@@ -470,9 +570,11 @@ mod tests {
         let port = serveur.port();
 
         let attente = tokio::spawn(async move {
-            serveur
+            let (code, reponse) = serveur
                 .attendre_le_code("etat-attendu", Duration::from_secs(5))
-                .await
+                .await?;
+            reponse.succes().await;
+            Ok::<_, AppError>(code)
         });
 
         // Une seule ligne, sans fin, bien au-dela du plafond.

@@ -56,6 +56,16 @@ pub enum AppError {
     #[error("configuration invalide : {0}")]
     Config(String),
 
+    /// Google ne reconnaît pas les identifiants compilés dans l'application.
+    ///
+    /// Séparée de [`Config`] parce que les deux ne se traitent pas pareil. Un
+    /// `invalid_client` n'a rien à voir avec le compte de l'utilisateur, et le
+    /// dire en toutes lettres évite la réaction d'hier : se déconnecter pour
+    /// « réparer », ce qui révoque des jetons parfaitement valides. Le texte
+    /// est écrit par nous, il peut donc traverser l'IPC tel quel.
+    #[error("installation non reconnue par Google : {0}")]
+    ConfigDistante(String),
+
     /// Le modèle de langage n'a pas produit de résumé exploitable : clé
     /// refusée, quota atteint, refus des filtres, ou réponse hors format.
     ///
@@ -120,6 +130,7 @@ impl AppError {
             Self::PorteeManquante => "PORTEE_MANQUANTE",
             Self::Reseau(_) => "ERREUR_RESEAU",
             Self::Config(_) => "CONFIG_INVALIDE",
+            Self::ConfigDistante(_) => "INSTALLATION_INCONNUE",
             Self::Resume(_) => "RESUME_INDISPONIBLE",
             Self::CleLlm(_) => "CLE_LLM_REFUSEE",
             Self::QuotaLlm { .. } => "QUOTA_LLM",
@@ -157,6 +168,12 @@ impl AppError {
             }
             Self::Reseau(_) => "Connexion impossible. Vérifiez votre accès internet.".into(),
             Self::Config(_) => "La configuration de MailFlow est invalide.".into(),
+            // Le détail est le message : il vient de notre code, pas de Google,
+            // et c'est lui qui dit que le compte n'y est pour rien.
+            Self::ConfigDistante(detail) => format!(
+                "{detail} Ce n'est pas lié à votre compte : les identifiants compilés \
+                 dans cette version de MailFlow ne sont pas valides. Vos comptes restent reliés."
+            ),
             Self::Resume(_) => {
                 "Le résumé automatique n'a pas abouti. Le message reste lisible tel quel.".into()
             }
@@ -219,6 +236,24 @@ pub type Resultat<T> = std::result::Result<T, AppError>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_installation_inconnue_de_google_dit_ce_qu_elle_est_a_l_ecran() {
+        // Hier, `invalid_client` devenait « La configuration de MailFlow est
+        // invalide » : vrai, mais inutile. L'utilisateur a cru à un problème de
+        // son compte et s'est déconnecté, ce qui a révoqué ses jetons. Le
+        // message doit nommer la cause et dire que les comptes n'y sont pour
+        // rien.
+        let err = AppError::ConfigDistante(
+            "Google ne reconnaît pas cette installation de MailFlow : invalid_client (HTTP 401)."
+                .into(),
+        );
+
+        assert_eq!(err.code(), "INSTALLATION_INCONNUE");
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("ne reconnaît pas cette installation"), "{json}");
+        assert!(json.contains("invalid_client"), "{json}");
+    }
 
     #[test]
     fn la_serialisation_ne_contient_que_code_et_message() {

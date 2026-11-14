@@ -68,11 +68,37 @@ pub struct CorpsMessage {
     /// plusieurs mégaoctets, qu'on ne rapatrie que sur demande.
     #[serde(default)]
     pub pieces: Vec<PieceJointe>,
+
+    /// `Message-Id` de ce message, pour que la réponse s'y rattache.
+    ///
+    /// `default` comme `pieces` avant lui : le champ est arrivé après coup, et
+    /// un cache écrit par une version antérieure doit continuer à se relire.
+    /// Sinon la première ouverture après mise à jour montre une boîte vide.
+    #[serde(default)]
+    pub message_id: Option<String>,
+
+    /// Chaîne `References` de ce message, vide s'il ouvrait le fil.
+    #[serde(default)]
+    pub references: Option<String>,
+
+    /// Conversation Gmail à laquelle il appartient.
+    #[serde(default)]
+    pub thread_id: Option<String>,
 }
 
 impl CorpsMessage {
     pub fn est_vide(&self) -> bool {
         self.html.is_none() && self.texte.is_none()
+    }
+
+    /// Ce corps vient-il d'un cache trop ancien pour qu'on puisse y répondre ?
+    ///
+    /// Les corps rangés avant l'arrivée de ces champs n'ont ni `Message-Id` ni
+    /// `threadId`. Répondre à l'un d'eux ouvrirait une conversation neuve sans
+    /// rien dire : la commande le redemande à Gmail plutôt que de le servir
+    /// amputé. Une requête de plus, une seule fois par ancien message.
+    pub fn sans_reference(&self) -> bool {
+        self.message_id.is_none() || self.thread_id.is_none()
     }
 }
 
@@ -375,7 +401,11 @@ fn fin_de_bloc(bas: &str, debut: usize, nom: &str) -> usize {
 /// Retire d'une balise ses gestionnaires d'événements et ses URL exécutables.
 fn nettoyer_attributs(balise: &str) -> String {
     let bas = balise.to_lowercase();
-    if !bas.contains("on") && !bas.contains("javascript:") {
+    if !bas.contains("on")
+        && !bas.contains("javascript:")
+        && !bas.contains("vbscript:")
+        && !bas.contains("data:")
+    {
         return balise.to_string();
     }
 
@@ -394,12 +424,7 @@ fn nettoyer_attributs(balise: &str) -> String {
         sortie.push_str(&balise[i..debut_attribut]);
         let attribut = &bas[debut_attribut..];
 
-        if commence_par_gestionnaire(attribut)
-            || attribut.starts_with("href=\"javascript:")
-            || attribut.starts_with("href='javascript:")
-            || attribut.starts_with("src=\"javascript:")
-            || attribut.starts_with("src='javascript:")
-        {
+        if commence_par_gestionnaire(attribut) || porte_une_url_executable(attribut) {
             i = fin_d_attribut(&bas, debut_attribut);
             continue;
         }
@@ -411,6 +436,43 @@ fn nettoyer_attributs(balise: &str) -> String {
     }
 
     sortie
+}
+
+/// Attributs dont la valeur est une URL que le navigateur suivrait.
+const ATTRIBUTS_URL: [&str; 5] = ["href", "src", "action", "formaction", "xlink:href"];
+
+/// Un attribut d'URL dont la valeur est exécutable, sous toutes ses graphies.
+///
+/// La première version ne reconnaissait que `href="javascript:` et
+/// `href='javascript:` : la forme sans guillemets passait, un espace autour du
+/// `=` aussi, et `vbscript:` ou `data:` n'étaient pas regardés. Le cadre isolé
+/// aurait bloqué l'exécution de toute façon — c'est lui la barrière — mais une
+/// précaution qui ne tient pas ses promesses vaut moins qu'aucune.
+///
+/// `data:` n'est refusé que dans un lien ou une action : dans `src`, c'est ce
+/// que MailFlow produit lui-même en intégrant les images `cid:`, et la
+/// politique du cadre n'autorise d'ailleurs `data:` que pour les images.
+fn porte_une_url_executable(attribut: &str) -> bool {
+    let Some((nom, valeur)) = attribut.split_once('=') else {
+        return false;
+    };
+    let nom = nom.trim();
+    if !ATTRIBUTS_URL.contains(&nom) {
+        return false;
+    }
+
+    // Guillemets, espaces et caractères de contrôle en tête : tout ce qu'un
+    // navigateur ignore avant de lire le schéma.
+    let valeur = valeur
+        .trim_start()
+        .trim_start_matches(['"', '\''])
+        .trim_start_matches(|c: char| c.is_whitespace() || c.is_control());
+
+    if valeur.starts_with("javascript:") || valeur.starts_with("vbscript:") {
+        return true;
+    }
+
+    valeur.starts_with("data:") && nom != "src"
 }
 
 /// Tout attribut dont le nom commence par `on` suivi de lettres.
@@ -954,6 +1016,45 @@ pub fn oublier_les_absents(dossier: &Path, vivants: &std::collections::HashSet<S
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn un_corps_sans_reference_se_reconnait() {
+        // Les corps rangés par les versions antérieures n'ont ni Message-Id ni
+        // threadId : répondre à l'un d'eux ouvrirait une conversation neuve,
+        // sans rien dire. La commande les redemande à Gmail plutôt que de les
+        // servir amputés, et c'est ce test qui tient la détection.
+        let ancien = CorpsMessage {
+            html: Some("<p>bonjour</p>".into()),
+            ..Default::default()
+        };
+
+        assert!(ancien.sans_reference());
+    }
+
+    #[test]
+    fn un_corps_complet_n_est_pas_redemande() {
+        let complet = CorpsMessage {
+            html: Some("<p>bonjour</p>".into()),
+            message_id: Some("<abc@mail>".into()),
+            thread_id: Some("t1".into()),
+            ..Default::default()
+        };
+
+        assert!(!complet.sans_reference());
+    }
+
+    #[test]
+    fn un_corps_relu_depuis_une_version_anterieure_se_deserialise_encore() {
+        // Les deux champs sont arrivés après coup. Sans `serde(default)`, un
+        // cache écrit hier rendrait toute la boîte illisible aujourd'hui.
+        let ancien = r#"{"html":"<p>a</p>","texte":null}"#;
+
+        let c: CorpsMessage = serde_json::from_str(ancien).unwrap();
+
+        assert_eq!(c.html.as_deref(), Some("<p>a</p>"));
+        assert!(c.sans_reference());
+    }
+
     use super::*;
     use crate::gmail::modele::{Charge, CorpsPartie};
 
@@ -965,6 +1066,7 @@ mod tests {
                 html: Some(html.into()),
                 texte: None,
                 pieces: Vec::new(),
+                ..Default::default()
             }
         }
 
@@ -1046,7 +1148,7 @@ mod tests {
             let lu = texte_lisible(&CorpsMessage {
                 html: Some("<style>body{}</style><p>balisage</p>".into()),
                 texte: Some("la lettre".into()),
-                pieces: Vec::new(),
+                ..Default::default()
             });
 
             assert_eq!(lu, "la lettre");
@@ -1230,6 +1332,45 @@ mod tests {
     }
 
     #[test]
+    fn un_lien_executable_sans_guillemets_est_retire() {
+        // Le contrôle ne reconnaissait que `href="javascript:` et `href='` :
+        // la forme sans guillemets passait, et un espace autour du `=` aussi.
+        for sale in [
+            r#"<a href=javascript:alert(1)>x</a>"#,
+            r#"<a href = "JavaScript:alert(1)">x</a>"#,
+            r#"<a href=" javascript:alert(1)">x</a>"#,
+            r#"<a href="vbscript:msgbox(1)">x</a>"#,
+        ] {
+            let propre = assainir(sale).to_lowercase();
+            assert!(!propre.contains("javascript:"), "{sale} -> {propre}");
+            assert!(!propre.contains("vbscript:"), "{sale} -> {propre}");
+        }
+    }
+
+    #[test]
+    fn un_lien_data_est_retire_mais_une_image_data_est_gardee() {
+        // `data:text/html` dans un lien est une page entière écrite par
+        // l'expéditeur ; `data:image/...` dans une image est ce que MailFlow
+        // produit lui-même en intégrant les pièces `cid:`. L'un part, l'autre
+        // reste.
+        let lien = r#"<a href="data:text/html,<script>1</script>">x</a>"#;
+        assert!(!assainir(lien).contains("data:"), "{}", assainir(lien));
+
+        let image = r#"<img src="data:image/png;base64,AAAA" alt="i">"#;
+        assert!(assainir(image).contains("data:image/png"), "{}", assainir(image));
+    }
+
+    #[test]
+    fn les_attributs_d_action_executables_sont_retires() {
+        for sale in [
+            r#"<form action="javascript:alert(1)"><input></form>"#,
+            r#"<button formaction="javascript:alert(1)">x</button>"#,
+        ] {
+            assert!(!assainir(sale).to_lowercase().contains("javascript:"), "{sale}");
+        }
+    }
+
+    #[test]
     fn un_message_ordinaire_traverse_sans_dommage() {
         // La désinfection ne doit pas abîmer ce qu'elle ne comprend pas : la
         // plupart des lettres sont des tableaux et des styles en ligne.
@@ -1333,6 +1474,7 @@ mod tests {
             html: Some("<p>a</p>".into()),
             texte: None,
             pieces: Vec::new(),
+            ..Default::default()
         };
 
         ranger(dossier.path(), "m1", &corps);
@@ -1372,6 +1514,7 @@ mod tests {
                 html: Some("<p>bonjour</p>".into()),
                 texte: None,
                 pieces: Vec::new(),
+                ..Default::default()
             }
         }
 
