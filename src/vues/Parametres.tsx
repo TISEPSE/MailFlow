@@ -9,6 +9,7 @@
  * - Aide & Diagnostic
  */
 import { useState } from 'react'
+import { EVENEMENT_MISE_A_JOUR, raisonDeLEchec, verifier } from '../lib/miseAJour'
 import { Bloc, Bouton, Icone, Interrupteur, Segments } from '../composants/base'
 import { FREQUENCES, type Frequence } from '../lib/preferences'
 import type { CompteConnu, EtatApplication, ProfilCompte } from '../types/backend'
@@ -345,6 +346,7 @@ export function Parametres({
                   titre="Version de l'application"
                   detail={`MailFlow ${etat.version} · Plateforme ${etat.plateforme}`}
                 >
+                  <VerifierMiseAJour />
                   <span
                     className="rounded-full px-2.5 py-0.5 text-[0.6875rem] font-semibold border"
                     style={{
@@ -362,5 +364,63 @@ export function Parametres({
         </div>
       </main>
     </div>
+  )
+}
+
+/**
+ * Vérification à la demande. Ce qui est trouvé part au bandeau du haut, qui
+ * sait déjà installer : le geste n'existe qu'à un endroit.
+ */
+function VerifierMiseAJour() {
+  const [etat, setEtat] = useState<'repos' | 'enCours' | 'aJour' | 'sansFichier' | 'reseau'>('repos')
+
+  const lancer = async () => {
+    setEtat('enCours')
+    try {
+      const trouvee = await verifier()
+      if (trouvee) {
+        window.dispatchEvent(new CustomEvent(EVENEMENT_MISE_A_JOUR, { detail: trouvee }))
+        setEtat('repos')
+      } else {
+        setEtat('aJour')
+      }
+    } catch (e) {
+      console.warn('vérification des mises à jour impossible', e)
+      setEtat(raisonDeLEchec(e))
+    }
+  }
+
+  return (
+    <span className="mr-2 inline-flex items-center gap-2">
+      {etat === 'aJour' && (
+        <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+          À jour
+        </span>
+      )}
+      {etat === 'sansFichier' && (
+        <span
+          className="text-[0.75rem]"
+          style={{ color: 'var(--sub)' }}
+          title="La dernière version publiée ne propose pas encore de mise à jour intégrée."
+        >
+          Aucune mise à jour publiée
+        </span>
+      )}
+      {etat === 'reseau' && (
+        <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
+          Vérification impossible, connexion ?
+        </span>
+      )}
+      <Bouton
+        compact
+        variante="discret"
+        icone="refresh"
+        enAttente={etat === 'enCours'}
+        disabled={etat === 'enCours'}
+        onClick={() => void lancer()}
+      >
+        Rechercher une mise à jour
+      </Bouton>
+    </span>
   )
 }

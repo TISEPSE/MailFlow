@@ -16,6 +16,7 @@ import { Regles } from './vues/Regles'
 import { Newsletters } from './vues/Newsletters'
 import type { EtatSynthese } from './vues/Newsletters'
 import { Redaction } from './composants/Redaction'
+import { BandeauMiseAJour } from './composants/BandeauMiseAJour'
 import {
   brouillonDeReponse,
   brouillonDeTransfert,
@@ -1435,6 +1436,7 @@ export default function App() {
       className="flex h-full flex-col"
     >
       <Toasts toasts={toasts} onFermer={retirerToast} />
+      <BandeauMiseAJour />
 
       {rechercheOuverte && etat?.compteConnecte && (
         <Recherche

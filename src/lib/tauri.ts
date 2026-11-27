@@ -211,6 +211,15 @@ export function pieceJointeEnregistrer(
   return invoke<string>('piece_jointe_enregistrer', { message, piece, nom })
 }
 
+/** Enregistre un PDF reçu, montre son dossier et ouvre l'éditeur Acrobat en
+ *  ligne dans le navigateur. Rend le chemin du fichier écrit.
+ *
+ *  Le backend refuse un fichier dont le contenu n'est pas un PDF, quel que soit
+ *  son nom. */
+export function pdfVersAcrobat(message: string, piece: string, nom: string): Promise<string> {
+  return invoke<string>('pdf_vers_acrobat', { message, piece, nom })
+}
+
 /** Prepare l'apercu d'une piece jointe, sans rien ecrire sur le disque.
  *
  *  Ce qui revient n'est jamais le fichier recu : une image est decodee puis

@@ -32,6 +32,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        // Vérifie le dépôt GitHub et installe la version suivante quand
+        // l'utilisateur l'accepte. Les mises à jour sont signées : la clé
+        // publique est dans `tauri.conf.json`, et un fichier qui ne porte pas
+        // la signature correspondante est refusé avant d'être lancé.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(liens_vers_le_navigateur())
         // Le cadre où s'affiche le corps d'un message est servi par son propre
         // protocole, avec sa propre politique de sécurité. Voir [`cadre`] pour
@@ -115,6 +120,7 @@ pub fn run() {
             commands::message_corps,
             commands::corps_precharger,
             commands::piece_jointe_enregistrer,
+            commands::pdf_vers_acrobat,
             commands::piece_jointe_apercu,
             commands::piece_jointe_vignette,
             commands::message_ranger,

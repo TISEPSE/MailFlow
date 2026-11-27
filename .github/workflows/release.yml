@@ -212,6 +212,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MAILFLOW_GOOGLE_CLIENT_ID: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_ID }}
           MAILFLOW_GOOGLE_CLIENT_SECRET: ${{ secrets.MAILFLOW_GOOGLE_CLIENT_SECRET }}
+          # Signature des mises à jour intégrées. La configuration de
+          # publication (`tauri.release.conf.json`) demande les artefacts de
+          # mise à jour, que Tauri refuse de produire sans cette clé : un oubli
+          # fait échouer la compilation plutôt que de publier une version que
+          # personne ne pourrait installer depuis l'application. L'action en
+          # tire aussi `latest.json`, que le bandeau de mise à jour lit.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v0.0.0-dev-{0}', github.run_number) }}
           releaseName: 'MailFlow ${{ github.ref_type == ''tag'' && github.ref_name || ''(build de développement)'' }}'
@@ -222,6 +230,9 @@ jobs:
             - **macOS** — `.dmg` (universel : Intel et Apple Silicon).
             - **Linux** — `.AppImage` pour toutes les distributions,
               ou `.deb` pour Debian et Ubuntu.
+
+            **Déjà installé ?** MailFlow se met à jour tout seul : un
+            bandeau propose la nouvelle version au démarrage, un clic suffit.
 
             **Premier lancement sur Windows.** L'application n'est pas
             signée : SmartScreen annonce un « éditeur inconnu ». Cliquez sur
@@ -236,4 +247,4 @@ jobs:
             suivants ne demandent plus rien.
           releaseDraft: false
           prerelease: ${{ github.ref_type != 'tag' || contains(github.ref_name, '-') }}
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json

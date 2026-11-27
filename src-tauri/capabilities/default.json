@@ -1,10 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions de la fenêtre principale. Volontairement minimales : le webview affiche du HTML d'e-mail, donc du contenu non fiable. Rien n'est ajouté ici sans qu'une vue en ait un besoin démontré.",
+  "description": "Permissions de la fenêtre principale. Volontairement minimales : le webview affiche du HTML d'e-mail, donc du contenu non fiable. Rien n'est ajouté ici sans qu'une vue en ait un besoin démontré. « updater:default » sert au bandeau de mise à jour, qui vérifie le dépôt GitHub et installe une version signée sur demande.",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "process:allow-restart"
-  ]
+  "permissions": ["core:default", "process:allow-restart", "updater:default"]
 }

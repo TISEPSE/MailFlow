@@ -1298,27 +1298,100 @@ pub async fn piece_jointe_enregistrer(
     piece: String,
     nom: String,
 ) -> Resultat<String> {
-    let dossier = app
-        .path()
-        .download_dir()
-        .or_else(|_| app.path().home_dir())
-        .map_err(|e| AppError::Config(format!("dossier de téléchargement introuvable : {e}")))?;
-
     let client = ClientGmail::nouveau(
         TransportHttp::nouveau()?,
         jetons_du_message(&app, &etat, &message),
     );
     let octets = client.piece_jointe(&message, &piece).await?;
 
-    std::fs::create_dir_all(&dossier)
+    let chemin = ecrire_dans(&dossier_de_telechargement(&app)?, &nom, &octets)?;
+    Ok(chemin.display().to_string())
+}
+
+/// Le dossier de téléchargement de l'utilisateur, ou à défaut son dossier
+/// personnel.
+fn dossier_de_telechargement(app: &AppHandle) -> Resultat<PathBuf> {
+    app.path()
+        .download_dir()
+        .or_else(|_| app.path().home_dir())
+        .map_err(|e| AppError::Config(format!("dossier de téléchargement introuvable : {e}")))
+}
+
+/// Écrit une pièce jointe dans `dossier`, sous un nom assaini et libre.
+///
+/// Commun à « Enregistrer » et à « Modifier dans Acrobat » : les deux gestes
+/// posent le même fichier au même endroit, et le nom venu de l'expéditeur
+/// passe par la même moulinette dans les deux cas.
+fn ecrire_dans(dossier: &std::path::Path, nom: &str, octets: &[u8]) -> Resultat<PathBuf> {
+    std::fs::create_dir_all(dossier)
         .map_err(|e| AppError::Config(format!("dossier de téléchargement inutilisable : {e}")))?;
 
-    let chemin = chemin_libre(&dossier, &nom_de_fichier_sur(&nom));
+    let chemin = chemin_libre(dossier, &nom_de_fichier_sur(nom));
 
-    std::fs::write(&chemin, &octets)
+    std::fs::write(&chemin, octets)
         .map_err(|e| AppError::Config(format!("enregistrement impossible : {e}")))?;
 
     log::info!("pièce jointe enregistrée, {} octets", octets.len());
+    Ok(chemin)
+}
+
+/// L'éditeur de PDF en ligne d'Adobe.
+///
+/// Adobe n'offre aucune adresse qui reçoive un fichier : la page ne fait que
+/// proposer un dépôt. C'est pourquoi le fichier est d'abord posé dans le
+/// dossier de téléchargement et montré dans l'explorateur — il reste à
+/// l'utilisateur de le glisser sur la page.
+const EDITEUR_ACROBAT: &str = "https://www.adobe.com/acrobat/online/pdf-editor.html";
+
+/// Vrai si les octets ressemblent à un PDF.
+///
+/// Le nom et le type MIME viennent de l'expéditeur, l'en-tête vient du
+/// fichier. La norme tolère quelques octets parasites avant `%PDF-`, et les
+/// lecteurs aussi : on cherche donc la signature dans le premier kilo-octet,
+/// comme eux.
+pub fn ressemble_a_un_pdf(octets: &[u8]) -> bool {
+    octets
+        .get(..octets.len().min(1024))
+        .is_some_and(|debut| debut.windows(5).any(|f| f == b"%PDF-"))
+}
+
+/// Prépare un PDF reçu pour l'éditeur en ligne d'Acrobat.
+///
+/// Trois gestes, dans l'ordre : le PDF est enregistré comme le ferait
+/// « Enregistrer », le dossier qui le contient s'ouvre sur lui, puis la page
+/// d'Acrobat s'ouvre dans le navigateur. **MailFlow n'ouvre toujours pas la
+/// pièce jointe** : il la range et ouvre une adresse `https` fixe, écrite ici.
+/// Aucun programme n'est choisi par l'expéditeur.
+///
+/// Si l'explorateur ne sait pas montrer le fichier, ce n'est pas un échec : le
+/// chemin revient à l'interface, qui l'affiche.
+#[tauri::command]
+pub async fn pdf_vers_acrobat(
+    app: AppHandle,
+    etat: State<'_, EtatAuth>,
+    message: String,
+    piece: String,
+    nom: String,
+) -> Resultat<String> {
+    let client = ClientGmail::nouveau(
+        TransportHttp::nouveau()?,
+        jetons_du_message(&app, &etat, &message),
+    );
+    let octets = client.piece_jointe(&message, &piece).await?;
+
+    if !ressemble_a_un_pdf(&octets) {
+        return Err(AppError::Refus(
+            "Ce fichier n'est pas un PDF : Acrobat ne pourra pas le modifier.".into(),
+        ));
+    }
+
+    let chemin = ecrire_dans(&dossier_de_telechargement(&app)?, &nom, &octets)?;
+
+    if let Err(e) = tauri_plugin_opener::reveal_item_in_dir(&chemin) {
+        log::warn!("explorateur injoignable pour montrer le PDF : {e}");
+    }
+
+    crate::sortie::ouvrir(EDITEUR_ACROBAT)?;
     Ok(chemin.display().to_string())
 }
 
@@ -2586,7 +2659,33 @@ pub async fn contacts_synchroniser(
 
 #[cfg(test)]
 mod tests_pieces_jointes {
-    use super::{chemin_libre, nom_de_fichier_sur};
+    use super::{chemin_libre, ecrire_dans, nom_de_fichier_sur, ressemble_a_un_pdf};
+
+    #[test]
+    fn un_pdf_se_reconnait_a_son_en_tete() {
+        assert!(ressemble_a_un_pdf(b"%PDF-1.7\n%\xe2\xe3"));
+        // Quelques octets parasites devant la signature, que les lecteurs
+        // tolèrent.
+        assert!(ressemble_a_un_pdf(b"\r\n%PDF-1.4"));
+    }
+
+    #[test]
+    fn un_faux_pdf_est_refuse() {
+        // Le nom dit « .pdf », le contenu dit autre chose : c'est le contenu
+        // qui compte.
+        assert!(!ressemble_a_un_pdf(b"MZ\x90\x00 un executable"));
+        assert!(!ressemble_a_un_pdf(b""));
+        let tardif = [vec![b' '; 2000], b"%PDF-1.7".to_vec()].concat();
+        assert!(!ressemble_a_un_pdf(&tardif));
+    }
+
+    #[test]
+    fn l_ecriture_assainit_le_nom_et_reste_dans_le_dossier() {
+        let dossier = tempfile::tempdir().unwrap();
+        let chemin = ecrire_dans(dossier.path(), "../../facture.pdf", b"%PDF-1.7").unwrap();
+        assert_eq!(chemin.parent().unwrap(), dossier.path());
+        assert_eq!(std::fs::read(&chemin).unwrap(), b"%PDF-1.7");
+    }
 
     #[test]
     fn un_nom_ordinaire_est_conserve() {

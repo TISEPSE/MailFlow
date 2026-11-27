@@ -52,10 +52,24 @@
       "freezePrototype": true
     }
   },
-  "plugins": {},
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEyM0Y2QTMzMEMwMTFBNApSV1NrRWNBd28vWWpBZE51bjU2ODl3RkZxbE44eUVKdHE5UjkvcVQwbllKeDVubWN5eDVMOFdPKwo=",
+      "endpoints": ["https://github.com/TISEPSE/MailFlow/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "nsis", "app", "dmg"],
+    "targets": [
+      "deb",
+      "appimage",
+      "nsis",
+      "app",
+      "dmg"
+    ],
     "category": "Productivity",
     "shortDescription": "Tri automatique de la boîte Gmail",
     "longDescription": "MailFlow trie automatiquement votre boîte Gmail : séparation du courrier humain, nettoyage des publicités, résumés de newsletters et rappels de formations.",

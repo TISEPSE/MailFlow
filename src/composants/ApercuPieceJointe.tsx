@@ -18,10 +18,20 @@
  * L'aperçu ne laisse aucune trace sur le disque. Enregistrer reste un geste
  * distinct, et le bouton est là pour ça — regarder une facture ne doit pas
  * remplir le dossier de téléchargement.
+ *
+ * Un PDF a un second geste, « Modifier dans Acrobat ». Adobe n'accepte pas de
+ * fichier par adresse : le backend enregistre donc le PDF, montre le dossier,
+ * et ouvre l'éditeur en ligne d'Acrobat dans le navigateur, où il ne reste
+ * qu'à le glisser. MailFlow n'ouvre toujours aucune pièce jointe lui-même.
  */
 import { useEffect, useRef, useState } from 'react'
 import { Bouton, Icone, Modale } from './base'
-import { messageDErreur, pieceJointeApercu, pieceJointeEnregistrer } from '../lib/tauri'
+import {
+  messageDErreur,
+  pdfVersAcrobat,
+  pieceJointeApercu,
+  pieceJointeEnregistrer,
+} from '../lib/tauri'
 import type { Apercu, PieceJointe } from '../types/backend'
 import type { ReponseApercuPdf } from '../lib/apercu-pdf.worker'
 import { poids } from '../lib/presentation'
@@ -41,6 +51,8 @@ export function ApercuPieceJointe({
   const [apercu, setApercu] = useState<Apercu | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
   const [enregistrement, setEnregistrement] = useState(false)
+  const [versAcrobat, setVersAcrobat] = useState(false)
+  const [consigne, setConsigne] = useState<string | null>(null)
 
   useEffect(() => {
     let abandonne = false
@@ -71,6 +83,22 @@ export function ApercuPieceJointe({
     }
   }
 
+  const modifierDansAcrobat = async () => {
+    if (versAcrobat) return
+    setVersAcrobat(true)
+    try {
+      const chemin = await pdfVersAcrobat(message, piece.id, piece.nom)
+      onEnregistree(chemin)
+      setConsigne(
+        "Le PDF est dans Téléchargements : glissez-le sur la page Acrobat qui vient de s'ouvrir.",
+      )
+    } catch (e) {
+      setErreur(messageDErreur(e))
+    } finally {
+      setVersAcrobat(false)
+    }
+  }
+
   return (
     <Modale titre={piece.nom} sous={poids(piece.taille)} onFermer={onFermer} taille="grande">
       <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -89,10 +117,20 @@ export function ApercuPieceJointe({
 
         <div className="flex flex-none items-center justify-between gap-3">
           <span className="text-[0.75rem]" style={{ color: 'var(--sub)' }}>
-            L'aperçu ne conserve rien : enregistrez le fichier pour le garder.
+            {consigne ?? "L'aperçu ne conserve rien : enregistrez le fichier pour le garder."}
           </span>
           <div className="flex items-center gap-2">
             <Bouton onClick={onFermer}>Fermer</Bouton>
+            {apercu?.genre === 'pdf' && (
+              <Bouton
+                icone="edit"
+                onClick={() => void modifierDansAcrobat()}
+                enAttente={versAcrobat}
+                titre="Enregistre le PDF et ouvre l'éditeur Acrobat en ligne"
+              >
+                Modifier dans Acrobat
+              </Bouton>
+            )}
             <Bouton
               variante="principal"
               icone="download"

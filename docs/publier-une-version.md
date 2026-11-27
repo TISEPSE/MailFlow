@@ -35,6 +35,49 @@ distribué, et la sécurité du flux repose sur PKCE. Sans eux la compilation
 réussit quand même, mais la version publiée ne pourra pas se connecter : le
 workflow le signale par un avertissement.
 
+### Mises à jour intégrées
+
+Une fois installé, MailFlow vérifie au démarrage, puis toutes les six heures,
+le fichier `latest.json` de la dernière release publiée. S'il annonce une
+version plus récente, un bandeau la propose ; le bouton télécharge
+l'installeur, vérifie sa signature, l'installe et relance l'application. Le
+bouton « Rechercher une mise à jour » des Paramètres pose la même question à la
+demande.
+
+Les installeurs de mise à jour sont signés avec une clé minisign, indépendante
+de tout certificat Windows ou Apple. La clé publique est dans
+`src-tauri/tauri.conf.json` (`plugins.updater.pubkey`), la clé privée dans
+`~/.tauri/mailflow.key`, à sauvegarder hors de la machine : **la perdre, c'est
+ne plus pouvoir publier de mise à jour** que les installations existantes
+acceptent, et devoir réinstaller tout le monde à la main.
+
+Deux secrets de plus dans le dépôt :
+
+| Secret | Rôle |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | Contenu de `~/.tauri/mailflow.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Son mot de passe (vide si la clé n'en a pas) |
+
+Les artefacts de mise à jour ne sont demandés que par
+`src-tauri/tauri.release.conf.json`, que seule la chaîne de publication
+charge : un `npm run tauri:build` local n'a pas besoin de la clé.
+
+Ce qui reçoit les mises à jour :
+
+- **Windows** : l'installeur NSIS, relancé en mode `passive`. Le hook
+  `windows/hooks.nsh`, qui efface comptes et jetons à chaque installation,
+  s'abstient quand l'installeur tourne en mode mise à jour (`/UPDATE`) : on
+  reste connecté d'une version à l'autre.
+- **macOS** : le `.app`.
+- **Linux** : l'AppImage. Le `.deb` voit le bandeau, mais si l'installation
+  échoue, le bandeau propose la page des téléchargements.
+
+Seules les versions définitives sont proposées : une préversion (`-beta`, ou un
+build `workflow_dispatch`) n'est jamais désignée par `releases/latest`.
+
+La première version qui contient ce mécanisme doit être installée une dernière
+fois à la main.
+
 **À chaque version**, le même numéro dans les trois fichiers qui le portent,
 puis le tag :
 
