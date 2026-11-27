@@ -39,7 +39,12 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # pas d'accepter le plus de formats possible. Voir `gmail::apercu`.
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 tauri-plugin-process = "2"
-tauri-plugin-updater = "2"
+# Sans l'option `zip` par défaut : elle ne sert qu'aux artefacts de mise à
+# jour de Tauri v1, des installeurs zippés. Nos artefacts sont au format v2
+# (`.exe` brut, AppImage brute, `.app.tar.gz` dont macOS garde la
+# décompression), et `zip` 4 porte plusieurs failles d'extraction que l'audit
+# de la CI refuse (RUSTSEC-2026-0367 et suivantes).
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
