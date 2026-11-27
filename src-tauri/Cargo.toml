@@ -24,7 +24,7 @@ log = "0.4"
 tauri-plugin-opener = "2.5.4"
 thiserror = "2.0.20"
 chrono = "0.4.45"
-url = "2.5.8"
+url = "2.5.9"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
 reqwest = { version = "0.13.4", features = ["json", "gzip", "brotli", "form"] }
 oauth2 = { version = "5.0.0", default-features = false }
